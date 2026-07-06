@@ -1,0 +1,80 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+export default function Header() {
+  const router = useRouter();
+  const [hospitalName, setHospitalName] = useState("MediCore");
+  const [userData, setUserData] = useState({});
+  const [role, setRole] = useState("");
+
+  useEffect(() => {
+    let parsedHospital = null;
+    let parsedUser = {};
+
+    try {
+      parsedHospital = JSON.parse(localStorage.getItem("hospital") || "null");
+    } catch {
+      parsedHospital = null;
+    }
+
+    try {
+      parsedUser = JSON.parse(localStorage.getItem("user") || "{}");
+    } catch {
+      parsedUser = {};
+    }
+
+    if (parsedHospital?.name) setHospitalName(parsedHospital.name);
+    setUserData(parsedUser);
+    setRole(localStorage.getItem("role") || "");
+  }, []);
+
+  const handleLogout = () => {
+    ["token", "user", "hospital", "role"].forEach((k) =>
+      localStorage.removeItem(k),
+    );
+    router.push("/login");
+  };
+
+  return (
+    <header className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
+      <div className="flex items-center justify-between h-16 px-6">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-lg bg-orange-500 flex items-center justify-center shadow-md">
+            <span className="text-white font-bold">M</span>
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-gray-800">
+              {hospitalName}
+            </h2>
+            <p className="text-xs text-gray-400 capitalize">
+              {role?.replace("_", " ")}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="text-right hidden sm:block">
+            <p className="text-sm font-medium text-gray-700">
+              {userData?.first_name} {userData?.last_name}
+            </p>
+            <p className="text-xs text-gray-400">{userData?.email}</p>
+          </div>
+          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center shadow-md">
+            <span className="text-white text-sm font-bold">
+              {userData?.first_name?.[0]}
+              {userData?.last_name?.[0]}
+            </span>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-200"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
