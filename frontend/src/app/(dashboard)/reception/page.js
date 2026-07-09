@@ -12,7 +12,16 @@ import Modal from "@/components/ui/Modal";
 import Spinner from "@/components/ui/Spinner";
 import { useDoctors } from "@/hooks/useStaff";
 import { useHospitalSettings } from "@/hooks/useSettings";
-import { UserPlus, Search, Users, Clock, Printer, QrCode } from "lucide-react";
+import {
+  UserPlus,
+  Search,
+  Users,
+  Clock,
+  Printer,
+  QrCode,
+  UserCheck,
+  ExternalLink,
+} from "lucide-react";
 import toast from "react-hot-toast";
 import apiClient from "@/lib/api-client";
 import ReportGenerator from "@/components/reports/ReportGenerator";
@@ -27,12 +36,15 @@ export default function ReceptionDashboard() {
   const [patients, setPatients] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [quickLookupMrn, setQuickLookupMrn] = useState("");
   const [showRegister, setShowRegister] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [selectedDoctor, setSelectedDoctor] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [consultationServices, setConsultationServices] = useState([]);
 
   const [form, setForm] = useState({
     first_name: "",
@@ -43,20 +55,54 @@ export default function ReceptionDashboard() {
     address: "",
     symptoms: "",
     blood_group: "",
+    consultation_service_id: "",
   });
 
   const fetchData = async () => {
+    setRefreshing(true);
     try {
-      const [patRes, statsRes] = await Promise.all([
+      const [patRes, statsRes, serviceRes] = await Promise.all([
         apiClient.get("/patients/?page_size=100"),
         apiClient.get("/patients/stats/"),
+        apiClient.get("/services/"),
       ]);
-      setPatients(patRes.data.results || patRes.data);
-      setStats(statsRes.data);
+
+      const patientsData = Array.isArray(patRes?.data?.results)
+        ? patRes.data.results
+        : Array.isArray(patRes?.data)
+          ? patRes.data
+          : [];
+      const statsData =
+        statsRes?.data && typeof statsRes.data === "object"
+          ? statsRes.data
+          : {};
+      const allServices = Array.isArray(serviceRes?.data?.results)
+        ? serviceRes.data.results
+        : Array.isArray(serviceRes?.data)
+          ? serviceRes.data
+          : [];
+
+      setPatients(patientsData);
+      setStats(statsData);
+      const activeConsultations = allServices.filter(
+        (service) =>
+          service?.service_type === "consultation" && service?.is_active,
+      );
+      setConsultationServices(activeConsultations);
+
+      if (activeConsultations.length) {
+        setForm((previous) => ({
+          ...previous,
+          consultation_service_id:
+            previous.consultation_service_id ||
+            String(activeConsultations[0].id),
+        }));
+      }
     } catch (err) {
-      console.error("Failed to load data");
+      toast.error("Failed to load reception data");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -68,12 +114,38 @@ export default function ReceptionDashboard() {
     e.preventDefault();
     if (!form.first_name || !form.last_name || !form.phone)
       return toast.error("Name and phone required");
+    if (!form.consultation_service_id)
+      return toast.error("Please select consultation type");
     setIsSubmitting(true);
     try {
+      const selectedConsultation = consultationServices.find(
+        (service) =>
+          String(service.id) === String(form.consultation_service_id),
+      );
+      const { consultation_service_id, ...patientPayload } = form;
       const { data: patient } = await apiClient.post("/patients/", {
-        ...form,
+        ...patientPayload,
         date_of_birth: form.date_of_birth || "2000-01-01",
       });
+
+      await apiClient.post("/bills/", {
+        patient_name:
+          `${patient.first_name || ""} ${patient.last_name || ""}`.trim(),
+        patient_mrn: patient.mrn,
+        payment_method: "cash",
+        consultation_fee: parseFloat(selectedConsultation?.price || 0),
+        lab_fee: 0,
+        medicine_fee: 0,
+        room_fee: 0,
+        other_fee: 0,
+        insurance_company: "",
+        insurance_policy: "",
+        status: "pending",
+        notes: selectedConsultation
+          ? `Consultation type: ${selectedConsultation.name}${selectedConsultation.code ? ` (${selectedConsultation.code})` : ""}`
+          : "",
+      });
+
       toast.success(`Registered! MRN: ${patient.mrn}`);
       setShowRegister(false);
       setSelectedPatient(patient);
@@ -87,6 +159,9 @@ export default function ReceptionDashboard() {
         address: "",
         symptoms: "",
         blood_group: "",
+        consultation_service_id: consultationServices[0]
+          ? String(consultationServices[0].id)
+          : "",
       });
       fetchData();
     } catch (err) {
@@ -162,17 +237,50 @@ export default function ReceptionDashboard() {
     value: doc.id,
     label: `Dr. ${doc.user?.first_name} ${doc.user?.last_name}`,
   }));
+
+  const getStatusBadgeVariant = (status) => {
+    const normalized = String(status || "").toLowerCase();
+    if (normalized === "waiting") return "warning";
+    if (normalized === "in_consultation" || normalized === "in consultation")
+      return "info";
+    if (normalized === "treated" || normalized === "completed")
+      return "success";
+    return "default";
+  };
+
+  const handleQuickLookup = () => {
+    const mrn = quickLookupMrn.trim();
+    if (!mrn) {
+      toast.error("Enter MRN to find patient");
+      return;
+    }
+    router.push(`/patients/${mrn}`);
+  };
+
+  const handleAssignDoctorForPatient = (patient) => {
+    setSelectedPatient(patient);
+    setSelectedDoctor("");
+    setShowAssign(true);
+  };
+
   const todayPatients = patients.filter(
     (p) => new Date(p.created_at).toDateString() === new Date().toDateString(),
   );
-  const filtered = patients.filter(
-    (p) =>
-      `${p.first_name} ${p.last_name}`
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase()) ||
-      p.phone?.includes(searchTerm) ||
-      p.mrn?.toLowerCase().includes(searchTerm),
-  );
+  const filtered = patients
+    .filter(
+      (p) =>
+        `${p.first_name} ${p.last_name}`
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
+        p.phone?.includes(searchTerm) ||
+        p.mrn?.toLowerCase().includes(searchTerm.toLowerCase()),
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.created_at || 0).getTime() -
+        new Date(a.created_at || 0).getTime(),
+    );
+  const visiblePatients = filtered.slice(0, 20);
 
   if (loading)
     return (
@@ -206,6 +314,8 @@ export default function ReceptionDashboard() {
               <input
                 type="text"
                 placeholder="Enter MRN..."
+                value={quickLookupMrn}
+                onChange={(e) => setQuickLookupMrn(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && e.target.value) {
@@ -214,9 +324,7 @@ export default function ReceptionDashboard() {
                 }}
               />
             </div>
-            <Button onClick={() => router.push("/patients")}>
-              Find Patient
-            </Button>
+            <Button onClick={handleQuickLookup}>Find Patient</Button>
           </div>
         </Card>
 
@@ -226,6 +334,18 @@ export default function ReceptionDashboard() {
             <p className="text-sm text-gray-500">
               {todayPatients.length} patients today
             </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={fetchData}
+              isLoading={refreshing}
+            >
+              Refresh
+            </Button>
+            <Button icon={UserPlus} onClick={() => setShowRegister(true)}>
+              Register Patient
+            </Button>
           </div>
         </div>
 
@@ -238,7 +358,7 @@ export default function ReceptionDashboard() {
           />
         </Card>
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="text-center">
             <Users className="h-6 w-6 text-blue-600 mx-auto mb-1" />
             <p className="text-2xl font-bold">{stats?.total_patients || 0}</p>
@@ -304,7 +424,7 @@ export default function ReceptionDashboard() {
           </div>
         </Card>
 
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <h3 className="font-semibold mb-4">Gender Distribution</h3>
             <div className="flex items-center justify-center gap-8">
@@ -389,8 +509,75 @@ export default function ReceptionDashboard() {
                 className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm"
               />
             </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Showing {Math.min(filtered.length, 20)} of {filtered.length}{" "}
+              patients
+            </p>
           </div>
-          <div className="overflow-x-auto">
+          <div className="md:hidden p-4 space-y-3">
+            {visiblePatients.map((p) => (
+              <div
+                key={p.mrn}
+                className="border border-gray-200 rounded-xl p-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {p.first_name} {p.last_name}
+                    </p>
+                    <p className="text-xs font-mono text-gray-500 mt-0.5">
+                      {p.mrn}
+                    </p>
+                  </div>
+                  <Badge variant={getStatusBadgeVariant(p.status)}>
+                    {p.status}
+                  </Badge>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <p className="text-gray-500">Phone</p>
+                    <p className="text-gray-800">{p.phone || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Doctor</p>
+                    <p className="text-gray-800">{p.doctor_name || "-"}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center justify-end gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={ExternalLink}
+                    onClick={() => router.push(`/patients/${p.mrn}`)}
+                    title="Open patient"
+                    aria-label="Open patient"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={UserCheck}
+                    onClick={() => handleAssignDoctorForPatient(p)}
+                    title="Assign doctor"
+                    aria-label="Assign doctor"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={Printer}
+                    onClick={() => handlePrintReport(p)}
+                    title="Print medical report"
+                    aria-label="Print medical report"
+                  />
+                </div>
+              </div>
+            ))}
+            {!visiblePatients.length && (
+              <p className="text-sm text-gray-500 text-center py-6">
+                No patients found.
+              </p>
+            )}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -410,12 +597,12 @@ export default function ReceptionDashboard() {
                     Status
                   </th>
                   <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                    Print
+                    Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filtered.slice(0, 20).map((p) => (
+                {visiblePatients.map((p) => (
                   <tr key={p.mrn} className="hover:bg-gray-50">
                     <td className="px-3 py-3 text-sm font-medium">
                       {p.first_name} {p.last_name}
@@ -426,23 +613,50 @@ export default function ReceptionDashboard() {
                       {p.doctor_name || "—"}
                     </td>
                     <td className="px-3 py-3">
-                      <Badge
-                        variant={p.status === "waiting" ? "warning" : "success"}
-                      >
+                      <Badge variant={getStatusBadgeVariant(p.status)}>
                         {p.status}
                       </Badge>
                     </td>
                     <td className="px-3 py-3 text-center">
-                      <button
-                        onClick={() => handlePrintReport(p)}
-                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
-                        title="Print Medical Report"
-                      >
-                        <Printer className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={ExternalLink}
+                          onClick={() => router.push(`/patients/${p.mrn}`)}
+                          title="Open patient"
+                          aria-label="Open patient"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={UserCheck}
+                          onClick={() => handleAssignDoctorForPatient(p)}
+                          title="Assign doctor"
+                          aria-label="Assign doctor"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={Printer}
+                          onClick={() => handlePrintReport(p)}
+                          title="Print medical report"
+                          aria-label="Print medical report"
+                        />
+                      </div>
                     </td>
                   </tr>
                 ))}
+                {!visiblePatients.length && (
+                  <tr>
+                    <td
+                      className="px-3 py-6 text-sm text-gray-500 text-center"
+                      colSpan={6}
+                    >
+                      No patients found.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -522,6 +736,23 @@ export default function ReceptionDashboard() {
               label="Symptoms"
               value={form.symptoms}
               onChange={(e) => setForm({ ...form, symptoms: e.target.value })}
+            />
+            <Select
+              label="Consultation Type *"
+              value={form.consultation_service_id}
+              onChange={(e) =>
+                setForm({ ...form, consultation_service_id: e.target.value })
+              }
+              options={consultationServices.map((service) => ({
+                value: String(service.id),
+                label: `${service.name} - SSP ${Number(service.price || 0).toLocaleString()}`,
+              }))}
+              placeholder={
+                consultationServices.length
+                  ? "Select consultation type"
+                  : "No consultation services configured"
+              }
+              required
             />
           </form>
         </Modal>

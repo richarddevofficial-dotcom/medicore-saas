@@ -25,6 +25,6 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         validated_data.pop('patient_name_input', None)
-        from hospitals.models import Hospital
-        validated_data['hospital'] = Hospital.objects.first()
+        if 'hospital' not in validated_data or validated_data['hospital'] is None:
+            raise serializers.ValidationError({'hospital': 'Hospital context is required'})
         return super().create(validated_data)

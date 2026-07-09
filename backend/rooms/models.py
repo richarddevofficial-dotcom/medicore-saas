@@ -1,6 +1,9 @@
 from django.db import models
+from django.db.models import Q
 from hospitals.models import Hospital
 from departments.models import Department
+from patients.models import Patient
+from staff.models import StaffProfile
 
 class Ward(models.Model):
     """A ward is a group of rooms (e.g., General Ward, ICU, Maternity)"""
@@ -89,3 +92,64 @@ class Bed(models.Model):
     
     def __str__(self):
         return f"Bed {self.bed_number} - Room {self.room.room_number}"
+
+
+class BedAssignment(models.Model):
+    """Tracks patient-to-bed assignments including transfers and releases."""
+
+    ASSIGNMENT_STATUS = [
+        ('active', 'Active'),
+        ('released', 'Released'),
+        ('transferred', 'Transferred'),
+    ]
+
+    hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='bed_assignments')
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE, related_name='bed_assignments')
+    bed = models.ForeignKey(Bed, on_delete=models.CASCADE, related_name='assignments')
+    transfer_from = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='transfer_children',
+    )
+
+    status = models.CharField(max_length=20, choices=ASSIGNMENT_STATUS, default='active')
+    notes = models.TextField(blank=True)
+    release_reason = models.TextField(blank=True)
+
+    assigned_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='bed_assignments_created',
+    )
+    released_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='bed_assignments_released',
+    )
+
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-assigned_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['bed'],
+                condition=Q(released_at__isnull=True),
+                name='uniq_active_assignment_per_bed',
+            ),
+            models.UniqueConstraint(
+                fields=['patient'],
+                condition=Q(released_at__isnull=True),
+                name='uniq_active_assignment_per_patient',
+            ),
+        ]
+
+    def __str__(self):
+        return f"Assignment(patient={self.patient_id}, bed={self.bed_id}, status={self.status})"

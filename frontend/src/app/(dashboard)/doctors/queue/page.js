@@ -10,6 +10,7 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Modal from "@/components/ui/Modal";
 import Spinner from "@/components/ui/Spinner";
+import EmptyState from "@/components/ui/EmptyState";
 import ReportGenerator from "@/components/reports/ReportGenerator";
 import {
   Search,
@@ -58,6 +59,8 @@ export default function DoctorQueuePage() {
   const [showLabModal, setShowLabModal] = useState(false);
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [showImagingModal, setShowImagingModal] = useState(false);
+  const [labServices, setLabServices] = useState([]);
+  const [loadingLabServices, setLoadingLabServices] = useState(false);
   const [medicineSearch, setMedicineSearch] = useState("");
   const [medicineResults, setMedicineResults] = useState([]);
   const [selectedMedicines, setSelectedMedicines] = useState([]);
@@ -72,7 +75,18 @@ export default function DoctorQueuePage() {
     prescription: "",
     doctor_notes: "",
   });
-  const [labTest, setLabTest] = useState({ lab_test_requested: "" });
+  const [labTest, setLabTest] = useState({
+    lab_service_ids: [],
+    manual_lab_test_requested: "",
+    lab_fee: "0",
+  });
+
+  const getWorkflowBadgeVariant = (patient) => {
+    const workflow = (patient.workflow_status || "").toLowerCase();
+    if (workflow === "treated") return "success";
+    if (workflow === "awaiting payment") return "warning";
+    return "info";
+  };
 
   const fetchQueue = async () => {
     setIsLoading(true);
@@ -92,6 +106,72 @@ export default function DoctorQueuePage() {
     return () => clearInterval(interval);
   }, []);
 
+  const fetchLabServices = async () => {
+    if (labServices.length) return;
+    setLoadingLabServices(true);
+    try {
+      const { data } = await apiClient.get("/services/");
+      const allServices = Array.isArray(data) ? data : data?.results || [];
+      const labOnly = allServices.filter(
+        (service) => service?.service_type === "lab" && service?.is_active,
+      );
+      setLabServices(labOnly);
+    } catch (err) {
+      toast.error("Failed to load lab services");
+    } finally {
+      setLoadingLabServices(false);
+    }
+  };
+
+  const openLabModal = (patient) => {
+    setSelectedPatient(patient);
+    setShowLabModal(true);
+    setLabTest({
+      lab_service_ids: [],
+      manual_lab_test_requested: "",
+      lab_fee: "0",
+    });
+    fetchLabServices();
+  };
+
+  const closeLabModal = () => {
+    setShowLabModal(false);
+    setSelectedPatient(null);
+    setLabTest({
+      lab_service_ids: [],
+      manual_lab_test_requested: "",
+      lab_fee: "0",
+    });
+  };
+
+  const getLabServiceLabel = (service) =>
+    `${service.name}${service.code ? ` (${service.code})` : ""}`;
+
+  const getSelectedLabServices = () =>
+    labServices.filter((service) =>
+      labTest.lab_service_ids.includes(String(service.id)),
+    );
+
+  const toggleLabService = (serviceId) => {
+    const id = String(serviceId);
+    setLabTest((previous) => {
+      const isSelected = previous.lab_service_ids.includes(id);
+      const nextIds = isSelected
+        ? previous.lab_service_ids.filter((value) => value !== id)
+        : [...previous.lab_service_ids, id];
+
+      const totalFee = labServices
+        .filter((service) => nextIds.includes(String(service.id)))
+        .reduce((sum, service) => sum + Number(service.price || 0), 0);
+
+      return {
+        ...previous,
+        lab_service_ids: nextIds,
+        lab_fee: String(totalFee),
+      };
+    });
+  };
+
   const handleStartConsultation = async (patient) => {
     try {
       await apiClient.post(`/patients/${patient.mrn}/update_status/`, {
@@ -100,7 +180,9 @@ export default function DoctorQueuePage() {
       toast.success("Consultation started");
       fetchQueue();
     } catch (err) {
-      toast.error("Failed");
+      toast.error(
+        err?.response?.data?.error || "Payment required before consultation",
+      );
     }
   };
 
@@ -145,19 +227,36 @@ export default function DoctorQueuePage() {
   };
 
   const handleRequestLab = async () => {
-    if (!labTest.lab_test_requested) return toast.error("Specify lab tests");
+    const selectedTests = getSelectedLabServices().map((service) =>
+      getLabServiceLabel(service),
+    );
+    const manualTests = (labTest.manual_lab_test_requested || "").trim();
+    const requestedTests = [selectedTests.join("\n"), manualTests]
+      .filter((value) => value && value.trim())
+      .join("\n");
+
+    if (!requestedTests) return toast.error("Select or specify lab tests");
+
     try {
       await apiClient.post(
         `/patients/${selectedPatient.mrn}/request_lab_test/`,
-        labTest,
+        {
+          lab_test_requested: requestedTests,
+          lab_fee: parseFloat(labTest.lab_fee || 0),
+        },
       );
-      toast.success("Lab test requested!");
-      setShowLabModal(false);
-      setSelectedPatient(null);
-      setLabTest({ lab_test_requested: "" });
+      const targetMrn = selectedPatient.mrn;
+      toast.success("Lab test requested and sent to cashier for payment");
+      closeLabModal();
       fetchQueue();
+      router.push(
+        `/billing?focus=pending&mrn=${encodeURIComponent(targetMrn)}`,
+      );
     } catch (err) {
-      toast.error("Failed");
+      toast.error(
+        err?.response?.data?.error ||
+          "Unable to send to cashier. Please verify billing setup.",
+      );
     }
   };
 
@@ -182,7 +281,9 @@ export default function DoctorQueuePage() {
       });
       fetchQueue();
     } catch (err) {
-      toast.error("Failed");
+      toast.error(
+        err?.response?.data?.error || "Payment required before imaging request",
+      );
     }
   };
 
@@ -207,6 +308,7 @@ export default function DoctorQueuePage() {
       frequency: "",
       duration: "",
       quantity: 1,
+      stock_quantity: medicine.quantity || 0,
     };
     const updated = [...selectedMedicines, entry];
     setSelectedMedicines(updated);
@@ -217,7 +319,24 @@ export default function DoctorQueuePage() {
       prescription: updated
         .map(
           (m) =>
-            `${m.name} ${m.strength} - ${m.dosage} ${m.frequency} x ${m.duration} (Qty: ${m.quantity})`,
+            `${m.name} ${m.strength} - ${m.dosage} ${m.frequency} x ${m.duration} (Pharmacy ${m.quantity})`,
+        )
+        .join("\n"),
+    });
+  };
+
+  const updateMedicineQuantity = (index, quantity) => {
+    const safeQuantity = Math.max(1, parseInt(quantity || 1, 10) || 1);
+    const updated = selectedMedicines.map((item, itemIndex) =>
+      itemIndex === index ? { ...item, quantity: safeQuantity } : item,
+    );
+    setSelectedMedicines(updated);
+    setTreatment({
+      ...treatment,
+      prescription: updated
+        .map(
+          (m) =>
+            `${m.name} ${m.strength} - ${m.dosage} ${m.frequency} x ${m.duration} (Pharmacy ${m.quantity})`,
         )
         .join("\n"),
     });
@@ -495,12 +614,8 @@ export default function DoctorQueuePage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <Badge
-                          variant={
-                            patient.status === "waiting" ? "warning" : "info"
-                          }
-                        >
-                          {status.label}
+                        <Badge variant={getWorkflowBadgeVariant(patient)}>
+                          {patient.workflow_status || status.label}
                         </Badge>
                         {patient.status === "waiting" && (
                           <Button
@@ -517,10 +632,7 @@ export default function DoctorQueuePage() {
                               size="sm"
                               variant="secondary"
                               icon={FlaskConical}
-                              onClick={() => {
-                                setSelectedPatient(patient);
-                                setShowLabModal(true);
-                              }}
+                              onClick={() => openLabModal(patient)}
                             >
                               Lab Test
                             </Button>
@@ -591,7 +703,8 @@ export default function DoctorQueuePage() {
                       </div>
                     </div>
                     <Badge variant="default">
-                      {patient.status.replace(/_/g, " ")}
+                      {patient.workflow_status ||
+                        patient.status.replace(/_/g, " ")}
                     </Badge>
                   </div>
                 </Card>
@@ -627,7 +740,8 @@ export default function DoctorQueuePage() {
                       </div>
                     </div>
                     <Badge variant="default">
-                      {patient.status.replace(/_/g, " ")}
+                      {patient.workflow_status ||
+                        patient.status.replace(/_/g, " ")}
                     </Badge>
                   </div>
                 </Card>
@@ -638,15 +752,14 @@ export default function DoctorQueuePage() {
 
         {patients.length === 0 && (
           <Card>
-            <div className="text-center py-16">
-              <Clock className="h-16 w-16 text-gray-200 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                No Patients Yet
-              </h3>
-              <p className="text-gray-500">
-                Patients assigned to you will appear here
-              </p>
-            </div>
+            <EmptyState
+              imageSrc="/images/empty-states/patients-empty.svg"
+              imageAlt="No patients"
+              title="No Patients Yet"
+              description="Patients assigned to you will appear here"
+              titleClassName="text-xl font-semibold text-gray-900 mb-2"
+              descriptionClassName="text-gray-500 mb-0"
+            />
           </Card>
         )}
 
@@ -723,7 +836,19 @@ export default function DoctorQueuePage() {
                       <span className="text-xs text-gray-500">
                         {med.dosage} {med.frequency} x {med.duration}
                       </span>
-                      <span className="text-xs">Qty: {med.quantity}</span>
+                      <label className="flex items-center gap-2 text-xs text-gray-600 ml-2">
+                        <span>Pharmacy</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max={med.stock_quantity || 999}
+                          value={med.quantity}
+                          onChange={(e) =>
+                            updateMedicineQuantity(i, e.target.value)
+                          }
+                          className="w-16 rounded border px-2 py-1 text-xs"
+                        />
+                      </label>
                       <button
                         onClick={() => {
                           const updated = selectedMedicines.filter(
@@ -735,7 +860,7 @@ export default function DoctorQueuePage() {
                             prescription: updated
                               .map(
                                 (m) =>
-                                  `${m.name} ${m.strength} - ${m.dosage} ${m.frequency} x ${m.duration} (Qty: ${m.quantity})`,
+                                  `${m.name} ${m.strength} - ${m.dosage} ${m.frequency} x ${m.duration} (Pharmacy ${m.quantity})`,
                               )
                               .join("\n"),
                           });
@@ -833,34 +958,96 @@ export default function DoctorQueuePage() {
 
         <Modal
           isOpen={showLabModal}
-          onClose={() => setShowLabModal(false)}
+          onClose={closeLabModal}
           title={`Request Lab: ${selectedPatient?.first_name} ${selectedPatient?.last_name}`}
           size="md"
           footer={
             <>
-              <Button
-                variant="secondary"
-                onClick={() => setShowLabModal(false)}
-              >
+              <Button variant="secondary" onClick={closeLabModal}>
                 Cancel
               </Button>
               <Button onClick={handleRequestLab}>Send to Lab</Button>
             </>
           }
         >
-          <div>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Lab Tests
+              </label>
+              <div className="max-h-48 overflow-y-auto rounded-lg border p-2 space-y-1">
+                {loadingLabServices && (
+                  <p className="text-sm text-gray-500 px-2 py-1">
+                    Loading lab services...
+                  </p>
+                )}
+                {!loadingLabServices && !labServices.length && (
+                  <p className="text-sm text-gray-500 px-2 py-1">
+                    No lab services configured
+                  </p>
+                )}
+                {labServices.map((service) => {
+                  const id = String(service.id);
+                  const checked = labTest.lab_service_ids.includes(id);
+                  return (
+                    <label
+                      key={service.id}
+                      className="flex items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-gray-50"
+                    >
+                      <span className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleLabService(service.id)}
+                        />
+                        <span>{getLabServiceLabel(service)}</span>
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        SSP {Number(service.price || 0).toLocaleString()}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <Input
+              label="Lab Fee (SSP)"
+              type="number"
+              value={labTest.lab_fee}
+              onChange={(e) =>
+                setLabTest((previous) => ({
+                  ...previous,
+                  lab_fee: e.target.value,
+                }))
+              }
+            />
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Lab Tests Required *
+              Extra Lab Test Notes (optional)
             </label>
             <textarea
               rows={5}
               className="w-full rounded-lg border px-3 py-2 text-sm"
-              value={labTest.lab_test_requested}
+              value={labTest.manual_lab_test_requested}
               onChange={(e) =>
-                setLabTest({ lab_test_requested: e.target.value })
+                setLabTest((previous) => ({
+                  ...previous,
+                  manual_lab_test_requested: e.target.value,
+                }))
               }
-              placeholder="e.g.,&#10;CBC (Complete Blood Count)&#10;Blood Sugar - Fasting & PP&#10;Urine Routine Analysis"
+              placeholder="Optional extra details or custom tests..."
             />
+            {labTest.lab_service_ids.length > 0 && (
+              <div className="rounded-lg border bg-gray-50 p-3">
+                <p className="text-xs font-medium text-gray-600 mb-1">
+                  Selected Tests Preview
+                </p>
+                <p className="text-sm whitespace-pre-wrap text-gray-700">
+                  {getSelectedLabServices()
+                    .map((service) => getLabServiceLabel(service))
+                    .join("\n")}
+                </p>
+              </div>
+            )}
           </div>
         </Modal>
 

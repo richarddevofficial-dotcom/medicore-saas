@@ -9,6 +9,7 @@ import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import Input from "@/components/ui/Input";
 import Spinner from "@/components/ui/Spinner";
+import EmptyState from "@/components/ui/EmptyState";
 import { usePatients } from "@/hooks/usePatients";
 import {
   FlaskConical,
@@ -169,15 +170,14 @@ export default function LabDashboard() {
         {/* Patient List */}
         {filtered.length === 0 ? (
           <Card>
-            <div className="text-center py-16">
-              <FlaskConical className="h-16 w-16 text-gray-200 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                No Lab Requests
-              </h3>
-              <p className="text-gray-500">
-                Lab queue is empty. Waiting for doctor requests.
-              </p>
-            </div>
+            <EmptyState
+              imageSrc="/images/empty-states/lab-empty.svg"
+              imageAlt="No lab requests"
+              title="No Lab Requests"
+              description="Lab queue is empty. Waiting for doctor requests."
+              titleClassName="text-xl font-semibold text-gray-900 mb-2"
+              descriptionClassName="text-gray-500 mb-0"
+            />
           </Card>
         ) : (
           <div className="space-y-3">

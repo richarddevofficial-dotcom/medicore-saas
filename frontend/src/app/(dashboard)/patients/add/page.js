@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
@@ -16,6 +16,8 @@ export default function AddPatientPage() {
   const router = useRouter();
   const { data: doctors } = useDoctors();
   const [isLoading, setIsLoading] = useState(false);
+  const [consultationServices, setConsultationServices] = useState([]);
+  const [servicesLoading, setServicesLoading] = useState(true);
 
   const [form, setForm] = useState({
     first_name: "",
@@ -33,7 +35,33 @@ export default function AddPatientPage() {
     chronic_conditions: "",
     symptoms: "",
     assigned_doctor: "",
+    consultation_service_id: "",
   });
+
+  useEffect(() => {
+    const loadServices = async () => {
+      try {
+        const { data } = await apiClient.get("/services/");
+        const allServices = data.results || data || [];
+        const activeConsultations = allServices.filter(
+          (service) =>
+            service?.service_type === "consultation" && service?.is_active,
+        );
+        setConsultationServices(activeConsultations);
+        if (activeConsultations.length) {
+          setForm((prev) => ({
+            ...prev,
+            consultation_service_id: String(activeConsultations[0].id),
+          }));
+        }
+      } catch (err) {
+        toast.error("Failed to load consultation services");
+      } finally {
+        setServicesLoading(false);
+      }
+    };
+    loadServices();
+  }, []);
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -53,9 +81,19 @@ export default function AddPatientPage() {
       return;
     }
 
+    if (!form.consultation_service_id) {
+      toast.error("Please select consultation type");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
+      const selectedConsultation = consultationServices.find(
+        (service) =>
+          String(service.id) === String(form.consultation_service_id),
+      );
+
       const { data: patient } = await apiClient.post("/patients/", {
         first_name: form.first_name,
         last_name: form.last_name,
@@ -71,6 +109,24 @@ export default function AddPatientPage() {
         allergies: form.allergies,
         chronic_conditions: form.chronic_conditions,
         symptoms: form.symptoms,
+      });
+
+      await apiClient.post("/bills/", {
+        patient_name:
+          `${patient.first_name || ""} ${patient.last_name || ""}`.trim(),
+        patient_mrn: patient.mrn,
+        payment_method: "cash",
+        consultation_fee: parseFloat(selectedConsultation?.price || 0),
+        lab_fee: 0,
+        medicine_fee: 0,
+        room_fee: 0,
+        other_fee: 0,
+        insurance_company: "",
+        insurance_policy: "",
+        status: "pending",
+        notes: selectedConsultation
+          ? `Consultation type: ${selectedConsultation.name}${selectedConsultation.code ? ` (${selectedConsultation.code})` : ""}`
+          : "",
       });
 
       if (form.assigned_doctor && patient.mrn) {
@@ -263,6 +319,23 @@ export default function AddPatientPage() {
                 Medical Information
               </h3>
               <div className="space-y-4">
+                <Select
+                  label="Consultation Type *"
+                  value={form.consultation_service_id}
+                  onChange={(e) =>
+                    handleChange("consultation_service_id", e.target.value)
+                  }
+                  options={consultationServices.map((service) => ({
+                    value: String(service.id),
+                    label: `${service.name} - SSP ${Number(service.price || 0).toLocaleString()}`,
+                  }))}
+                  placeholder={
+                    servicesLoading
+                      ? "Loading consultation services..."
+                      : "Select consultation type"
+                  }
+                  required
+                />
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Symptoms / Chief Complaint

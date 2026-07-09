@@ -91,6 +91,14 @@ export default function ReportsPage() {
     { id: "monthly", label: "🗓️ Monthly" },
     { id: "quarterly", label: "📊 Quarterly" },
   ];
+  const periodLabelMap = {
+    daily: "Daily",
+    weekly: "Weekly",
+    monthly: "Monthly",
+    quarterly: "Quarterly",
+    custom: "Custom",
+  };
+  const activePeriodLabel = periodLabelMap[data?.period || period] || "Daily";
 
   return (
     <DashboardLayout>
@@ -101,6 +109,11 @@ export default function ReportsPage() {
             <p className="text-sm text-gray-500">
               {hospitalName} - View and print reports
             </p>
+            {data?.start_date && data?.end_date && (
+              <p className="text-xs text-gray-500 mt-1">
+                {activePeriodLabel} range: {data.start_date} to {data.end_date}
+              </p>
+            )}
           </div>
           <div className="flex gap-2">
             <Button
@@ -134,7 +147,7 @@ export default function ReportsPage() {
           </Card>
         ) : (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               <Card className="text-center">
                 <Users className="h-6 w-6 text-blue-600 mx-auto mb-1" />
                 <p className="text-2xl font-bold">{data?.patients?.new || 0}</p>
@@ -161,6 +174,13 @@ export default function ReportsPage() {
                 </p>
                 <p className="text-xs text-gray-500">Appointments</p>
               </Card>
+              <Card className="text-center">
+                <DollarSign className="h-6 w-6 text-red-600 mx-auto mb-1" />
+                <p className="text-2xl font-bold text-red-600">
+                  SSP {(data?.billing?.pending || 0).toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-500">Pending Balance</p>
+              </Card>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -179,7 +199,7 @@ export default function ReportsPage() {
                   </div>
                   <div className="flex justify-between py-2 border-b">
                     <span className="text-sm text-gray-500">
-                      New ({period})
+                      New ({activePeriodLabel.toLowerCase()})
                     </span>
                     <span className="font-bold text-blue-600">
                       +{data?.patients?.new || 0}

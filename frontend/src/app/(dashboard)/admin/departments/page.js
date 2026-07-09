@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import AdminBackButton from "@/components/ui/AdminBackButton";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Modal from "@/components/ui/Modal";
@@ -12,7 +12,6 @@ import Badge from "@/components/ui/Badge";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useDoctors } from "@/hooks/useStaff";
 import {
-  ArrowLeft,
   Plus,
   Trash2,
   Building2,
@@ -101,7 +100,6 @@ const initialDepartments = [
 ];
 
 export default function DepartmentsPage() {
-  const router = useRouter();
   const { data: doctors } = useDoctors();
   const [departments, setDepartments] = useState(initialDepartments);
   const [searchTerm, setSearchTerm] = useState("");
@@ -117,11 +115,37 @@ export default function DepartmentsPage() {
   const [deleteId, setDeleteId] = useState(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  // Head status options (only Assigned/Unassigned)
-  const headOptions = [
-    { value: "Assigned", label: "Assigned" },
-    { value: "Unassigned", label: "Unassigned" },
+  const doctorList = Array.isArray(doctors)
+    ? doctors
+    : Array.isArray(doctors?.results)
+      ? doctors.results
+      : [];
+
+  const doctorHeadOptions = [
+    { value: "", label: "Unassigned" },
+    ...doctorList
+      .filter((doc) => doc?.is_active !== false)
+      .map((doc) => ({
+        value: String(doc.id),
+        label:
+          `${doc.user?.first_name || ""} ${doc.user?.last_name || ""}`.trim() ||
+          doc.user?.email ||
+          `Doctor #${doc.id}`,
+      })),
   ];
+
+  const getHeadLabel = (dept) => {
+    if (!dept?.headId) return "Unassigned";
+    const selectedDoctor = doctorList.find(
+      (doc) => String(doc.id) === String(dept.headId),
+    );
+    if (!selectedDoctor) return "Assigned";
+    return (
+      `${selectedDoctor.user?.first_name || ""} ${selectedDoctor.user?.last_name || ""}`.trim() ||
+      selectedDoctor.user?.email ||
+      "Assigned"
+    );
+  };
 
   const handleAdd = () => {
     if (!newDept.name.trim()) {
@@ -133,8 +157,8 @@ export default function DepartmentsPage() {
       {
         id: Date.now(),
         name: newDept.name,
-        head: newDept.head || "Unassigned",
-        headId: null,
+        head: newDept.headId ? "Assigned" : "Unassigned",
+        headId: newDept.headId ? parseInt(newDept.headId, 10) : null,
         staff: 0,
         rooms: parseInt(newDept.rooms) || 1,
         status: "active",
@@ -206,13 +230,7 @@ export default function DepartmentsPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              icon={ArrowLeft}
-              onClick={() => router.push("/admin")}
-            >
-              Back
-            </Button>
+            <AdminBackButton />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Departments</h1>
               <p className="text-sm text-gray-500 mt-1">
@@ -277,7 +295,7 @@ export default function DepartmentsPage() {
                         : "text-red-500"
                     }
                   >
-                    {dept.head}
+                    {getHeadLabel(dept)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-gray-500">
@@ -336,9 +354,15 @@ export default function DepartmentsPage() {
             />
             <Select
               label="Department Head"
-              value={newDept.head}
-              onChange={(e) => setNewDept({ ...newDept, head: e.target.value })}
-              options={headOptions}
+              value={newDept.headId}
+              onChange={(e) =>
+                setNewDept({
+                  ...newDept,
+                  headId: e.target.value,
+                  head: e.target.value ? "Assigned" : "Unassigned",
+                })
+              }
+              options={doctorHeadOptions}
             />
             <Input
               label="Rooms"
@@ -380,11 +404,17 @@ export default function DepartmentsPage() {
               />
               <Select
                 label="Department Head"
-                value={editDept.head}
+                value={editDept.headId ? String(editDept.headId) : ""}
                 onChange={(e) =>
-                  setEditDept({ ...editDept, head: e.target.value })
+                  setEditDept({
+                    ...editDept,
+                    headId: e.target.value
+                      ? parseInt(e.target.value, 10)
+                      : null,
+                    head: e.target.value ? "Assigned" : "Unassigned",
+                  })
                 }
-                options={headOptions}
+                options={doctorHeadOptions}
               />
               <Input
                 label="Rooms"

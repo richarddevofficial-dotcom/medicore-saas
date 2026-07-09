@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import AdminBackButton from "@/components/ui/AdminBackButton";
 import Badge from "@/components/ui/Badge";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
@@ -20,7 +20,6 @@ import {
 import { useDepartments } from "@/hooks/useDepartments";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
-  ArrowLeft,
   Plus,
   Trash2,
   Power,
@@ -34,7 +33,6 @@ import {
 import toast from "react-hot-toast";
 
 export default function DoctorsPage() {
-  const router = useRouter();
   const { data: staffData, isLoading } = useStaff();
   const { data: departments } = useDepartments();
   const createStaff = useCreateStaff();
@@ -61,6 +59,11 @@ export default function DoctorsPage() {
     max_patients_per_day: "20",
     phone: "",
   });
+
+  const formatCurrency = (value) => {
+    const amount = Number.parseFloat(value ?? 0);
+    return `SSP ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
+  };
 
   const staff = staffData?.results || [];
   const doctors = staff.filter((s) => s.role === "doctor");
@@ -168,13 +171,7 @@ export default function DoctorsPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              icon={ArrowLeft}
-              onClick={() => router.push("/admin")}
-            >
-              Back
-            </Button>
+            <AdminBackButton />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Doctors</h1>
               <p className="text-sm text-gray-500 mt-1">
@@ -264,7 +261,7 @@ export default function DoctorsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm font-medium">
                         {doc.consultation_fee
-                          ? `₹${doc.consultation_fee}`
+                          ? formatCurrency(doc.consultation_fee)
                           : "—"}
                       </td>
                       <td className="px-4 py-3">
@@ -383,7 +380,7 @@ export default function DoctorsPage() {
             />
             <div className="grid grid-cols-2 gap-4">
               <Input
-                label="Fee (₹)"
+                label="Fee (SSP)"
                 type="number"
                 value={form.consultation_fee}
                 onChange={(e) =>
@@ -455,7 +452,7 @@ export default function DoctorsPage() {
               />
               <div className="grid grid-cols-2 gap-4">
                 <Input
-                  label="Fee (₹)"
+                  label="Fee (SSP)"
                   type="number"
                   value={editDoctor.consultation_fee}
                   onChange={(e) =>

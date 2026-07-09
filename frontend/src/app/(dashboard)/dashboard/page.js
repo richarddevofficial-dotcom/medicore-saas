@@ -6,6 +6,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
+import EmptyState from "@/components/ui/EmptyState";
 import apiClient from "@/lib/api-client";
 import toast from "react-hot-toast";
 import {
@@ -51,6 +52,13 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [trialInfo, setTrialInfo] = useState(null);
   const [isImpersonating, setIsImpersonating] = useState(false);
+  const [endpointHealth, setEndpointHealth] = useState({
+    patients: "idle",
+    billing: "idle",
+    staff: "idle",
+    charts: "idle",
+  });
+  const [fetchErrors, setFetchErrors] = useState([]);
 
   useEffect(() => {
     // Check if super admin is impersonating a hospital
@@ -69,27 +77,128 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchStats = async () => {
+      const requests = [
+        { key: "patients", path: "/patients/stats/" },
+        { key: "billing", path: "/bills/stats/" },
+        { key: "staff", path: "/staff/" },
+        { key: "charts", path: "/reports/dashboard-charts/" },
+      ];
+
       try {
-        const [patientRes, billRes, staffRes, chartRes] = await Promise.all([
-          apiClient.get("/patients/stats/"),
-          apiClient.get("/bills/stats/"),
-          apiClient.get("/staff/stats/"),
-          apiClient.get("/reports/dashboard-charts/"),
-        ]);
+        const settled = await Promise.allSettled(
+          requests.map((request) => apiClient.get(request.path)),
+        );
+
+        const nextHealth = {
+          patients: "error",
+          billing: "error",
+          staff: "error",
+          charts: "error",
+        };
+        const nextErrors = [];
+        const payload = {
+          patients: {},
+          billing: {},
+          staff: {},
+          charts: {},
+        };
+
+        settled.forEach((result, index) => {
+          const endpoint = requests[index];
+          if (result.status === "fulfilled") {
+            nextHealth[endpoint.key] = "ok";
+            payload[endpoint.key] = result.value?.data || {};
+          } else {
+            nextHealth[endpoint.key] = "error";
+            nextErrors.push(
+              `${endpoint.path} failed (${result.reason?.response?.status || "network"})`,
+            );
+          }
+        });
+
+        setEndpointHealth(nextHealth);
+        setFetchErrors(nextErrors);
+
+        const staffRows = Array.isArray(payload.staff)
+          ? payload.staff
+          : Array.isArray(payload.staff?.results)
+            ? payload.staff.results
+            : [];
+        const computedStaff = {
+          total_staff: staffRows.length,
+          doctors: staffRows.filter((member) => member?.role === "doctor")
+            .length,
+          active: staffRows.filter((member) => member?.is_active).length,
+        };
+
         setStats({
-          patients: patientRes.data,
-          billing: billRes.data,
-          staff: staffRes.data,
-          charts: chartRes.data,
+          patients: payload.patients,
+          billing: payload.billing,
+          staff: computedStaff,
+          charts: payload.charts,
         });
       } catch (err) {
-        console.error("Failed to load dashboard");
+        console.error("Failed to load dashboard", err);
+        setFetchErrors(["Dashboard request failed. Please retry."]);
+        setEndpointHealth({
+          patients: "error",
+          billing: "error",
+          staff: "error",
+          charts: "error",
+        });
       } finally {
         setLoading(false);
       }
     };
     fetchStats();
   }, []);
+
+  const isAllEndpointsDown = Object.values(endpointHealth).every(
+    (state) => state === "error",
+  );
+
+  const isLikelyNoData =
+    (stats?.patients?.total_patients || 0) === 0 &&
+    (stats?.billing?.total_bills || 0) === 0 &&
+    (stats?.staff?.total_staff || 0) === 0;
+
+  const summaryRows = [
+    {
+      label: "Patients Registered",
+      value: stats?.patients?.today_new || 0,
+      icon: Users,
+      boxClass: "bg-blue-100",
+      iconClass: "text-blue-600",
+    },
+    {
+      label: "In Consultation",
+      value: stats?.patients?.in_consultation || 0,
+      icon: Stethoscope,
+      boxClass: "bg-purple-100",
+      iconClass: "text-purple-600",
+    },
+    {
+      label: "Lab Tests",
+      value: stats?.patients?.lab_requested || 0,
+      icon: FlaskConical,
+      boxClass: "bg-orange-100",
+      iconClass: "text-orange-600",
+    },
+    {
+      label: "Treated Today",
+      value: stats?.patients?.treated_today || 0,
+      icon: Activity,
+      boxClass: "bg-green-100",
+      iconClass: "text-green-600",
+    },
+    {
+      label: "Revenue Today",
+      value: `SSP ${(stats?.billing?.revenue_today || 0).toLocaleString()}`,
+      icon: DollarSign,
+      boxClass: "bg-green-100",
+      iconClass: "text-green-600",
+    },
+  ];
 
   const handleSwitchBack = () => {
     // Restore super admin state from sessionStorage
@@ -226,8 +335,91 @@ export default function DashboardPage() {
             <p className="text-sm text-gray-500 mt-1">
               Welcome back! Here&apos;s your hospital overview.
             </p>
+            <p className="text-xs text-gray-500 mt-1">
+              Revenue Today = fully settled bills today; Collected today = cash
+              received today (including partial payments).
+            </p>
           </div>
         </div>
+
+        {/* Data source health */}
+        <Card className="border border-gray-200 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">
+                Data Source Health
+              </h2>
+              <p className="text-xs text-gray-500">
+                Live status for dashboard backend endpoints
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: "Patients", key: "patients" },
+                { label: "Billing", key: "billing" },
+                { label: "Staff", key: "staff" },
+                { label: "Charts", key: "charts" },
+              ].map((item) => {
+                const status = endpointHealth[item.key] || "idle";
+                const tone =
+                  status === "ok"
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : status === "error"
+                      ? "border-red-200 bg-red-50 text-red-700"
+                      : "border-gray-200 bg-gray-50 text-gray-600";
+                return (
+                  <span
+                    key={item.key}
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium ${tone}`}
+                  >
+                    {item.label}:{" "}
+                    {status === "ok"
+                      ? "OK"
+                      : status === "error"
+                        ? "Error"
+                        : "Pending"}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+          {fetchErrors.length > 0 && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+              <p className="text-xs font-semibold text-red-800">
+                Some data failed to load:
+              </p>
+              <ul className="mt-1 text-xs text-red-700 space-y-1">
+                {fetchErrors.map((error) => (
+                  <li key={error}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Card>
+
+        {isAllEndpointsDown ? (
+          <Card>
+            <EmptyState
+              imageSrc="/images/empty-states/reports-empty.svg"
+              imageAlt="Dashboard unavailable"
+              title="Dashboard data is currently unavailable"
+              description="All dashboard endpoints failed. Check backend connectivity, then refresh this page."
+              actionLabel="Open Reports"
+              onAction={() => router.push("/admin/reports")}
+            />
+          </Card>
+        ) : isLikelyNoData ? (
+          <Card>
+            <EmptyState
+              imageSrc="/images/empty-states/patients-empty.svg"
+              imageAlt="No hospital activity"
+              title="No hospital activity yet"
+              description="Start by registering your first patient or creating your first appointment to populate this dashboard."
+              actionLabel="Register Patient"
+              onAction={() => router.push("/patients/add")}
+            />
+          </Card>
+        ) : null}
 
         {/* Quick Actions */}
         <div className="grid grid-cols-4 gap-3">
@@ -281,7 +473,8 @@ export default function DashboardPage() {
                 </p>
                 <p className="text-xs text-gray-500">Revenue</p>
                 <p className="text-xs text-green-600">
-                  {stats?.billing?.paid || 0} paid
+                  SSP {(stats?.billing?.collected_today || 0).toLocaleString()}{" "}
+                  collected today
                 </p>
               </div>
             </div>
@@ -346,7 +539,6 @@ export default function DashboardPage() {
                   name="Patients"
                 />
                 <Line
-                  yAxisId="right"
                   type="monotone"
                   dataKey="revenue"
                   stroke="#3B82F6"
@@ -421,47 +613,16 @@ export default function DashboardPage() {
               <Clock className="h-5 w-5 text-purple-600" /> Today&apos;s Summary
             </h3>
             <div className="space-y-3">
-              {[
-                {
-                  label: "Patients Registered",
-                  value: stats?.patients?.today_new || 0,
-                  icon: Users,
-                  color: "blue",
-                },
-                {
-                  label: "In Consultation",
-                  value: stats?.patients?.in_consultation || 0,
-                  icon: Stethoscope,
-                  color: "purple",
-                },
-                {
-                  label: "Lab Tests",
-                  value: stats?.patients?.lab_requested || 0,
-                  icon: FlaskConical,
-                  color: "orange",
-                },
-                {
-                  label: "Treated Today",
-                  value: stats?.patients?.treated_today || 0,
-                  icon: Activity,
-                  color: "green",
-                },
-                {
-                  label: "Revenue Today",
-                  value: `SSP ${(stats?.billing?.revenue || 0).toLocaleString()}`,
-                  icon: DollarSign,
-                  color: "green",
-                },
-              ].map((item, i) => (
+              {summaryRows.map((item, i) => (
                 <div
                   key={i}
                   className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                 >
                   <div className="flex items-center gap-3">
                     <div
-                      className={`h-8 w-8 bg-${item.color}-100 rounded-lg flex items-center justify-center`}
+                      className={`h-8 w-8 rounded-lg flex items-center justify-center ${item.boxClass}`}
                     >
-                      <item.icon className={`h-4 w-4 text-${item.color}-600`} />
+                      <item.icon className={`h-4 w-4 ${item.iconClass}`} />
                     </div>
                     <span className="text-sm text-gray-600">{item.label}</span>
                   </div>

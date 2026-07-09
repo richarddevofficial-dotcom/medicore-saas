@@ -1,16 +1,18 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import AdminBackButton from "@/components/ui/AdminBackButton";
 import Badge from "@/components/ui/Badge";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Modal from "@/components/ui/Modal";
 import Spinner from "@/components/ui/Spinner";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import EmptyState from "@/components/ui/EmptyState";
 import { useMedicines } from "@/hooks/usePharmacy";
 import {
   exportToExcel,
@@ -18,7 +20,6 @@ import {
   downloadTemplate,
 } from "@/lib/excelUtils";
 import {
-  ArrowLeft,
   Plus,
   Pencil,
   Trash2,
@@ -44,9 +45,9 @@ const emptyForm = {
 };
 
 export default function MedicinesPage() {
-  const router = useRouter();
   const { data: medicines, isLoading, refetch } = useMedicines();
   const [showModal, setShowModal] = useState(false);
+  const searchParams = useSearchParams();
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -54,8 +55,14 @@ export default function MedicinesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef(null);
+  const urlFilter = (searchParams.get("filter") || "").toLowerCase();
 
   const items = Array.isArray(medicines) ? medicines : [];
+
+  const formatCurrency = (value) => {
+    const amount = Number.parseFloat(value ?? 0);
+    return `SSP ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
+  };
 
   const openAdd = () => {
     setEditing(null);
@@ -84,13 +91,26 @@ export default function MedicinesPage() {
     if (!form.name) return toast.error("Name required");
     setIsSaving(true);
     try {
+      const parsedCategoryId = Number(form.category);
       const payload = {
-        ...form,
-        quantity: parseInt(form.quantity),
-        reorder_level: parseInt(form.reorder_level),
-        unit_price: form.unit_price,
-        selling_price: form.selling_price,
+        name: form.name,
+        generic_name: form.name,
+        form: form.form,
+        strength: form.strength,
+        quantity: parseInt(form.quantity || "0", 10),
+        reorder_level: parseInt(form.reorder_level || "10", 10),
+        cost_price: form.unit_price || form.selling_price || "0",
+        selling_price: form.selling_price || "0",
+        batch_number: form.batch_number,
+        expiry_date: form.expiry_date || null,
+        manufacturer: form.manufacturer,
       };
+
+      // Backend expects `category` as FK id, not free text.
+      if (Number.isInteger(parsedCategoryId) && parsedCategoryId > 0) {
+        payload.category = parsedCategoryId;
+      }
+
       if (editing) {
         await apiClient.patch(`/medicines/${editing.id}/`, payload);
         toast.success("Updated!");
@@ -101,7 +121,15 @@ export default function MedicinesPage() {
       setShowModal(false);
       refetch();
     } catch (err) {
-      toast.error("Failed");
+      const apiError = err?.response?.data;
+      const firstError =
+        typeof apiError === "string"
+          ? apiError
+          : apiError?.detail ||
+            Object.values(apiError || {})
+              .flat()
+              .find(Boolean);
+      toast.error(firstError || "Failed");
     } finally {
       setIsSaving(false);
     }
@@ -140,7 +168,14 @@ export default function MedicinesPage() {
         "/medicines/bulk_import/",
         { medicines: data },
       );
-      toast.success(`${response.created} medicines imported!`);
+      const created = Number(response?.created || 0);
+      const updated = Number(response?.updated || 0);
+      const failed = Array.isArray(response?.errors)
+        ? response.errors.length
+        : 0;
+      toast.success(
+        `Import complete: ${created} created, ${updated} updated${failed ? `, ${failed} failed` : ""}.`,
+      );
       refetch();
     } catch (err) {
       toast.error("Import failed. Check file format.");
@@ -150,9 +185,18 @@ export default function MedicinesPage() {
     }
   };
 
-  const filtered = items.filter((m) =>
-    m.name?.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  const filtered = items
+    .filter((m) => {
+      if (urlFilter !== "expiring_soon") return true;
+      if (!m?.expiry_date) return false;
+      const expiry = new Date(m.expiry_date);
+      if (Number.isNaN(expiry.getTime())) return false;
+      const now = new Date();
+      const within30 = new Date();
+      within30.setDate(now.getDate() + 30);
+      return expiry >= now && expiry <= within30;
+    })
+    .filter((m) => m.name?.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <DashboardLayout>
@@ -160,13 +204,7 @@ export default function MedicinesPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              icon={ArrowLeft}
-              onClick={() => router.push("/admin")}
-            >
-              Back
-            </Button>
+            <AdminBackButton />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
                 Pharmacy / Medicines
@@ -174,6 +212,11 @@ export default function MedicinesPage() {
               <p className="text-sm text-gray-500 mt-1">
                 {items.length} medicines in inventory
               </p>
+              {urlFilter === "expiring_soon" && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Filter active: Expiring within 30 days
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -290,7 +333,7 @@ export default function MedicinesPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm font-medium">
-                        ₹{med.selling_price}
+                        {formatCurrency(med.selling_price)}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">
                         {med.expiry_date || "—"}
@@ -317,7 +360,13 @@ export default function MedicinesPage() {
                         colSpan={7}
                         className="text-center py-8 text-gray-500"
                       >
-                        No medicines found
+                        <EmptyState
+                          imageSrc="/images/empty-states/pharmacy-empty.svg"
+                          imageAlt="No medicines"
+                          title="No medicines found"
+                          className="py-2 px-0"
+                          titleClassName="text-sm font-normal text-gray-500 mb-0"
+                        />
                       </td>
                     </tr>
                   )}
@@ -383,7 +432,7 @@ export default function MedicinesPage() {
                 onChange={(e) => setForm({ ...form, quantity: e.target.value })}
               />
               <Input
-                label="Selling Price (₹)"
+                label="Selling Price (SSP)"
                 type="number"
                 value={form.selling_price}
                 onChange={(e) =>

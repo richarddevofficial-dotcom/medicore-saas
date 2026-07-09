@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Input from "@/components/ui/Input";
 import Spinner from "@/components/ui/Spinner";
+import EmptyState from "@/components/ui/EmptyState";
 import {
   ArrowLeft,
   Search,
@@ -28,6 +29,11 @@ export default function BillingSummary() {
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+
+  const formatCurrency = (value) => {
+    const amount = Number.parseFloat(value ?? 0);
+    return `SSP ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
+  };
 
   const handleSearch = async () => {
     if (!searchMRN.trim()) return toast.error("Enter MRN");
@@ -154,7 +160,7 @@ export default function BillingSummary() {
                     Consultation Fee
                   </span>
                   <span className="font-bold text-green-600">
-                    ₹{patient.consultation?.fee || 500}
+                    {formatCurrency(patient.consultation?.fee || 500)}
                   </span>
                 </div>
               </div>
@@ -181,7 +187,7 @@ export default function BillingSummary() {
                   <div className="flex justify-between border-t pt-2">
                     <span className="text-sm font-semibold">Lab Fee</span>
                     <span className="font-bold text-purple-600">
-                      ₹{patient.lab?.fee || 300}
+                      {formatCurrency(patient.lab?.fee || 300)}
                     </span>
                   </div>
                 </div>
@@ -196,18 +202,20 @@ export default function BillingSummary() {
                 <Pill className="h-6 w-6 text-orange-600" />
                 <h2 className="text-lg font-bold">Prescription & Medicine</h2>
               </div>
-              {patient.medicine?.prescription ? (
+              {Number(patient.medicine_fee_calculated || 0) > 0 ? (
                 <div className="space-y-2">
-                  <div>
-                    <p className="text-xs text-gray-500">Prescription</p>
-                    <p className="font-medium whitespace-pre-wrap">
-                      {patient.medicine.prescription}
-                    </p>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-500">
+                      Prescription Items
+                    </span>
+                    <span className="font-medium">
+                      {patient.medicine_prescriptions_count || 0}
+                    </span>
                   </div>
                   <div className="flex justify-between border-t pt-2">
                     <span className="text-sm font-semibold">Medicine Fee</span>
                     <span className="font-bold text-orange-600">
-                      ₹{patient.medicine?.fee || 200}
+                      {formatCurrency(patient.medicine_fee_calculated || 0)}
                     </span>
                   </div>
                 </div>
@@ -226,7 +234,7 @@ export default function BillingSummary() {
                   </p>
                 </div>
                 <p className="text-3xl font-bold text-orange-600">
-                  ₹{patient.summary?.total || 1000}
+                  {formatCurrency(patient.summary?.total || 1000)}
                 </p>
               </div>
               <div className="flex gap-3 mt-4">
@@ -239,7 +247,7 @@ export default function BillingSummary() {
                       patient: `${patient.patient?.first_name} ${patient.patient?.last_name}`,
                       consult: patient.consultation?.fee || 500,
                       lab: patient.lab?.fee || 300,
-                      medicine: patient.medicine?.fee || 200,
+                      medicine: patient.medicine_fee_calculated || 0,
                       total: patient.summary?.total || 1000,
                       status: "pending",
                       date: new Date().toISOString().split("T")[0],
@@ -258,9 +266,13 @@ export default function BillingSummary() {
 
         {searched && !patient && !loading && (
           <Card>
-            <div className="text-center py-8 text-gray-500">
-              No patient found with that MRN
-            </div>
+            <EmptyState
+              imageSrc="/images/empty-states/patients-empty.svg"
+              imageAlt="No patient found"
+              title="No patient found with that MRN"
+              className="py-8"
+              titleClassName="text-base font-medium text-gray-500 mb-0"
+            />
           </Card>
         )}
       </div>

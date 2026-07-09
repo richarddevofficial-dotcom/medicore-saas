@@ -3,6 +3,10 @@ export function printInvoice(bill) {
   const subtotal = bill.subtotal || bill.consult + bill.lab + bill.medicine;
   const tax = subtotal * (taxRate / 100);
   const total = bill.total || subtotal + tax;
+  const formatCurrency = (value) => {
+    const amount = Number.parseFloat(value ?? 0);
+    return `SSP ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
+  };
 
   const printWindow = window.open("", "_blank", "width=800,height=600");
   printWindow.document.write(`
@@ -52,18 +56,18 @@ export function printInvoice(bill) {
         <thead>
           <tr>
             <th>Description</th>
-            <th style="text-align:right;">Amount (₹)</th>
+            <th style="text-align:right;">Amount (SSP)</th>
           </tr>
         </thead>
         <tbody>
-          ${bill.consult > 0 ? `<tr><td>Consultation Fee</td><td style="text-align:right;">₹${bill.consult?.toLocaleString()}</td></tr>` : ""}
-          ${bill.lab > 0 ? `<tr><td>Laboratory Fee</td><td style="text-align:right;">₹${bill.lab?.toLocaleString()}</td></tr>` : ""}
-          ${bill.medicine > 0 ? `<tr><td>Medicine Fee</td><td style="text-align:right;">₹${bill.medicine?.toLocaleString()}</td></tr>` : ""}
-          <tr><td>Subtotal</td><td style="text-align:right;">₹${subtotal?.toLocaleString()}</td></tr>
-          <tr><td>Tax (GST ${taxRate}%)</td><td style="text-align:right;">₹${tax?.toLocaleString()}</td></tr>
-          <tr class="total-row"><td>TOTAL</td><td style="text-align:right; font-size:1.2em; color:#F97316;">₹${total?.toLocaleString()}</td></tr>
-          ${bill.paid > 0 ? `<tr><td>Amount Paid</td><td style="text-align:right; color:green;">₹${bill.paid?.toLocaleString()}</td></tr>` : ""}
-          ${bill.balance > 0 ? `<tr style="color:red;"><td>Balance Due</td><td style="text-align:right;">₹${bill.balance?.toLocaleString()}</td></tr>` : ""}
+          ${bill.consult > 0 ? `<tr><td>Consultation Fee</td><td style="text-align:right;">${formatCurrency(bill.consult)}</td></tr>` : ""}
+          ${bill.lab > 0 ? `<tr><td>Laboratory Fee</td><td style="text-align:right;">${formatCurrency(bill.lab)}</td></tr>` : ""}
+          ${bill.medicine > 0 ? `<tr><td>Medicine Fee</td><td style="text-align:right;">${formatCurrency(bill.medicine)}</td></tr>` : ""}
+          <tr><td>Subtotal</td><td style="text-align:right;">${formatCurrency(subtotal)}</td></tr>
+          <tr><td>Tax (GST ${taxRate}%)</td><td style="text-align:right;">${formatCurrency(tax)}</td></tr>
+          <tr class="total-row"><td>TOTAL</td><td style="text-align:right; font-size:1.2em; color:#F97316;">${formatCurrency(total)}</td></tr>
+          ${bill.paid > 0 ? `<tr><td>Amount Paid</td><td style="text-align:right; color:green;">${formatCurrency(bill.paid)}</td></tr>` : ""}
+          ${bill.balance > 0 ? `<tr style="color:red;"><td>Balance Due</td><td style="text-align:right;">${formatCurrency(bill.balance)}</td></tr>` : ""}
         </tbody>
       </table>
 

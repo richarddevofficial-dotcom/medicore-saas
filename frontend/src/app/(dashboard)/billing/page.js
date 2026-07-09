@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Input from "@/components/ui/Input";
-import Select from "@/components/ui/Select";
 import Modal from "@/components/ui/Modal";
 import Spinner from "@/components/ui/Spinner";
+import EmptyState from "@/components/ui/EmptyState";
 import ReportGenerator from "@/components/reports/ReportGenerator";
 import { useHospitalSettings } from "@/hooks/useSettings";
 import {
@@ -27,6 +27,7 @@ import apiClient from "@/lib/api-client";
 
 export default function BillingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: hospitalSettings } = useHospitalSettings();
   const hospitalName = hospitalSettings?.name || "Medical Centre";
 
@@ -34,11 +35,12 @@ export default function BillingPage() {
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState("unbilled");
+  const [activeTab, setActiveTab] = useState("pending");
   const [showModal, setShowModal] = useState(false);
   const [showPayment, setShowPayment] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
+  const [highlightedMrn, setHighlightedMrn] = useState("");
 
   const [form, setForm] = useState({
     patient_name: "",
@@ -73,6 +75,23 @@ export default function BillingPage() {
     fetchData();
   }, []);
 
+  useEffect(() => {
+    const focus = searchParams.get("focus");
+    const mrn = searchParams.get("mrn") || "";
+    if (focus === "pending") {
+      setActiveTab("pending");
+    } else if (focus === "billed") {
+      setActiveTab("billed");
+    } else if (focus === "unbilled") {
+      setActiveTab("unbilled");
+    }
+    setHighlightedMrn(mrn);
+    if (mrn) {
+      setSearchTerm(mrn);
+      setActiveTab("pending");
+    }
+  }, [searchParams]);
+
   const billedMRNs = bills.map((b) => b.patient_mrn).filter(Boolean);
   const unbilledPatients = patients.filter((p) => !billedMRNs.includes(p.mrn));
 
@@ -83,9 +102,11 @@ export default function BillingPage() {
         `${patient.first_name || ""} ${patient.last_name || ""}`.trim(),
       patient_mrn: patient.mrn || "",
       payment_type: "cash",
-      consultation_fee: patient.diagnosis ? "50" : "",
+      consultation_fee: "50",
       lab_fee: patient.lab_test_requested ? "30" : "0",
-      medicine_fee: patient.prescription ? "20" : "0",
+      medicine_fee: String(
+        patient.medicine_fee_calculated ?? (patient.prescription ? 20 : 0),
+      ),
       other_fee: "0",
       insurance_company: "",
       insurance_policy: "",
@@ -136,6 +157,12 @@ export default function BillingPage() {
   const handlePayment = async (bill) => {
     const amount = parseFloat(paymentAmount);
     if (!amount || amount <= 0) return toast.error("Enter amount");
+    const outstanding = parseFloat(bill?.balance || bill?.total_amount || 0);
+    if (amount > outstanding) {
+      return toast.error(
+        `Amount cannot exceed outstanding balance (${getSymbol()} ${outstanding.toLocaleString()})`,
+      );
+    }
     try {
       await apiClient.post(`/bills/${bill.id}/make_payment/`, {
         amount: amount,
@@ -175,7 +202,9 @@ export default function BillingPage() {
     });
     const total = parseFloat(bill.total_amount || bill.total || 0);
     const paid = parseFloat(bill.amount_paid || bill.paid || 0);
-    const balance = total - paid;
+    const paidApplied = Math.min(paid, total);
+    const overpayment = Math.max(paid - total, 0);
+    const balance = Math.max(total - paidApplied, 0);
     const consult = parseFloat(bill.consultation_fee || bill.consult || 0);
     const lab = parseFloat(bill.lab_fee || bill.lab || 0);
     const medicine = parseFloat(bill.medicine_fee || bill.medicine || 0);
@@ -207,7 +236,8 @@ export default function BillingPage() {
       ${lab > 0 ? `<div class="row"><span>Laboratory</span><span>${sym} ${lab.toLocaleString()}</span></div>` : ""}
       ${medicine > 0 ? `<div class="row"><span>Medicine</span><span>${sym} ${medicine.toLocaleString()}</span></div>` : ""}
       <div class="total-row"><div class="row"><span>TOTAL</span><span>${sym} ${total.toLocaleString()}</span></div></div>
-      ${paid > 0 ? `<div class="row"><span>Amount Paid</span><span style="color:#10B981">${sym} ${paid.toLocaleString()}</span></div>` : ""}
+      ${paidApplied > 0 ? `<div class="row"><span>Amount Paid</span><span style="color:#10B981">${sym} ${paidApplied.toLocaleString()}</span></div>` : ""}
+      ${overpayment > 0 ? `<div class="row"><span>Excess Payment</span><span style="color:#F59E0B;font-weight:bold">${sym} ${overpayment.toLocaleString()}</span></div>` : ""}
       ${balance > 0 ? `<div class="row"><span>Balance Due</span><span style="color:#EF4444;font-weight:bold">${sym} ${balance.toLocaleString()}</span></div>` : ""}
       <div class="divider"></div>
       <div class="center">${balance <= 0 ? '<span class="paid">✅ PAID</span>' : '<span class="pending">⏳ PENDING</span>'}</div>
@@ -231,6 +261,25 @@ export default function BillingPage() {
   const totalRevenue = bills
     .filter((b) => b.status === "paid")
     .reduce((s, b) => s + parseFloat(b.total_amount || 0), 0);
+  const pendingBills = bills.filter(
+    (b) => parseFloat(b.balance || 0) > 0 || b.status !== "paid",
+  );
+  const billsToShow = activeTab === "pending" ? pendingBills : bills;
+  const filteredBills = billsToShow.filter((b) => {
+    if (!searchTerm.trim()) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      String(b.bill_number || "")
+        .toLowerCase()
+        .includes(term) ||
+      String(b.patient_name || "")
+        .toLowerCase()
+        .includes(term) ||
+      String(b.patient_mrn || "")
+        .toLowerCase()
+        .includes(term)
+    );
+  });
   const pendingAmount = bills
     .filter((b) => b.status !== "paid")
     .reduce((s, b) => s + parseFloat(b.balance || b.total_amount || 0), 0);
@@ -303,6 +352,12 @@ export default function BillingPage() {
 
         <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
           <button
+            onClick={() => setActiveTab("pending")}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === "pending" ? "bg-white shadow-sm" : "text-gray-500"}`}
+          >
+            ⏳ Pending ({pendingBills.length})
+          </button>
+          <button
             onClick={() => setActiveTab("unbilled")}
             className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === "unbilled" ? "bg-white shadow-sm" : "text-gray-500"}`}
           >
@@ -330,9 +385,13 @@ export default function BillingPage() {
             </div>
             {filteredUnbilled.length === 0 ? (
               <Card>
-                <div className="text-center py-12 text-gray-500">
-                  No patients found
-                </div>
+                <EmptyState
+                  imageSrc="/images/empty-states/patients-empty.svg"
+                  imageAlt="No patients"
+                  title="No patients found"
+                  className="py-12"
+                  titleClassName="text-base font-medium text-gray-500 mb-0"
+                />
               </Card>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -354,17 +413,24 @@ export default function BillingPage() {
                           MRN: {p.mrn} | {p.doctor_name || "N/A"}
                         </p>
                         <Badge
-                          variant={p.status === "treated" ? "success" : "info"}
+                          variant={
+                            (p.workflow_status || "").toLowerCase() ===
+                            "awaiting payment"
+                              ? "warning"
+                              : p.status === "treated"
+                                ? "success"
+                                : "info"
+                          }
                           className="mt-1"
                         >
-                          {p.status_display || p.status}
+                          {p.workflow_status || p.status_display || p.status}
                         </Badge>
                         {p.diagnosis && (
                           <p className="text-xs mt-1">📋 {p.diagnosis}</p>
                         )}
-                        {p.prescription && (
-                          <p className="text-xs">💊 {p.prescription}</p>
-                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          Medicine charge: SSP {p.medicine_fee_calculated || 0}
+                        </p>
                         <p className="text-xs text-orange-600 mt-2 font-medium">
                           Click to Bill →
                         </p>
@@ -377,15 +443,36 @@ export default function BillingPage() {
           </div>
         )}
 
-        {activeTab === "billed" &&
-          (bills.length === 0 ? (
+        {["pending", "billed"].includes(activeTab) &&
+          (filteredBills.length === 0 ? (
             <Card>
-              <div className="text-center py-12 text-gray-500">
-                No bills yet
-              </div>
+              <EmptyState
+                imageSrc="/images/empty-states/billing-empty.svg"
+                imageAlt="No bills"
+                title={
+                  activeTab === "pending" ? "No pending bills" : "No bills yet"
+                }
+                description={
+                  searchTerm ? "No bills match your search." : undefined
+                }
+                className="py-12"
+                titleClassName="text-base font-medium text-gray-500 mb-0"
+              />
             </Card>
           ) : (
             <Card padding={false}>
+              <div className="px-3 pt-3">
+                <div className="relative max-w-md">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search bills by MRN, name, or bill #..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -414,60 +501,78 @@ export default function BillingPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {bills.map((b) => (
-                      <tr key={b.id} className="hover:bg-gray-50">
-                        <td className="px-2 py-3 text-xs font-mono">
-                          {b.bill_number || `#${b.id}`}
-                        </td>
-                        <td className="px-2 py-3 text-sm font-medium">
-                          {b.patient_name}
-                        </td>
-                        <td className="px-2 py-3 text-sm">
-                          {symbol} {b.total_amount || 0}
-                        </td>
-                        <td className="px-2 py-3 text-sm text-green-600">
-                          {symbol} {b.amount_paid || 0}
-                        </td>
-                        <td className="px-2 py-3 text-sm font-bold text-red-600">
-                          {symbol} {b.balance || 0}
-                        </td>
-                        <td className="px-2 py-3">
-                          <Badge
-                            variant={
-                              b.status === "paid"
-                                ? "success"
-                                : b.status === "partial"
-                                  ? "warning"
-                                  : "danger"
-                            }
-                          >
-                            {b.status}
-                          </Badge>
-                        </td>
-                        <td className="px-2 py-3">
-                          <div className="flex justify-center gap-1">
-                            <button
-                              onClick={() => handlePrint(b)}
-                              className="p-1.5 text-gray-400 hover:text-blue-600 rounded"
-                            >
-                              <Printer className="h-4 w-4" />
-                            </button>
-                            {(b.balance > 0 || !b.amount_paid) && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setShowPayment(b);
-                                  setPaymentAmount("");
-                                }}
-                              >
-                                Pay
-                              </Button>
+                    {filteredBills.map((b) => {
+                      const isHighlighted =
+                        highlightedMrn &&
+                        String(b.patient_mrn || "").toLowerCase() ===
+                          highlightedMrn.toLowerCase();
+                      return (
+                        <tr
+                          key={b.id}
+                          className={
+                            isHighlighted
+                              ? "bg-amber-50 hover:bg-amber-100"
+                              : "hover:bg-gray-50"
+                          }
+                        >
+                          <td className="px-2 py-3 text-xs font-mono">
+                            {b.bill_number || `#${b.id}`}
+                          </td>
+                          <td className="px-2 py-3 text-sm font-medium">
+                            {b.patient_name}
+                            {isHighlighted && (
+                              <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                                Target
+                              </span>
                             )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-2 py-3 text-sm">
+                            {symbol} {b.total_amount || 0}
+                          </td>
+                          <td className="px-2 py-3 text-sm text-green-600">
+                            {symbol} {b.amount_paid || 0}
+                          </td>
+                          <td className="px-2 py-3 text-sm font-bold text-red-600">
+                            {symbol} {b.balance || 0}
+                          </td>
+                          <td className="px-2 py-3">
+                            <Badge
+                              variant={
+                                b.status === "paid"
+                                  ? "success"
+                                  : b.status === "partial"
+                                    ? "warning"
+                                    : "danger"
+                              }
+                            >
+                              {b.status}
+                            </Badge>
+                          </td>
+                          <td className="px-2 py-3">
+                            <div className="flex justify-center gap-1">
+                              <button
+                                onClick={() => handlePrint(b)}
+                                className="p-1.5 text-gray-400 hover:text-blue-600 rounded"
+                              >
+                                <Printer className="h-4 w-4" />
+                              </button>
+                              {(b.balance > 0 || !b.amount_paid) && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setShowPayment(b);
+                                    setPaymentAmount("");
+                                  }}
+                                >
+                                  Pay
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -500,9 +605,10 @@ export default function BillingPage() {
                 {selectedPatient.diagnosis && (
                   <p>📋 {selectedPatient.diagnosis}</p>
                 )}
-                {selectedPatient.prescription && (
-                  <p>💊 {selectedPatient.prescription}</p>
-                )}
+                <p className="text-xs text-gray-600">
+                  Medicine charge: SSP{" "}
+                  {selectedPatient.medicine_fee_calculated || 0}
+                </p>
               </div>
             )}
             <Input
@@ -584,6 +690,7 @@ export default function BillingPage() {
               type="number"
               value={paymentAmount}
               onChange={(e) => setPaymentAmount(e.target.value)}
+              max={showPayment?.balance || showPayment?.total_amount || 0}
             />
           </div>
         </Modal>

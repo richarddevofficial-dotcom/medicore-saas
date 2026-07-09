@@ -104,6 +104,7 @@ class Prescription(models.Model):
     medicine_name = models.CharField(max_length=200)
     dosage = models.CharField(max_length=200)
     quantity_prescribed = models.IntegerField(default=1)
+    medicine_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     quantity_dispensed = models.IntegerField(default=0)
     status = models.CharField(max_length=20, choices=STATUS, default='pending')
     notes = models.TextField(blank=True)

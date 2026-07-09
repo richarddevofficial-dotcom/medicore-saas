@@ -1,160 +1,438 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import Badge from "@/components/ui/Badge";
-import Input from "@/components/ui/Input";
 import Spinner from "@/components/ui/Spinner";
-import Modal from "@/components/ui/Modal";
-import ReportGenerator from "@/components/reports/ReportGenerator";
-import { useHospitalSettings } from "@/hooks/useSettings";
+import apiClient from "@/lib/api-client";
+import { exportToExcel } from "@/lib/excelUtils";
+import toast from "react-hot-toast";
 import {
   Pill,
-  Clock,
-  CheckCircle,
-  User,
   DollarSign,
-  Printer,
-  Plus,
-  Search,
+  Package,
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  Receipt,
+  ShoppingCart,
+  FileBarChart2,
+  CalendarDays,
+  ArrowRight,
+  Activity,
+  BarChart3,
+  TrendingUp,
+  Download,
 } from "lucide-react";
-import toast from "react-hot-toast";
-import apiClient from "@/lib/api-client";
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+
+const COLORS = [
+  "#F97316",
+  "#3B82F6",
+  "#10B981",
+  "#8B5CF6",
+  "#EC4899",
+  "#F59E0B",
+];
 
 export default function PharmacyPage() {
   const router = useRouter();
-  const { data: hospitalSettings } = useHospitalSettings();
-  const hospitalName = hospitalSettings?.name || "Medical Centre";
-
-  const [prescriptions, setPrescriptions] = useState([]);
-  const [medicines, setMedicines] = useState([]);
+  const searchParams = useSearchParams();
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showDispense, setShowDispense] = useState(null);
-  const [dispenseQty, setDispenseQty] = useState("");
-  const [activeTab, setActiveTab] = useState("ready");
-  const [showPOS, setShowPOS] = useState(false);
-  const [posForm, setPosForm] = useState({
-    medicine: "",
-    quantity: "1",
-    price: "",
-    searchTerm: "",
-    selectedName: "",
-    stock: 0,
-  });
+  const [dispensingId, setDispensingId] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [range, setRange] = useState("7d");
+  const tabParam = (searchParams.get("tab") || "all").toLowerCase();
+  const selectedTab = tabParam === "ready" ? "ready" : "all";
 
-  const fetchData = async () => {
-    try {
-      const [presRes, medRes] = await Promise.all([
-        apiClient.get("/prescriptions/queue/"),
-        apiClient.get("/medicines/"),
-      ]);
-      setPrescriptions(Array.isArray(presRes.data) ? presRes.data : []);
-      setMedicines(medRes.data.results || medRes.data || []);
-    } catch (err) {
-      console.error("Pharmacy error:", err);
-    } finally {
-      setLoading(false);
-    }
+  const getRangeLabel = () =>
+    range === "today" ? "Today" : range === "30d" ? "30 Days" : "7 Days";
+
+  const handleExportAnalytics = () => {
+    if (!stats) return;
+
+    const rows = [
+      {
+        Section: "Meta",
+        Metric: "Range",
+        Value: getRangeLabel(),
+      },
+      {
+        Section: "Meta",
+        Metric: "Tab",
+        Value: selectedTab,
+      },
+      {
+        Section: "KPI",
+        Metric: "Total Prescriptions",
+        Value: stats?.kpis?.totalPrescriptions || 0,
+      },
+      {
+        Section: "KPI",
+        Metric: "Ready To Dispense",
+        Value: stats?.kpis?.readyCount || 0,
+      },
+      {
+        Section: "KPI",
+        Metric: "Low Stock Items",
+        Value: stats?.kpis?.lowStockCount || 0,
+      },
+      {
+        Section: "KPI",
+        Metric: "Estimated Revenue (SSP)",
+        Value: stats?.kpis?.estimatedRevenue || 0,
+      },
+      {
+        Section: "KPI",
+        Metric: "Out Of Stock",
+        Value: stats?.kpis?.outOfStockCount || 0,
+      },
+      {
+        Section: "KPI",
+        Metric: "Expiring Soon (30 days)",
+        Value: stats?.kpis?.expiringSoonCount || 0,
+      },
+      ...topMedicines.map((m) => ({
+        Section: "Top Medicines",
+        Metric: m.name,
+        Value: m.quantity,
+      })),
+      ...topRevenueMedicines.map((m) => ({
+        Section: "Top Revenue Medicines",
+        Metric: m.name,
+        Value: m.revenue,
+      })),
+      ...activityData.map((d) => ({
+        Section: "Activity",
+        Metric: d.day,
+        Prescriptions: d.prescriptions,
+        Dispensed: d.dispensed,
+      })),
+    ];
+
+    exportToExcel(rows, `pharmacy_analytics_${range}.xlsx`);
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    const fetchDashboardData = async () => {
+      setLoading(true);
+      try {
+        const [presRes, medRes, billRes, posRes] = await Promise.all([
+          apiClient.get("/prescriptions/queue/"),
+          apiClient.get("/medicines/"),
+          apiClient.get("/bills/stats/"),
+          apiClient.get("/pos-receipts/"),
+        ]);
 
-  const handleDispense = async () => {
-    const qty = parseInt(dispenseQty);
-    if (!qty || qty <= 0) return toast.error("Enter quantity");
+        const prescriptions = Array.isArray(presRes.data)
+          ? presRes.data.filter(Boolean)
+          : [];
+        const medicines = Array.isArray(medRes.data?.results)
+          ? medRes.data.results
+          : Array.isArray(medRes.data)
+            ? medRes.data
+            : [];
+        const posReceipts = Array.isArray(posRes.data?.results)
+          ? posRes.data.results
+          : Array.isArray(posRes.data)
+            ? posRes.data
+            : [];
+
+        const now = new Date();
+        const dayCount = range === "today" ? 1 : range === "30d" ? 30 : 7;
+        const rangeStart = new Date(now);
+        rangeStart.setDate(now.getDate() - (dayCount - 1));
+        rangeStart.setHours(0, 0, 0, 0);
+
+        const getPrescriptionDate = (item) => {
+          const raw =
+            item?.created_at ||
+            item?.prescribed_at ||
+            item?.updated_at ||
+            item?.dispensed_at ||
+            null;
+          if (!raw) return null;
+          const parsed = new Date(raw);
+          return Number.isNaN(parsed.getTime()) ? null : parsed;
+        };
+
+        const filteredPrescriptions = prescriptions.filter((item) => {
+          const date = getPrescriptionDate(item);
+          if (!date) return false;
+          return date >= rangeStart;
+        });
+
+        const readyQueue = prescriptions.filter((item) => {
+          const status = String(item?.status || "").toLowerCase();
+          return status === "ready" || status === "partial";
+        });
+
+        const tabFilteredPrescriptions = filteredPrescriptions.filter(
+          (item) => {
+            if (selectedTab !== "ready") return true;
+            const status = String(item?.status || "").toLowerCase();
+            return status === "ready" || status === "partial";
+          },
+        );
+
+        const statusCounts = tabFilteredPrescriptions.reduce((acc, item) => {
+          const status = String(item?.status || "pending").toLowerCase();
+          acc[status] = (acc[status] || 0) + 1;
+          return acc;
+        }, {});
+
+        const pendingCount = statusCounts.pending || 0;
+        const readyCount = statusCounts.ready || 0;
+        const partialCount = statusCounts.partial || 0;
+        const dispensedCount = statusCounts.dispensed || 0;
+        const pendingPaymentCount = Math.max(
+          Number(billRes?.data?.total_bills || 0) -
+            Number(billRes?.data?.paid || 0),
+          0,
+        );
+
+        const lowStockCount = medicines.filter(
+          (m) => Number(m?.quantity || 0) <= Number(m?.reorder_level || 10),
+        ).length;
+        const outOfStockCount = medicines.filter(
+          (m) => Number(m?.quantity || 0) <= 0,
+        ).length;
+
+        const expiringSoonCutoff = new Date(now);
+        expiringSoonCutoff.setDate(now.getDate() + 30);
+        const expiringSoonCount = medicines.filter((m) => {
+          if (!m?.expiry_date) return false;
+          const expiry = new Date(m.expiry_date);
+          if (Number.isNaN(expiry.getTime())) return false;
+          return expiry >= now && expiry <= expiringSoonCutoff;
+        }).length;
+
+        const estimatedRevenue = tabFilteredPrescriptions.reduce(
+          (sum, item) => {
+            const amount = Number.parseFloat(item?.medicine_amount || 0);
+            return sum + (Number.isFinite(amount) ? amount : 0);
+          },
+          0,
+        );
+
+        const filteredPosReceipts = posReceipts.filter((item) => {
+          if (!item?.created_at) return false;
+          const date = new Date(item.created_at);
+          if (Number.isNaN(date.getTime())) return false;
+          return date >= rangeStart;
+        });
+
+        const posRevenue = filteredPosReceipts.reduce((sum, item) => {
+          const amount = Number.parseFloat(item?.total_amount || 0);
+          return sum + (Number.isFinite(amount) ? amount : 0);
+        }, 0);
+
+        const topMedicinesMap = tabFilteredPrescriptions.reduce((acc, item) => {
+          const key = item?.medicine_name || "Unknown";
+          acc[key] = (acc[key] || 0) + Number(item?.quantity_prescribed || 1);
+          return acc;
+        }, {});
+
+        const topMedicines = Object.entries(topMedicinesMap)
+          .map(([name, quantity]) => ({ name, quantity }))
+          .sort((a, b) => b.quantity - a.quantity)
+          .slice(0, 6);
+
+        const topRevenueMap = tabFilteredPrescriptions.reduce((acc, item) => {
+          const key = item?.medicine_name || "Unknown";
+          const amount = Number.parseFloat(item?.medicine_amount || 0);
+          acc[key] = (acc[key] || 0) + (Number.isFinite(amount) ? amount : 0);
+          return acc;
+        }, {});
+
+        filteredPosReceipts.forEach((item) => {
+          const key = item?.medicine_name || "Unknown";
+          const amount = Number.parseFloat(item?.total_amount || 0);
+          if (Number.isFinite(amount)) {
+            topRevenueMap[key] = (topRevenueMap[key] || 0) + amount;
+          }
+        });
+
+        const topRevenueMedicines = Object.entries(topRevenueMap)
+          .map(([name, revenue]) => ({ name, revenue }))
+          .sort((a, b) => b.revenue - a.revenue)
+          .slice(0, 6);
+
+        const getDateKey = (item) => {
+          const date = getPrescriptionDate(item);
+          if (!date) return null;
+          return date.toISOString().slice(0, 10);
+        };
+
+        const today = new Date();
+        const dayBuckets = Array.from({ length: dayCount }, (_, i) => {
+          const d = new Date(today);
+          d.setDate(today.getDate() - (dayCount - 1 - i));
+          const key = d.toISOString().slice(0, 10);
+          const label =
+            dayCount <= 7
+              ? d.toLocaleDateString("en-US", { weekday: "short" })
+              : d.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                });
+          return { key, day: label, prescriptions: 0, dispensed: 0 };
+        });
+
+        const bucketIndex = dayBuckets.reduce((acc, row, idx) => {
+          acc[row.key] = idx;
+          return acc;
+        }, {});
+
+        tabFilteredPrescriptions.forEach((item) => {
+          const key = getDateKey(item);
+          if (!key || bucketIndex[key] === undefined) return;
+          const idx = bucketIndex[key];
+          dayBuckets[idx].prescriptions += 1;
+          if (String(item?.status).toLowerCase() === "dispensed") {
+            dayBuckets[idx].dispensed += 1;
+          }
+        });
+
+        const statusDistribution = [
+          { name: "Pending", value: pendingCount },
+          { name: "Ready", value: readyCount },
+          { name: "Partial", value: partialCount },
+          { name: "Dispensed", value: dispensedCount },
+        ].filter((x) => x.value > 0);
+
+        const inventoryHealth = [
+          {
+            name: "Low Stock",
+            value: lowStockCount,
+          },
+          {
+            name: "Healthy",
+            value: Math.max(medicines.length - lowStockCount, 0),
+          },
+        ];
+
+        setStats({
+          prescriptions,
+          medicines,
+          billing: billRes.data || {},
+          queue: readyQueue,
+          kpis: {
+            totalPrescriptions: tabFilteredPrescriptions.length,
+            pendingCount,
+            pendingPaymentCount,
+            readyCount,
+            dispensedCount,
+            lowStockCount,
+            outOfStockCount,
+            expiringSoonCount,
+            totalItems: medicines.length,
+            estimatedRevenue: estimatedRevenue + posRevenue,
+          },
+          charts: {
+            topMedicines,
+            topRevenueMedicines,
+            activity: dayBuckets,
+            statusDistribution,
+            inventoryHealth,
+          },
+        });
+      } catch {
+        setStats(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [range, selectedTab, refreshKey]);
+
+  const handleDispense = async (item) => {
+    const remaining = Math.max(
+      Number(item?.quantity_prescribed || 0) -
+        Number(item?.quantity_dispensed || 0),
+      0,
+    );
+
+    if (remaining <= 0) {
+      toast.error("Nothing left to dispense for this prescription");
+      return;
+    }
+
+    setDispensingId(item.id);
     try {
-      await apiClient.post(`/prescriptions/${showDispense.id}/dispense/`, {
-        quantity: qty,
+      await apiClient.post(`/prescriptions/${item.id}/dispense/`, {
+        quantity: remaining,
       });
-      toast.success("Dispensed!");
-      setShowDispense(null);
-      setDispenseQty("");
-      fetchData();
-    } catch (err) {
-      toast.error(err.response?.data?.error || "Failed");
+      toast.success("Prescription dispensed");
+      setRefreshKey((prev) => prev + 1);
+    } catch (error) {
+      toast.error(error?.response?.data?.error || "Failed to dispense");
+    } finally {
+      setDispensingId(null);
     }
   };
 
-  const handleQuickSale = async () => {
-    if (!posForm.medicine || !posForm.quantity)
-      return toast.error("Select medicine and quantity");
-    const med = medicines.find((m) => m.id == posForm.medicine);
-    if (!med) return toast.error("Medicine not found");
-    const newQty = med.quantity - parseInt(posForm.quantity);
-    if (newQty < 0) return toast.error("Not enough stock!");
-    try {
-      await apiClient.patch(`/medicines/${posForm.medicine}/`, {
-        quantity: newQty,
-      });
-      const total =
-        (parseFloat(posForm.price) || 0) * (parseInt(posForm.quantity) || 0);
-      toast.success(`Sale completed! SSP ${total.toLocaleString()}`);
-      setShowPOS(false);
-      setPosForm({
-        medicine: "",
-        quantity: "1",
-        price: "",
-        searchTerm: "",
-        selectedName: "",
-        stock: 0,
-      });
-      fetchData();
-    } catch (err) {
-      toast.error("Failed");
-    }
+  const activityData = stats?.charts?.activity || [];
+  const topMedicines = stats?.charts?.topMedicines || [];
+  const topRevenueMedicines = stats?.charts?.topRevenueMedicines || [];
+  const statusDistribution = stats?.charts?.statusDistribution || [];
+  const inventoryHealth = stats?.charts?.inventoryHealth || [];
+
+  const quickActions = [
+    {
+      name: "Dispense Queue",
+      icon: CheckCircle2,
+      href: "/pharmacy",
+      color: "bg-blue-50 text-blue-600",
+    },
+    {
+      name: "Medicines",
+      icon: Pill,
+      href: "/admin/medicines",
+      color: "bg-green-50 text-green-600",
+    },
+    {
+      name: "Inventory",
+      icon: Package,
+      href: "/admin/inventory",
+      color: "bg-purple-50 text-purple-600",
+    },
+    {
+      name: "Billing Desk",
+      icon: Receipt,
+      href: "/billing",
+      color: "bg-orange-50 text-orange-600",
+    },
+  ];
+
+  const kpiLinks = {
+    totalPrescriptions: "/pharmacy?tab=all",
+    readyCount: "/pharmacy?tab=ready",
+    lowStockCount: "/admin/inventory?filter=low",
+    estimatedRevenue: "/billing",
+    outOfStockCount: "/admin/inventory?filter=critical",
+    expiringSoonCount: "/admin/medicines?filter=expiring_soon",
   };
 
-  const handlePrintPrescription = (group) => {
-    const printWindow = window.open("", "_blank", "width=400,height=600");
-    printWindow.document.write(`
-      <html><head><title>Prescription - ${group.patient_name}</title>
-      <style>
-        body{font-family:Arial;padding:25px;color:#333;max-width:400px;margin:auto}
-        .header{text-align:center;border-bottom:2px solid #1E3A5F;padding-bottom:10px;margin-bottom:15px}
-        .header h1{color:#1E3A5F;margin:0;font-size:20px}.header p{color:#666;margin:3px 0;font-size:12px}
-        .patient-info{background:#EFF6FF;padding:10px;border-radius:5px;margin:10px 0}
-        .medicine{border:1px solid #ddd;padding:10px;margin:8px 0;border-radius:5px}
-        .medicine h3{color:#1E3A5F;margin:0 0 5px 0;font-size:14px}
-        .medicine p{margin:3px 0;font-size:12px;color:#555}
-        .footer{text-align:center;margin-top:20px;padding-top:10px;border-top:1px solid #ddd;font-size:10px;color:#888}
-        @media print{body{padding:10px}}
-      </style></head><body>
-      <div class="header"><h1>${hospitalName}</h1><p>Juba, South Sudan</p><p>PHARMACY PRESCRIPTION</p></div>
-      <div class="patient-info"><p><strong>Patient:</strong> ${group.patient_name}</p><p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p></div>
-      ${group.medicines.map((med, i) => `<div class="medicine"><h3>${i + 1}. ${med.medicine_name}</h3><p><strong>Dosage:</strong> ${med.dosage}</p><p><strong>Qty:</strong> ${med.quantity_prescribed}</p></div>`).join("")}
-      <div class="footer"><p>${hospitalName} - MediCore HMS</p><p>Printed: ${new Date().toLocaleString()}</p></div>
-      </body></html>
-    `);
-    printWindow.document.close();
-    setTimeout(() => printWindow.print(), 500);
-  };
-
-  const groupedPrescriptions = {};
-  prescriptions.forEach((p) => {
-    const key = p.patient_name || "Unknown";
-    if (!groupedPrescriptions[key])
-      groupedPrescriptions[key] = { patient_name: key, medicines: [] };
-    groupedPrescriptions[key].medicines.push(p);
-  });
-  const patientGroups = Object.values(groupedPrescriptions);
-  const awaitingPayment = patientGroups.filter((g) =>
-    g.medicines.some((m) => m.status === "pending"),
-  );
-  const readyToDispense = patientGroups.filter((g) =>
-    g.medicines.every(
-      (m) =>
-        m.status === "ready" ||
-        m.status === "partial" ||
-        m.status === "dispensed",
-    ),
-  );
-
-  if (loading)
+  if (loading) {
     return (
       <DashboardLayout>
         <div className="flex justify-center py-20">
@@ -162,314 +440,406 @@ export default function PharmacyPage() {
         </div>
       </DashboardLayout>
     );
+  }
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">💊 Pharmacy Dashboard</h1>
-            <p className="text-sm text-gray-500">
-              {readyToDispense.length} ready to dispense
+            <h1 className="text-2xl font-bold text-gray-900">
+              Pharmacy Dashboard
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Operational overview for prescriptions, dispensing, and stock.
             </p>
+            {selectedTab === "ready" && (
+              <p className="text-xs text-emerald-600 mt-1">
+                Filter active: Ready to dispense
+              </p>
+            )}
           </div>
-          <div className="flex items-center gap-2">
-            <Button icon={Plus} onClick={() => setShowPOS(true)}>
-              Quick Sale (POS)
-            </Button>
-            <Button variant="outline" onClick={fetchData}>
-              Refresh
-            </Button>
+          <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-1">
+            <CalendarDays className="h-4 w-4 text-gray-500 ml-2" />
+            {[
+              { value: "today", label: "Today" },
+              { value: "7d", label: "7 Days" },
+              { value: "30d", label: "30 Days" },
+            ].map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setRange(option.value)}
+                className={`px-3 py-1.5 text-sm rounded-md transition ${
+                  range === option.value
+                    ? "bg-orange-500 text-white"
+                    : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
           </div>
-        </div>
-        <Card>
-          <h3 className="font-semibold mb-3">📊 My Shift Report</h3>
-          <ReportGenerator
-            role="pharmacist"
-            endpoint="/reports/pharmacy/"
-            title="Pharmacist Shift Report"
-          />
-        </Card>
-        <div className="grid grid-cols-4 gap-4">
-          <Card className="text-center">
-            <DollarSign className="h-6 w-6 text-red-600 mx-auto mb-1" />
-            <p className="text-2xl font-bold">{awaitingPayment.length}</p>
-            <p className="text-xs text-gray-500">Awaiting Payment</p>
-          </Card>
-          <Card className="text-center">
-            <CheckCircle className="h-6 w-6 text-green-600 mx-auto mb-1" />
-            <p className="text-2xl font-bold">{readyToDispense.length}</p>
-            <p className="text-xs text-gray-500">Ready</p>
-          </Card>
-          <Card className="text-center">
-            <Pill className="h-6 w-6 text-blue-600 mx-auto mb-1" />
-            <p className="text-2xl font-bold">
-              {prescriptions.filter((p) => p.status === "dispensed").length}
-            </p>
-            <p className="text-xs text-gray-500">Dispensed</p>
-          </Card>
-          <Card className="text-center">
-            <DollarSign className="h-6 w-6 text-green-600 mx-auto mb-1" />
-            <p className="text-2xl font-bold">SSP 0</p>
-            <p className="text-xs text-gray-500">Sales</p>
-          </Card>
-        </div>
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
-          <button
-            onClick={() => setActiveTab("ready")}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === "ready" ? "bg-white shadow-sm" : "text-gray-500"}`}
+          <Button
+            variant="outline"
+            icon={Download}
+            onClick={handleExportAnalytics}
           >
-            ✅ Ready ({readyToDispense.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("payment")}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === "payment" ? "bg-white shadow-sm" : "text-gray-500"}`}
-          >
-            ⏳ Awaiting Payment ({awaitingPayment.length})
-          </button>
+            Export Analytics
+          </Button>
         </div>
-        {activeTab === "payment" && awaitingPayment.length === 0 && (
-          <Card>
-            <div className="text-center py-12 text-gray-500">
-              No patients awaiting payment
-            </div>
-          </Card>
-        )}
-        {activeTab === "ready" && readyToDispense.length === 0 && (
-          <Card>
-            <div className="text-center py-12 text-gray-500">
-              No prescriptions ready
-            </div>
-          </Card>
-        )}
-        {(activeTab === "ready" ? readyToDispense : awaitingPayment).map(
-          (group) => (
-            <Card
-              key={group.patient_name}
-              className={`border-l-4 ${activeTab === "ready" ? "border-green-500" : "border-red-400"} shadow-md`}
-            >
-              <div className="flex items-center justify-between mb-4 pb-3 border-b">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center">
-                    <User className="h-5 w-5 text-orange-600" />
-                  </div>
-                  <div>
-                    <p className="font-bold text-gray-900 text-lg">
-                      {group.patient_name}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {group.medicines.length} medicine(s)
-                    </p>
-                  </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          {quickActions.map((action) => {
+            const Icon = action.icon;
+            return (
+              <button
+                key={action.name}
+                onClick={() => router.push(action.href)}
+                className={`flex items-center gap-3 p-4 rounded-xl transition-all hover:shadow-md ${action.color}`}
+              >
+                <Icon className="h-6 w-6" />
+                <div className="text-left">
+                  <p className="text-sm font-semibold">{action.name}</p>
+                  <p className="text-xs opacity-70">Click to open</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {activeTab === "ready" && (
-                    <button
-                      onClick={() => handlePrintPrescription(group)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-                      title="Print"
-                    >
-                      <Printer className="h-5 w-5" />
-                    </button>
-                  )}
-                  <Badge
-                    variant={activeTab === "ready" ? "success" : "warning"}
-                  >
-                    {activeTab === "ready" ? "Paid" : "Awaiting Payment"}
-                  </Badge>
-                </div>
+                <ArrowRight className="h-4 w-4 ml-auto opacity-50" />
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
+          <Card
+            className="relative overflow-hidden"
+            hover
+            onClick={() => router.push(kpiLinks.totalPrescriptions)}
+          >
+            <div className="absolute top-0 right-0 w-20 h-20 bg-blue-100 rounded-bl-full opacity-20" />
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                <Activity className="h-6 w-6 text-blue-600" />
               </div>
-              <div className="space-y-2">
-                {group.medicines.map((med) => (
-                  <div
-                    key={med.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Pill className="h-5 w-5 text-blue-500" />
-                      <div>
-                        <p className="font-semibold text-gray-800">
-                          {med.medicine_name}
-                        </p>
-                        <p className="text-xs text-gray-500">{med.dosage}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge variant="info">
-                        Qty: {med.quantity_prescribed}
-                      </Badge>
-                      {activeTab === "ready" && (
+              <div>
+                <p className="text-2xl font-bold">
+                  {stats?.kpis?.totalPrescriptions || 0}
+                </p>
+                <p className="text-xs text-gray-500">Total Prescriptions</p>
+                <p className="text-xs text-green-600">
+                  {stats?.kpis?.dispensedCount || 0} dispensed
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          <Card
+            className="relative overflow-hidden"
+            hover
+            onClick={() => router.push(kpiLinks.readyCount)}
+          >
+            <div className="absolute top-0 right-0 w-20 h-20 bg-green-100 rounded-bl-full opacity-20" />
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 bg-green-100 rounded-xl flex items-center justify-center">
+                <Clock3 className="h-6 w-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">
+                  {stats?.kpis?.readyCount || 0}
+                </p>
+                <p className="text-xs text-gray-500">Ready To Dispense</p>
+                <p className="text-xs text-green-600">
+                  {stats?.kpis?.pendingPaymentCount || 0} pending payment
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          <Card
+            className="relative overflow-hidden"
+            hover
+            onClick={() => router.push(kpiLinks.lowStockCount)}
+          >
+            <div className="absolute top-0 right-0 w-20 h-20 bg-purple-100 rounded-bl-full opacity-20" />
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                <AlertTriangle className="h-6 w-6 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">
+                  {stats?.kpis?.lowStockCount || 0}
+                </p>
+                <p className="text-xs text-gray-500">Low Stock Items</p>
+                <p className="text-xs text-orange-600">
+                  {stats?.kpis?.totalItems || 0} total in inventory
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          <Card
+            className="relative overflow-hidden"
+            hover
+            onClick={() => router.push(kpiLinks.estimatedRevenue)}
+          >
+            <div className="absolute top-0 right-0 w-20 h-20 bg-orange-100 rounded-bl-full opacity-20" />
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                <DollarSign className="h-6 w-6 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">
+                  SSP {(stats?.kpis?.estimatedRevenue || 0).toLocaleString()}
+                </p>
+                <p className="text-xs text-gray-500">Estimated Revenue</p>
+                <p className="text-xs text-green-600">
+                  {stats?.billing?.paid || 0} paid bills
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          <Card
+            className="relative overflow-hidden"
+            hover
+            onClick={() => router.push(kpiLinks.outOfStockCount)}
+          >
+            <div className="absolute top-0 right-0 w-20 h-20 bg-red-100 rounded-bl-full opacity-20" />
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 bg-red-100 rounded-xl flex items-center justify-center">
+                <AlertTriangle className="h-6 w-6 text-red-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">
+                  {stats?.kpis?.outOfStockCount || 0}
+                </p>
+                <p className="text-xs text-gray-500">Out Of Stock</p>
+                <p className="text-xs text-red-600">Needs urgent restock</p>
+              </div>
+            </div>
+          </Card>
+
+          <Card
+            className="relative overflow-hidden"
+            hover
+            onClick={() => router.push(kpiLinks.expiringSoonCount)}
+          >
+            <div className="absolute top-0 right-0 w-20 h-20 bg-amber-100 rounded-bl-full opacity-20" />
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 bg-amber-100 rounded-xl flex items-center justify-center">
+                <Clock3 className="h-6 w-6 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">
+                  {stats?.kpis?.expiringSoonCount || 0}
+                </p>
+                <p className="text-xs text-gray-500">Expiring Soon</p>
+                <p className="text-xs text-amber-600">Within 30 days</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Ready to Dispense Queue</h3>
+            <p className="text-xs text-gray-500">
+              {(stats?.queue || []).length} ready item(s)
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500 border-b border-gray-200">
+                  <th className="py-2 pr-3">Patient</th>
+                  <th className="py-2 pr-3">Medicine</th>
+                  <th className="py-2 pr-3">Qty Left</th>
+                  <th className="py-2 pr-3">Doctor</th>
+                  <th className="py-2 pr-3">Status</th>
+                  <th className="py-2 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(stats?.queue || []).slice(0, 12).map((item) => {
+                  const remaining = Math.max(
+                    Number(item?.quantity_prescribed || 0) -
+                      Number(item?.quantity_dispensed || 0),
+                    0,
+                  );
+                  return (
+                    <tr
+                      key={item.id}
+                      className="border-b border-gray-100 text-gray-700"
+                    >
+                      <td className="py-2 pr-3">
+                        {item.patient_name || "N/A"}
+                      </td>
+                      <td className="py-2 pr-3">{item.medicine_name || "-"}</td>
+                      <td className="py-2 pr-3">{remaining}</td>
+                      <td className="py-2 pr-3">{item.doctor_name || "N/A"}</td>
+                      <td className="py-2 pr-3">
+                        <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 capitalize">
+                          {item.status}
+                        </span>
+                      </td>
+                      <td className="py-2 text-right">
                         <Button
                           size="sm"
-                          icon={Pill}
-                          onClick={() => {
-                            setShowDispense(med);
-                            setDispenseQty("");
-                          }}
+                          onClick={() => handleDispense(item)}
+                          isLoading={dispensingId === item.id}
                         >
                           Dispense
                         </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          ),
-        )}
-      </div>
-      {/* Modals remain the same */}
-      <Modal
-        isOpen={!!showDispense}
-        onClose={() => setShowDispense(null)}
-        title={`Dispense: ${showDispense?.medicine_name}`}
-        size="md"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setShowDispense(null)}>
-              Cancel
-            </Button>
-            <Button onClick={handleDispense}>Confirm</Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <div className="p-3 bg-blue-50 rounded-lg">
-            <p>
-              <strong>Patient:</strong> {showDispense?.patient_name}
-            </p>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!(stats?.queue || []).length && (
+                  <tr>
+                    <td className="py-6 text-center text-gray-500" colSpan={6}>
+                      No paid prescriptions ready to dispense yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-          <div className="p-3 bg-gray-50 rounded-lg space-y-2">
-            <p>
-              <strong>Medicine:</strong> {showDispense?.medicine_name}
-            </p>
-            <p className="text-sm text-gray-500">{showDispense?.dosage}</p>
-          </div>
-          <div className="p-3 bg-yellow-50 rounded-lg">
-            <p className="text-sm">
-              <strong>📦 Stock:</strong>{" "}
-              <span className="text-lg font-bold">
-                {medicines.find(
-                  (m) =>
-                    m.name?.toLowerCase() ===
-                    showDispense?.medicine_name?.toLowerCase(),
-                )?.quantity || "N/A"}
-              </span>
-            </p>
-          </div>
-          <Input
-            label="Quantity *"
-            type="number"
-            value={dispenseQty}
-            onChange={(e) => setDispenseQty(e.target.value)}
-          />
-        </div>
-      </Modal>
-      <Modal
-        isOpen={showPOS}
-        onClose={() => setShowPOS(false)}
-        title="Quick Sale (POS)"
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setShowPOS(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleQuickSale}>Complete Sale</Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Search Medicine
-            </label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Type medicine name..."
-                value={posForm.searchTerm || ""}
-                onChange={(e) =>
-                  setPosForm({
-                    ...posForm,
-                    searchTerm: e.target.value,
-                    medicine: "",
-                  })
-                }
-                className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm"
-              />
-            </div>
-            {posForm.searchTerm && !posForm.medicine && (
-              <div className="mt-2 border rounded-lg max-h-40 overflow-y-auto">
-                {medicines
-                  .filter(
-                    (m) =>
-                      m.quantity > 0 &&
-                      m.name
-                        ?.toLowerCase()
-                        .includes(posForm.searchTerm?.toLowerCase()),
-                  )
-                  .slice(0, 10)
-                  .map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => {
-                        setPosForm({
-                          ...posForm,
-                          medicine: m.id,
-                          price: m.selling_price || "",
-                          selectedName: m.name,
-                          stock: m.quantity,
-                        });
-                      }}
-                      className="w-full text-left px-4 py-2.5 hover:bg-orange-50 border-b text-sm"
-                    >
-                      <span className="font-medium">{m.name}</span>
-                      <span className="text-gray-400 ml-2">
-                        Stock: {m.quantity}
-                      </span>
-                      <span className="text-green-600 float-right">
-                        SSP {m.selling_price}
-                      </span>
-                    </button>
+        </Card>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-blue-600" /> Top Medicines
+            </h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={topMedicines}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="name" fontSize={12} />
+                <YAxis fontSize={12} />
+                <Tooltip />
+                <Legend />
+                <Bar
+                  dataKey="quantity"
+                  stroke="#F97316"
+                  fill="#F97316"
+                  name="Qty Prescribed"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+
+          <Card>
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-emerald-600" /> Top Revenue
+              Medicines
+            </h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={topRevenueMedicines}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="name" fontSize={12} />
+                <YAxis fontSize={12} />
+                <Tooltip
+                  formatter={(value) => `SSP ${Number(value).toLocaleString()}`}
+                />
+                <Legend />
+                <Bar
+                  dataKey="revenue"
+                  stroke="#10B981"
+                  fill="#10B981"
+                  name="Revenue (SSP)"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+
+          <Card>
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <Activity className="h-5 w-5 text-green-600" />
+              {getRangeLabel()} Activity
+            </h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <AreaChart data={activityData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="day" fontSize={12} />
+                <YAxis fontSize={12} />
+                <Tooltip />
+                <Legend />
+                <Area
+                  type="monotone"
+                  dataKey="prescriptions"
+                  fill="#F97316"
+                  stroke="#F97316"
+                  name="Prescriptions"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="dispensed"
+                  fill="#10B981"
+                  stroke="#10B981"
+                  name="Dispensed"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </Card>
+
+          <Card>
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <FileBarChart2 className="h-5 w-5 text-orange-600" />
+              Prescription Status
+            </h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={statusDistribution}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                  label={({ name, value }) => `${name}: ${value}`}
+                >
+                  {statusDistribution.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                    />
                   ))}
-              </div>
-            )}
-          </div>
-          {posForm.medicine && (
-            <div className="p-3 bg-green-50 rounded-lg">
-              <p className="font-medium">{posForm.selectedName}</p>
-              <p className="text-xs text-gray-500">
-                Stock: {posForm.stock} | SSP {posForm.price}
-              </p>
-            </div>
-          )}
-          <Input
-            label="Quantity"
-            type="number"
-            value={posForm.quantity}
-            onChange={(e) =>
-              setPosForm({ ...posForm, quantity: e.target.value })
-            }
-          />
-          <Input
-            label="Price (SSP)"
-            type="number"
-            value={posForm.price}
-            onChange={(e) => setPosForm({ ...posForm, price: e.target.value })}
-          />
-          <div className="p-3 bg-green-50 rounded-lg text-center">
-            <p className="text-2xl font-bold text-green-600">
-              SSP{" "}
-              {(
-                (parseFloat(posForm.price) || 0) *
-                (parseInt(posForm.quantity) || 0)
-              ).toLocaleString()}
-            </p>
-          </div>
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </Card>
+
+          <Card>
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5 text-purple-600" />
+              Inventory Summary
+            </h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={inventoryHealth}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  dataKey="value"
+                  label={({ name, value }) => `${name}: ${value}`}
+                >
+                  {inventoryHealth.map((entry, index) => (
+                    <Cell
+                      key={`inv-cell-${index}`}
+                      fill={index === 0 ? "#EF4444" : "#10B981"}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </Card>
         </div>
-      </Modal>
+      </div>
     </DashboardLayout>
   );
 }

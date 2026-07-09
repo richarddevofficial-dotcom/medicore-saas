@@ -1,21 +1,49 @@
 from rest_framework import viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError
 from django.utils import timezone
+from config.plan_permissions import RequiresProPlan
 from .models import ImagingTest
 from .serializers import ImagingTestSerializer
+
+
+def _resolve_request_hospital(request):
+    user = request.user
+    if user.is_superuser:
+        hospital_id = request.data.get('hospital_id') or request.query_params.get('hospital_id')
+        if not hospital_id:
+            return None
+        from hospitals.models import Hospital
+        return Hospital.objects.filter(id=hospital_id).first()
+
+    if hasattr(user, 'staff_profile'):
+        return user.staff_profile.hospital
+    return None
 
 class ImagingTestViewSet(viewsets.ModelViewSet):
     queryset = ImagingTest.objects.all()
     serializer_class = ImagingTestSerializer
+    permission_classes = [IsAuthenticated, RequiresProPlan]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['patient_name', 'test_type', 'body_part']
     ordering = ['-created_at']
+
+    def get_queryset(self):
+        hospital = _resolve_request_hospital(self.request)
+        if self.request.user.is_superuser and not hospital:
+            return ImagingTest.objects.all()
+        if not hospital:
+            return ImagingTest.objects.none()
+        return ImagingTest.objects.filter(hospital=hospital)
     
     def perform_create(self, serializer):
-        from hospitals.models import Hospital
-        serializer.save(hospital=Hospital.objects.first())
+        hospital = _resolve_request_hospital(self.request)
+        if not hospital:
+            raise ValidationError('Hospital context is required')
+        serializer.save(hospital=hospital)
     
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):

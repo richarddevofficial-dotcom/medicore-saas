@@ -2,8 +2,23 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
+import secrets
+import socket
 from .models import Hospital
 from staff.models import StaffProfile
+
+
+def normalize_domain(value):
+    domain = (value or "").strip().lower()
+    if not domain:
+        return ""
+    if domain.startswith("http://") or domain.startswith("https://"):
+        raise serializers.ValidationError("Use hostname only, without protocol.")
+    if "/" in domain:
+        raise serializers.ValidationError("Use hostname only, without path.")
+    if domain.count(".") < 1:
+        raise serializers.ValidationError("Enter a valid domain like app.example.com")
+    return domain
 
 class HospitalSerializer(serializers.ModelSerializer):
     days_left = serializers.IntegerField(read_only=True)
@@ -57,3 +72,28 @@ class HospitalRegistrationSerializer(serializers.ModelSerializer):
         )
         
         return hospital
+
+
+class DomainSetupSerializer(serializers.Serializer):
+    custom_domain = serializers.CharField(max_length=200)
+
+    def validate_custom_domain(self, value):
+        return normalize_domain(value)
+
+
+class DomainVerifySerializer(serializers.Serializer):
+    custom_domain = serializers.CharField(max_length=200)
+
+    def validate_custom_domain(self, value):
+        return normalize_domain(value)
+
+
+def generate_domain_verification_token():
+    return secrets.token_hex(16)
+
+
+def resolve_domain_to_ip(hostname):
+    try:
+        return socket.gethostbyname(hostname)
+    except Exception:
+        return ""

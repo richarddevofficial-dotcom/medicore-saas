@@ -16,8 +16,12 @@ export function useDoctors() {
   return useQuery({
     queryKey: ["doctors"],
     queryFn: async () => {
-      const { data } = await apiClient.get("/staff/doctors/");
-      return data;
+      const { data } = await apiClient.get("/staff/", {
+        params: { role: "doctor", is_active: true },
+      });
+      if (Array.isArray(data)) return data;
+      if (Array.isArray(data?.results)) return data.results;
+      return [];
     },
   });
 }
@@ -135,6 +139,32 @@ export function useDeleteStaff() {
     },
     onError: () => {
       toast.error("Failed to remove staff");
+    },
+  });
+}
+
+export function useBulkDeactivateStaff() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ staffIds, reason }) => {
+      const { data } = await apiClient.post("/staff/bulk_deactivate/", {
+        staff_ids: staffIds,
+        reason,
+        confirm_count: staffIds.length,
+      });
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["staff"] });
+      queryClient.invalidateQueries({ queryKey: ["staff-stats"] });
+      toast.success(
+        `Deactivated ${data?.deactivated_count || 0} staff account(s)`,
+      );
+    },
+    onError: (error) => {
+      toast.error(
+        error?.response?.data?.error || "Failed to deactivate selected staff",
+      );
     },
   });
 }

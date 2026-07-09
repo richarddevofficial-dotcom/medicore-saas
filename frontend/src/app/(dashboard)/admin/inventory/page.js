@@ -1,17 +1,17 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import AdminBackButton from "@/components/ui/AdminBackButton";
 import Badge from "@/components/ui/Badge";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Modal from "@/components/ui/Modal";
 import Spinner from "@/components/ui/Spinner";
 import {
-  ArrowLeft,
   Plus,
   Search,
   TrendingDown,
@@ -27,10 +27,10 @@ import apiClient from "@/lib/api-client";
 import * as XLSX from "xlsx";
 
 export default function InventoryPage() {
-  const router = useRouter();
   const fileInputRef = useRef(null);
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
+  const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState("all");
   const [showModal, setShowModal] = useState(false);
@@ -68,6 +68,13 @@ export default function InventoryPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    const urlFilter = (searchParams.get("filter") || "").toLowerCase();
+    if (["all", "critical", "low", "normal"].includes(urlFilter)) {
+      setFilter(urlFilter);
+    }
+  }, [searchParams]);
 
   const handleSave = async () => {
     if (!form.name) return toast.error("Name required");
@@ -264,13 +271,7 @@ export default function InventoryPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              icon={ArrowLeft}
-              onClick={() => router.push("/admin")}
-            >
-              Back
-            </Button>
+            <AdminBackButton />
             <div>
               <h1 className="text-2xl font-bold">📦 Inventory Management</h1>
               <p className="text-sm text-gray-500">

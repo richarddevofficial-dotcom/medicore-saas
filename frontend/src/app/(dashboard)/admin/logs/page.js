@@ -1,18 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import AdminBackButton from "@/components/ui/AdminBackButton";
 import Badge from "@/components/ui/Badge";
 import Input from "@/components/ui/Input";
 import Spinner from "@/components/ui/Spinner";
-import { ArrowLeft, Search, Database } from "lucide-react";
+import EmptyState from "@/components/ui/EmptyState";
+import { Search, Database } from "lucide-react";
 import apiClient from "@/lib/api-client";
 
 export default function AuditLogsPage() {
-  const router = useRouter();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -59,13 +59,7 @@ export default function AuditLogsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              icon={ArrowLeft}
-              onClick={() => router.push("/admin")}
-            >
-              Back
-            </Button>
+            <AdminBackButton />
             <div>
               <h1 className="text-2xl font-bold">Audit Logs</h1>
               <p className="text-sm text-gray-500">
@@ -115,7 +109,13 @@ export default function AuditLogsPage() {
                 {filtered.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="text-center py-12 text-gray-500">
-                      No logs found
+                      <EmptyState
+                        imageSrc="/images/empty-states/reports-empty.svg"
+                        imageAlt="No logs"
+                        title="No logs found"
+                        className="py-2 px-0"
+                        titleClassName="text-sm font-normal text-gray-500 mb-0"
+                      />
                     </td>
                   </tr>
                 ) : (

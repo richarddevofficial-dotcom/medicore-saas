@@ -24,6 +24,19 @@ import {
   SUBSCRIPTION_PLANS,
 } from "@/lib/subscription-plans";
 
+const BILLING_CYCLE_OPTIONS = [
+  { value: "1", label: "1 month" },
+  { value: "3", label: "3 months (Quarterly)" },
+  { value: "4", label: "4 months" },
+  { value: "6", label: "6 months" },
+  { value: "12", label: "12 months (Yearly)" },
+];
+
+const computeAmount = (planId, billingCycleMonths) => {
+  const monthlyPrice = SUBSCRIPTION_PLAN_MAP[planId]?.monthlyPrice || 0;
+  return (monthlyPrice * Number(billingCycleMonths || 1)).toFixed(2);
+};
+
 export default function PaymentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -32,7 +45,8 @@ export default function PaymentPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({
     plan: "basic",
-    amount: SUBSCRIPTION_PLAN_MAP.basic.monthlyPrice.toFixed(2),
+    billing_cycle_months: "1",
+    amount: computeAmount("basic", 1),
     payment_method: "bank",
     transaction_id: "",
   });
@@ -47,7 +61,7 @@ export default function PaymentPage() {
     setForm((prev) => ({
       ...prev,
       plan: selectedPlan,
-      amount: planPrice.toFixed(2),
+      amount: (planPrice * Number(prev.billing_cycle_months || 1)).toFixed(2),
     }));
     setShowModal(true);
   }, [searchParams]);
@@ -141,6 +155,9 @@ export default function PaymentPage() {
                     Method
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Cycle
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                     Transaction ID
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
@@ -157,6 +174,9 @@ export default function PaymentPage() {
                     <td className="px-4 py-3 font-medium">{p.plan}</td>
                     <td className="px-4 py-3">${p.amount}</td>
                     <td className="px-4 py-3">{p.payment_method}</td>
+                    <td className="px-4 py-3">
+                      {p.billing_cycle_months || 1} month(s)
+                    </td>
                     <td className="px-4 py-3 text-sm font-mono">
                       {p.transaction_id || "—"}
                     </td>
@@ -196,12 +216,11 @@ export default function PaymentPage() {
               label="Plan"
               value={form.plan}
               onChange={(e) => {
-                const price =
-                  SUBSCRIPTION_PLAN_MAP[e.target.value]?.monthlyPrice || 0;
+                const planId = e.target.value;
                 setForm({
                   ...form,
-                  plan: e.target.value,
-                  amount: price.toFixed(2),
+                  plan: planId,
+                  amount: computeAmount(planId, form.billing_cycle_months),
                 });
               }}
               options={SUBSCRIPTION_PLANS.map((plan) => ({
@@ -209,9 +228,24 @@ export default function PaymentPage() {
                 label: `${plan.name} - $${plan.monthlyPrice.toFixed(2)}/mo`,
               }))}
             />
+            <Select
+              label="Billing Cycle"
+              value={form.billing_cycle_months}
+              onChange={(e) => {
+                const cycle = e.target.value;
+                setForm({
+                  ...form,
+                  billing_cycle_months: cycle,
+                  amount: computeAmount(form.plan, cycle),
+                });
+              }}
+              options={BILLING_CYCLE_OPTIONS}
+            />
             <Input
               label="Amount ($)"
               type="number"
+              min="0"
+              step="0.01"
               value={form.amount}
               onChange={(e) => setForm({ ...form, amount: e.target.value })}
             />

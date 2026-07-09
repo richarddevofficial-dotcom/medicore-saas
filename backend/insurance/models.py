@@ -4,7 +4,7 @@ from hospitals.models import Hospital
 class InsuranceCompany(models.Model):
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE)
     name = models.CharField(max_length=200)
-    code = models.CharField(max_length=50, unique=True)
+    code = models.CharField(max_length=50)
     contact_person = models.CharField(max_length=100, blank=True)
     phone = models.CharField(max_length=20, blank=True)
     email = models.EmailField(blank=True)
@@ -16,6 +16,13 @@ class InsuranceCompany(models.Model):
     
     class Meta:
         ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['hospital', 'code'],
+                name='uniq_insurance_company_code_per_hospital',
+            ),
+        ]
+
     def __str__(self):
         return self.name
 

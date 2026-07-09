@@ -9,11 +9,16 @@ import Input from "@/components/ui/Input";
 import Spinner from "@/components/ui/Spinner";
 import toast from "react-hot-toast";
 import apiClient from "@/lib/api-client";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function SettingsPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [domainSetupLoading, setDomainSetupLoading] = useState(false);
+  const [domainVerifyLoading, setDomainVerifyLoading] = useState(false);
+  const [domainVerification, setDomainVerification] = useState(null);
 
   const [settings, setSettings] = useState({
     name: "",
@@ -26,6 +31,11 @@ export default function SettingsPage() {
     primary_color: "#F97316",
     secondary_color: "#1E3A5F",
     custom_domain: "",
+    domain_status: "unconfigured",
+    domain_verification_token: "",
+    domain_verified_at: null,
+    domain_last_checked_at: null,
+    platform_subdomain: "",
   });
 
   useEffect(() => {
@@ -44,7 +54,21 @@ export default function SettingsPage() {
             primary_color: data.primary_color || "#F97316",
             secondary_color: data.secondary_color || "#1E3A5F",
             custom_domain: data.custom_domain || "",
+            domain_status: data.domain_status || "unconfigured",
+            domain_verification_token: data.domain_verification_token || "",
+            domain_verified_at: data.domain_verified_at || null,
+            domain_last_checked_at: data.domain_last_checked_at || null,
+            platform_subdomain: data.platform_subdomain || "",
           });
+
+          if (data.custom_domain && data.domain_verification_token) {
+            setDomainVerification({
+              type: "dns-txt",
+              name: `_medicore-verify.${data.custom_domain}`,
+              value: data.domain_verification_token,
+              instruction: "Create this TXT record in your DNS zone.",
+            });
+          }
         }
       } catch (err) {
         toast.error("Failed to load settings");
@@ -64,12 +88,107 @@ export default function SettingsPage() {
         secondary_color: settings.secondary_color,
         custom_domain: settings.custom_domain,
       });
+      await queryClient.invalidateQueries({ queryKey: ["hospital-branding"] });
       toast.success("Settings saved!");
+
+      // Refresh local settings so domain status/token UI stays in sync.
+      const refreshed = await apiClient.get("/hospitals/settings/");
+      const data = refreshed.data || {};
+      setSettings((previous) => ({
+        ...previous,
+        custom_domain: data.custom_domain || "",
+        domain_status: data.domain_status || "unconfigured",
+        domain_verification_token: data.domain_verification_token || "",
+        domain_verified_at: data.domain_verified_at || null,
+        domain_last_checked_at: data.domain_last_checked_at || null,
+        platform_subdomain: data.platform_subdomain || "",
+      }));
+
+      if (data.custom_domain && data.domain_verification_token) {
+        setDomainVerification({
+          type: "dns-txt",
+          name: `_medicore-verify.${data.custom_domain}`,
+          value: data.domain_verification_token,
+          instruction: "Create this TXT record in your DNS zone.",
+        });
+      }
     } catch (err) {
       toast.error("Failed to save");
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDomainSetup = async () => {
+    const domain = (settings.custom_domain || "").trim().toLowerCase();
+    if (!domain) {
+      toast.error("Enter a custom domain first");
+      return;
+    }
+
+    setDomainSetupLoading(true);
+    try {
+      const { data } = await apiClient.post("/hospitals/domain_setup/", {
+        custom_domain: domain,
+      });
+
+      setSettings((previous) => ({
+        ...previous,
+        custom_domain: data.custom_domain || domain,
+        domain_status: data.domain_status || "pending",
+      }));
+      setDomainVerification(data.verification || null);
+      toast.success("Domain setup created. Add DNS TXT record to continue.");
+    } catch (err) {
+      const message =
+        err?.response?.data?.error ||
+        err?.response?.data?.custom_domain?.[0] ||
+        "Failed to setup domain";
+      toast.error(message);
+    } finally {
+      setDomainSetupLoading(false);
+    }
+  };
+
+  const handleDomainVerify = async () => {
+    const domain = (settings.custom_domain || "").trim().toLowerCase();
+    if (!domain) {
+      toast.error("Enter a custom domain first");
+      return;
+    }
+
+    setDomainVerifyLoading(true);
+    try {
+      const { data } = await apiClient.post("/hospitals/domain_verify/", {
+        custom_domain: domain,
+      });
+
+      setSettings((previous) => ({
+        ...previous,
+        domain_status: data.domain_status || "verified",
+        domain_verified_at: data.domain_verified_at || null,
+      }));
+      toast.success("Domain verified successfully");
+    } catch (err) {
+      const message =
+        err?.response?.data?.error ||
+        err?.response?.data?.detail ||
+        "Domain verification failed";
+      toast.error(message);
+      setSettings((previous) => ({
+        ...previous,
+        domain_status: "failed",
+      }));
+    } finally {
+      setDomainVerifyLoading(false);
+    }
+  };
+
+  const statusTone = {
+    unconfigured: "bg-slate-100 text-slate-700 border-slate-200",
+    pending: "bg-amber-100 text-amber-700 border-amber-200",
+    verified: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    failed: "bg-red-100 text-red-700 border-red-200",
   };
 
   if (loading)
@@ -160,6 +279,82 @@ export default function SettingsPage() {
               }
               placeholder="e.g., nile.medicore.com"
             />
+
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 space-y-2">
+              <p className="text-sm font-semibold text-emerald-800">
+                Managed Subdomain (Recommended)
+              </p>
+              <p className="text-xs text-emerald-700">
+                Your hospital can use a managed subdomain under medicore.com.
+              </p>
+              <div className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-900">
+                {settings.platform_subdomain || "Not available"}
+              </div>
+              <p className="text-xs text-emerald-700">
+                This is automatically generated from your hospital slug and does
+                not require external DNS setup.
+              </p>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-gray-700">
+                  Domain Verification
+                </p>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${statusTone[settings.domain_status] || statusTone.unconfigured}`}
+                >
+                  {(settings.domain_status || "unconfigured").toUpperCase()}
+                </span>
+              </div>
+
+              <p className="text-xs text-gray-600">
+                1. Save your domain, 2. click Setup DNS Instructions, 3. add the
+                TXT record at your DNS provider, 4. click Verify Domain.
+              </p>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleDomainSetup}
+                  isLoading={domainSetupLoading}
+                >
+                  Setup DNS Instructions
+                </Button>
+                <Button
+                  onClick={handleDomainVerify}
+                  isLoading={domainVerifyLoading}
+                  disabled={!settings.custom_domain}
+                >
+                  Verify Domain
+                </Button>
+              </div>
+
+              {domainVerification && (
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 space-y-1">
+                  <p>
+                    <span className="font-semibold">Type:</span>{" "}
+                    {domainVerification.type || "dns-txt"}
+                  </p>
+                  <p>
+                    <span className="font-semibold">Name:</span>{" "}
+                    {domainVerification.name}
+                  </p>
+                  <p>
+                    <span className="font-semibold">Value:</span>{" "}
+                    {domainVerification.value}
+                  </p>
+                  <p>{domainVerification.instruction}</p>
+                </div>
+              )}
+
+              {settings.domain_verified_at && (
+                <p className="text-xs text-emerald-700">
+                  Verified at:{" "}
+                  {new Date(settings.domain_verified_at).toLocaleString()}
+                </p>
+              )}
+            </div>
 
             <div
               className="p-4 rounded-lg border"

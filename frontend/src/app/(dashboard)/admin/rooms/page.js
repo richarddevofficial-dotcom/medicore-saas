@@ -1,26 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import AdminBackButton from "@/components/ui/AdminBackButton";
 import Badge from "@/components/ui/Badge";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Modal from "@/components/ui/Modal";
 import Spinner from "@/components/ui/Spinner";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import EmptyState from "@/components/ui/EmptyState";
 import { useWards } from "@/hooks/useRooms";
-import {
-  ArrowLeft,
-  Plus,
-  Bed,
-  Building2,
-  Home,
-  Pencil,
-  Trash2,
-} from "lucide-react";
+import { Plus, Bed, Building2, Home, Pencil, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import apiClient from "@/lib/api-client";
 
@@ -35,7 +28,6 @@ const emptyRoom = {
 const emptyBed = { bed_number: "", room: "", bed_type: "standard" };
 
 export default function RoomsPage() {
-  const router = useRouter();
   const { data: wardsData, isLoading, refetch } = useWards();
   const [activeTab, setActiveTab] = useState("wards");
   const [isSaving, setIsSaving] = useState(false);
@@ -51,6 +43,11 @@ export default function RoomsPage() {
   const [wardForm, setWardForm] = useState(emptyWard);
   const [roomForm, setRoomForm] = useState(emptyRoom);
   const [bedForm, setBedForm] = useState(emptyBed);
+
+  const formatCurrency = (value) => {
+    const amount = Number.parseFloat(value ?? 0);
+    return `SSP ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
+  };
 
   const wards = Array.isArray(wardsData) ? wardsData : wardsData?.results || [];
 
@@ -245,13 +242,7 @@ export default function RoomsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              icon={ArrowLeft}
-              onClick={() => router.push("/admin")}
-            >
-              Back
-            </Button>
+            <AdminBackButton />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
                 Rooms & Wards
@@ -298,12 +289,16 @@ export default function RoomsPage() {
         {/* ===== WARDS ===== */}
         {activeTab === "wards" &&
           (wards.length === 0 ? (
-            <Card className="text-center py-12">
-              <Building2 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 mb-4">No wards yet</p>
-              <Button icon={Plus} onClick={openAddWard}>
-                Add Ward
-              </Button>
+            <Card>
+              <EmptyState
+                icon={Building2}
+                title="No wards yet"
+                description={null}
+                className="py-12"
+                titleClassName="text-base font-medium text-gray-500 mb-4"
+                actionLabel="Add Ward"
+                onAction={openAddWard}
+              />
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -393,7 +388,7 @@ export default function RoomsPage() {
                         {room.capacity} beds
                       </td>
                       <td className="px-4 py-3 text-sm font-medium">
-                        ₹{room.price_per_day}
+                        {formatCurrency(room.price_per_day)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <button
@@ -421,7 +416,13 @@ export default function RoomsPage() {
                         colSpan={6}
                         className="text-center py-8 text-gray-500"
                       >
-                        No rooms yet
+                        <EmptyState
+                          imageSrc="/images/empty-states/appointments-empty.svg"
+                          imageAlt="No rooms"
+                          title="No rooms yet"
+                          className="py-2 px-0"
+                          titleClassName="text-sm font-normal text-gray-500 mb-0"
+                        />
                       </td>
                     </tr>
                   )}
@@ -502,7 +503,13 @@ export default function RoomsPage() {
                         colSpan={5}
                         className="text-center py-8 text-gray-500"
                       >
-                        No beds yet
+                        <EmptyState
+                          imageSrc="/images/empty-states/appointments-empty.svg"
+                          imageAlt="No beds"
+                          title="No beds yet"
+                          className="py-2 px-0"
+                          titleClassName="text-sm font-normal text-gray-500 mb-0"
+                        />
                       </td>
                     </tr>
                   )}
@@ -623,7 +630,7 @@ export default function RoomsPage() {
               }
             />
             <Input
-              label="Price/Day (₹)"
+              label="Price/Day (SSP)"
               type="number"
               value={roomForm.price_per_day}
               onChange={(e) =>

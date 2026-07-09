@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import AdminBackButton from "@/components/ui/AdminBackButton";
 import Badge from "@/components/ui/Badge";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
@@ -16,16 +16,17 @@ import {
   useDeleteStaff,
   useToggleStaffStatus,
   useUpdateStaffRole,
+  useBulkDeactivateStaff,
 } from "@/hooks/useStaff";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import {
-  ArrowLeft,
   UserPlus,
   Trash2,
   Power,
   PowerOff,
   Search,
   Pencil,
+  Users,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -52,12 +53,12 @@ const roleOptions = [
 ];
 
 export default function ManageUsersPage() {
-  const router = useRouter();
   const { data: staffData, isLoading } = useStaff();
   const createStaff = useCreateStaff();
   const deleteStaff = useDeleteStaff();
   const toggleStatus = useToggleStaffStatus();
   const updateRole = useUpdateStaffRole();
+  const bulkDeactivate = useBulkDeactivateStaff();
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
@@ -65,6 +66,9 @@ export default function ManageUsersPage() {
   const [editUser, setEditUser] = useState(null);
   const [showEditRoleModal, setShowEditRoleModal] = useState(false);
   const [newRole, setNewRole] = useState("");
+  const [selectedStaffIds, setSelectedStaffIds] = useState([]);
+  const [showBulkDeactivateModal, setShowBulkDeactivateModal] = useState(false);
+  const [bulkDeactivateReason, setBulkDeactivateReason] = useState("");
 
   const [form, setForm] = useState({
     first_name: "",
@@ -84,9 +88,62 @@ export default function ManageUsersPage() {
     return (
       name.includes(search) ||
       (s.user?.email || "").toLowerCase().includes(search) ||
-      (s.role || "").toLowerCase().includes(search)
+      (s.role || "").toLowerCase().includes(search) ||
+      (s.hospital_name || "").toLowerCase().includes(search)
     );
   });
+
+  const toggleSelectStaff = (staffId) => {
+    setSelectedStaffIds((prev) =>
+      prev.includes(staffId)
+        ? prev.filter((id) => id !== staffId)
+        : [...prev, staffId],
+    );
+  };
+
+  const toggleSelectAllFiltered = () => {
+    const filteredIds = filteredStaff.map((s) => s.id);
+    const allSelected =
+      filteredIds.length > 0 &&
+      filteredIds.every((id) => selectedStaffIds.includes(id));
+
+    if (allSelected) {
+      setSelectedStaffIds((prev) =>
+        prev.filter((id) => !filteredIds.includes(id)),
+      );
+      return;
+    }
+
+    setSelectedStaffIds((prev) =>
+      Array.from(new Set([...prev, ...filteredIds])),
+    );
+  };
+
+  const openBulkDeactivateModal = () => {
+    if (selectedStaffIds.length === 0) {
+      toast.error("Select at least one user");
+      return;
+    }
+
+    setShowBulkDeactivateModal(true);
+  };
+
+  const handleBulkDeactivate = async () => {
+    const reason = bulkDeactivateReason.trim();
+    if (!reason || reason.length < 5) {
+      toast.error("Reason must be at least 5 characters");
+      return;
+    }
+
+    await bulkDeactivate.mutateAsync({
+      staffIds: selectedStaffIds,
+      reason,
+    });
+
+    setSelectedStaffIds([]);
+    setBulkDeactivateReason("");
+    setShowBulkDeactivateModal(false);
+  };
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -129,21 +186,26 @@ export default function ManageUsersPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              icon={ArrowLeft}
-              onClick={() => router.push("/admin")}
-            >
-              Back
-            </Button>
+            <AdminBackButton />
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Manage Users</h1>
               <p className="text-sm text-gray-500 mt-1">{staff.length} users</p>
             </div>
           </div>
-          <Button icon={UserPlus} onClick={() => setShowAddModal(true)}>
-            Add User
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              icon={Users}
+              onClick={openBulkDeactivateModal}
+              isLoading={bulkDeactivate.isPending}
+              disabled={selectedStaffIds.length === 0}
+            >
+              Deactivate Selected ({selectedStaffIds.length})
+            </Button>
+            <Button icon={UserPlus} onClick={() => setShowAddModal(true)}>
+              Add User
+            </Button>
+          </div>
         </div>
 
         <div className="relative max-w-md">
@@ -168,6 +230,18 @@ export default function ManageUsersPage() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      <input
+                        type="checkbox"
+                        onChange={toggleSelectAllFiltered}
+                        checked={
+                          filteredStaff.length > 0 &&
+                          filteredStaff.every((s) =>
+                            selectedStaffIds.includes(s.id),
+                          )
+                        }
+                      />
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       User
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
@@ -175,6 +249,9 @@ export default function ManageUsersPage() {
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Role
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Hospital
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Status
@@ -187,6 +264,13 @@ export default function ManageUsersPage() {
                 <tbody className="divide-y divide-gray-200">
                   {filteredStaff.map((s) => (
                     <tr key={s.id} className={!s.is_active ? "opacity-60" : ""}>
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedStaffIds.includes(s.id)}
+                          onChange={() => toggleSelectStaff(s.id)}
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="h-9 w-9 rounded-full bg-orange-100 flex items-center justify-center">
@@ -215,6 +299,9 @@ export default function ManageUsersPage() {
                             <Pencil className="h-3 w-3" />
                           </button>
                         </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {s.hospital_name || "-"}
                       </td>
                       <td className="px-4 py-3">
                         <Badge variant={s.is_active ? "success" : "danger"}>
@@ -343,6 +430,60 @@ export default function ManageUsersPage() {
             onChange={(e) => setNewRole(e.target.value)}
             options={roleOptions}
           />
+        </Modal>
+
+        <Modal
+          isOpen={showBulkDeactivateModal}
+          onClose={() => {
+            setShowBulkDeactivateModal(false);
+            setBulkDeactivateReason("");
+          }}
+          title="Bulk Deactivate Users"
+          size="md"
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowBulkDeactivateModal(false);
+                  setBulkDeactivateReason("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleBulkDeactivate}
+                isLoading={bulkDeactivate.isPending}
+              >
+                Confirm Deactivation
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              You are about to deactivate{" "}
+              <strong>{selectedStaffIds.length}</strong> selected user(s).
+              Provide a reason for audit purposes.
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Reason for bulk deactivation{" "}
+                <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={bulkDeactivateReason}
+                onChange={(e) => setBulkDeactivateReason(e.target.value)}
+                placeholder="Enter reason (minimum 5 characters)"
+                rows={4}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              <p className="mt-2 text-xs text-gray-500">
+                This reason will be recorded in audit logs.
+              </p>
+            </div>
+          </div>
         </Modal>
 
         <ConfirmDialog

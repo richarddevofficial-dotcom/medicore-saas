@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import AdminBackButton from "@/components/ui/AdminBackButton";
 import Badge from "@/components/ui/Badge";
 import Modal from "@/components/ui/Modal";
 import Input from "@/components/ui/Input";
-import { ArrowLeft, Shield, Check, X } from "lucide-react";
+import { Shield, Check, X } from "lucide-react";
 
 const rolesData = [
   {
@@ -117,7 +117,6 @@ const allPermissions = [
 ];
 
 export default function ManageRolesPage() {
-  const router = useRouter();
   const [selectedRole, setSelectedRole] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
@@ -125,13 +124,7 @@ export default function ManageRolesPage() {
     <DashboardLayout>
       <div className="space-y-6">
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            icon={ArrowLeft}
-            onClick={() => router.push("/admin")}
-          >
-            Back
-          </Button>
+          <AdminBackButton />
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
               Manage Roles & Permissions

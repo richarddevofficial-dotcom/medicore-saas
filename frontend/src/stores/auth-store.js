@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import apiClient from "@/lib/api-client";
 
 const useAuthStore = create((set, get) => ({
   user: null,
@@ -17,9 +18,19 @@ const useAuthStore = create((set, get) => ({
   },
 
   logout: () => {
+    const trustedDeviceToken = localStorage.getItem("trusted_device_token");
+    if (trustedDeviceToken) {
+      apiClient
+        .post("/auth/trusted-device/revoke/", {
+          trusted_device_token: trustedDeviceToken,
+        })
+        .catch(() => {});
+    }
+
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     localStorage.removeItem("hospital");
+    localStorage.removeItem("trusted_device_token");
     set({
       user: null,
       token: null,
@@ -33,7 +44,7 @@ const useAuthStore = create((set, get) => ({
     const user = localStorage.getItem("user");
     const hospital = localStorage.getItem("hospital");
 
-    if (token && user && hospital) {
+    if (token && user) {
       let parsedUser = null;
       let parsedHospital = null;
 

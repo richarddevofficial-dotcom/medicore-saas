@@ -2,6 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  getStoredHospitalPlan,
+  isRouteAllowedForPlan,
+} from "@/lib/plan-access";
 
 const roleAccess = {
   admin: ["*"], // Admin can access everything
@@ -24,7 +28,13 @@ const roleAccess = {
     "/billing",
   ],
   nurse: ["/dashboard", "/patients", "/admin/rooms", "/admin/beds"],
-  pharmacist: ["/dashboard", "/pharmacy", "/admin/medicines"],
+  pharmacist: [
+    "/dashboard",
+    "/pharmacy",
+    "/pharmacy/pos",
+    "/admin/medicines",
+    "/admin/inventory",
+  ],
   lab_technician: ["/dashboard", "/admin/lab", "/patients"],
   accountant: ["/dashboard", "/billing", "/admin/insurance", "/admin/reports"],
   radiographer: ["/dashboard", "/admin/imaging", "/patients"],
@@ -36,21 +46,47 @@ export default function RoleGuard({ children }) {
 
   useEffect(() => {
     const role = localStorage.getItem("role") || "receptionist";
+    const userRaw = localStorage.getItem("user");
+    let userEmail = "";
+    if (userRaw) {
+      try {
+        userEmail = JSON.parse(userRaw)?.email || "";
+      } catch {
+        userEmail = "";
+      }
+    }
     const isSuperuser =
       localStorage.getItem("is_superuser") === "true" ||
       localStorage.getItem("is_superuser") === "True";
+    const isSystemSuperAdmin = role === "super_admin" && isSuperuser;
     const path = window.location.pathname;
+    const plan = getStoredHospitalPlan();
+
+    // Admin dashboard landing route is reserved for hospital admins only.
+    if ((path === "/admin" || path === "/admin/") && role !== "admin") {
+      router.push("/dashboard");
+      return;
+    }
+
+    if (path.startsWith("/super-admin") && !isSystemSuperAdmin) {
+      router.push("/dashboard");
+      return;
+    }
 
     const allowedPaths = roleAccess[role] || [];
 
     // Admin or superuser can access everything
-    if (
-      role === "admin" ||
-      role === "super_admin" ||
-      isSuperuser ||
-      allowedPaths.includes("*")
-    ) {
+    if (role === "admin" || isSystemSuperAdmin || allowedPaths.includes("*")) {
+      if (role === "admin" && !isRouteAllowedForPlan(path, plan)) {
+        router.push("/admin/subscription?restricted=1");
+        return;
+      }
       setAuthorized(true);
+      return;
+    }
+
+    if (!isRouteAllowedForPlan(path, plan)) {
+      router.push("/admin/subscription?restricted=1");
       return;
     }
 

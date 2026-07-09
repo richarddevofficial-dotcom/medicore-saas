@@ -1,25 +1,32 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
-const publicRoutes = ['/login', '/register', '/forgot-password'];
+const publicRoutes = [
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+];
 
 export default function AuthProvider({ children }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    if (typeof window === "undefined") return;
+
+    const token = localStorage.getItem("token");
+    const pathname = window.location.pathname;
     const isPublicRoute = publicRoutes.includes(pathname);
-    
+
     if (!token && !isPublicRoute) {
-      router.push('/login');
+      router.push("/login");
     } else {
       setChecking(false);
     }
-  }, [pathname, router]);
+  }, [router]);
 
   if (checking) {
     return (

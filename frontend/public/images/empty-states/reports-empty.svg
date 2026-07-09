@@ -1,0 +1,9 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-label="No Reports Yet empty state">
+  <rect width="640" height="420" rx="20" fill="#F8FAFC"/>
+  <rect x="120" y="80" width="400" height="260" rx="16" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <circle cx="320" cy="170" r="44" fill="#FFEDD5"/>
+  <rect x="220" y="245" width="200" height="16" rx="8" fill="#CBD5E1"/>
+  <rect x="260" y="274" width="120" height="12" rx="6" fill="#E2E8F0"/>
+  <text x="320" y="188" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="38" font-weight="700" fill="#F97316">M</text>
+  <text x="320" y="326" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#475569">No Reports Yet</text>
+</svg>

@@ -1,20 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
+import AdminBackButton from "@/components/ui/AdminBackButton";
 import Input from "@/components/ui/Input";
 import Spinner from "@/components/ui/Spinner";
-import { ArrowLeft, Save, Hospital, Shield, Bell } from "lucide-react";
+import { Save, Building2, Shield, Bell } from "lucide-react";
 import toast from "react-hot-toast";
 import apiClient from "@/lib/api-client";
 
 export default function SettingsPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const [settings, setSettings] = useState({
     name: "",
@@ -23,6 +23,11 @@ export default function SettingsPage() {
     address: "",
     city: "",
     state: "",
+  });
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
   });
 
   useEffect(() => {
@@ -60,6 +65,41 @@ export default function SettingsPage() {
     }
   };
 
+  const handleChangePassword = async () => {
+    if (!passwordForm.currentPassword || !passwordForm.newPassword) {
+      toast.error("Current and new password are required");
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 8) {
+      toast.error("New password must be at least 8 characters");
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error("New password and confirm password do not match");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      await apiClient.post("/auth/password/change/", {
+        current_password: passwordForm.currentPassword,
+        new_password: passwordForm.newPassword,
+      });
+      toast.success("Password changed successfully");
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+    } catch (err) {
+      toast.error(err?.response?.data?.error || "Failed to change password");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   if (loading)
     return (
       <DashboardLayout>
@@ -74,13 +114,7 @@ export default function SettingsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              icon={ArrowLeft}
-              onClick={() => router.push("/admin")}
-            >
-              Back
-            </Button>
+            <AdminBackButton />
             <h1 className="text-2xl font-bold">Settings</h1>
           </div>
           <Button icon={Save} onClick={handleSave} isLoading={saving}>
@@ -91,7 +125,7 @@ export default function SettingsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <div className="flex items-center gap-3 mb-4">
-              <Hospital className="h-5 w-5 text-orange-500" />
+              <Building2 className="h-5 w-5 text-orange-500" />
               <h2 className="font-semibold">Hospital Information</h2>
             </div>
             <div className="space-y-4">
@@ -183,7 +217,7 @@ export default function SettingsPage() {
               <Shield className="h-5 w-5 text-orange-500" />
               <h2 className="font-semibold">Security</h2>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="flex justify-between py-2 border-b">
                 <span className="text-sm">Session Timeout</span>
                 <span className="font-medium">30 minutes</span>
@@ -196,6 +230,51 @@ export default function SettingsPage() {
                 <span className="text-sm">Two-Factor Authentication</span>
                 <input type="checkbox" className="rounded" />
               </label>
+
+              <div className="pt-2 border-t">
+                <h3 className="text-sm font-semibold mb-3">Change Password</h3>
+                <div className="space-y-3">
+                  <Input
+                    label="Current Password"
+                    type="password"
+                    value={passwordForm.currentPassword}
+                    onChange={(e) =>
+                      setPasswordForm({
+                        ...passwordForm,
+                        currentPassword: e.target.value,
+                      })
+                    }
+                  />
+                  <Input
+                    label="New Password"
+                    type="password"
+                    value={passwordForm.newPassword}
+                    onChange={(e) =>
+                      setPasswordForm({
+                        ...passwordForm,
+                        newPassword: e.target.value,
+                      })
+                    }
+                  />
+                  <Input
+                    label="Confirm New Password"
+                    type="password"
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) =>
+                      setPasswordForm({
+                        ...passwordForm,
+                        confirmPassword: e.target.value,
+                      })
+                    }
+                  />
+                  <Button
+                    onClick={handleChangePassword}
+                    isLoading={changingPassword}
+                  >
+                    Update Password
+                  </Button>
+                </div>
+              </div>
             </div>
           </Card>
         </div>

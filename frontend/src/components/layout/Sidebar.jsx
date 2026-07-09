@@ -1,6 +1,5 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import {
@@ -34,11 +33,13 @@ const navigationByRole = {
     {
       section: "MAIN",
       items: [
+        { name: "Admin Dashboard", href: "/admin", icon: LayoutDashboard },
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
         { name: "Patients", href: "/patients", icon: Users },
         { name: "Appointments", href: "/appointments", icon: Calendar },
         { name: "Doctors", href: "/doctors", icon: Stethoscope },
         { name: "Billing", href: "/billing", icon: DollarSign },
+        { name: "Service Fees", href: "/admin/services", icon: Receipt },
       ],
     },
     {
@@ -49,6 +50,7 @@ const navigationByRole = {
         { name: "Departments", href: "/admin/departments", icon: Building2 },
         { name: "Rooms & Wards", href: "/admin/rooms", icon: Bed },
         { name: "Pharmacy", href: "/admin/medicines", icon: Pill },
+        { name: "Service Fees", href: "/admin/services", icon: Receipt },
         { name: "Laboratory", href: "/admin/lab", icon: FlaskConical },
         { name: "Imaging", href: "/admin/imaging", icon: Camera },
         { name: "Insurance", href: "/admin/insurance", icon: Shield },
@@ -79,7 +81,10 @@ const navigationByRole = {
           const isImpersonatingHospital = sessionStorage.getItem(
             "impersonating_hospital_id",
           );
-          const isTrueSuperAdmin = isSuperuser && !isImpersonatingHospital;
+          const isTrueSuperAdmin =
+            storedRole === "super_admin" &&
+            isSuperuser &&
+            !isImpersonatingHospital;
 
           if (isTrueSuperAdmin) {
             items.push({
@@ -97,7 +102,51 @@ const navigationByRole = {
         return items;
       })(),
     },
-    ,
+  ],
+  super_admin: [
+    {
+      section: "MAIN",
+      items: [
+        { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+        { name: "Patients", href: "/patients", icon: Users },
+        { name: "Appointments", href: "/appointments", icon: Calendar },
+        { name: "Doctors", href: "/doctors", icon: Stethoscope },
+        { name: "Billing", href: "/billing", icon: DollarSign },
+        { name: "Service Fees", href: "/admin/services", icon: Receipt },
+      ],
+    },
+    {
+      section: "MANAGEMENT",
+      items: [
+        { name: "Manage Users", href: "/admin/users", icon: UserCog },
+        { name: "Manage Roles", href: "/admin/roles", icon: Shield },
+        { name: "Departments", href: "/admin/departments", icon: Building2 },
+        { name: "Rooms & Wards", href: "/admin/rooms", icon: Bed },
+        { name: "Pharmacy", href: "/admin/medicines", icon: Pill },
+        { name: "Service Fees", href: "/admin/services", icon: Receipt },
+        { name: "Laboratory", href: "/admin/lab", icon: FlaskConical },
+        { name: "Imaging", href: "/admin/imaging", icon: Camera },
+        { name: "Insurance", href: "/admin/insurance", icon: Shield },
+        { name: "Inventory", href: "/admin/inventory", icon: Package },
+        { name: "Bed Management", href: "/admin/beds", icon: Bed },
+      ],
+    },
+    {
+      section: "REPORTS",
+      items: [
+        { name: "Reports", href: "/admin/reports", icon: FileText },
+        { name: "Audit Logs", href: "/admin/logs", icon: Database },
+      ],
+    },
+    {
+      section: "SYSTEM",
+      items: [
+        { name: "Subscription", href: "/admin/subscription", icon: Crown },
+        { name: "Payments", href: "/admin/payment", icon: CreditCard },
+        { name: "Super Admin", href: "/super-admin", icon: Shield },
+        { name: "Settings", href: "/admin/settings", icon: Settings },
+      ],
+    },
   ],
   doctor: [
     {
@@ -112,14 +161,20 @@ const navigationByRole = {
   ],
   receptionist: [
     {
-      section: "MAIN",
+      section: "FRONT DESK",
       items: [
-        { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-        { name: "Reception Desk", href: "/reception", icon: Activity },
+        { name: "Reception Dashboard", href: "/reception", icon: Activity },
         { name: "Register Patient", href: "/patients/add", icon: UserCog },
-        { name: "All Patients", href: "/patients", icon: Users },
-        { name: "Billing", href: "/billing", icon: DollarSign },
         { name: "Appointments", href: "/appointments", icon: Calendar },
+        { name: "Billing & Payments", href: "/billing", icon: DollarSign },
+      ],
+    },
+    {
+      section: "PATIENT FLOW",
+      items: [
+        { name: "All Patients", href: "/patients", icon: Users },
+        { name: "Doctors", href: "/doctors", icon: Stethoscope },
+        { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       ],
     },
   ],
@@ -138,9 +193,14 @@ const navigationByRole = {
     {
       section: "MAIN",
       items: [
-        { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-        { name: "Pharmacy", href: "/pharmacy", icon: Pill },
+        {
+          name: "Pharmacy Dashboard",
+          href: "/pharmacy",
+          icon: LayoutDashboard,
+        },
         { name: "Medicines", href: "/admin/medicines", icon: Package },
+        { name: "Inventory", href: "/admin/inventory", icon: Package },
+        { name: "POS", href: "/pharmacy/pos", icon: Receipt },
       ],
     },
   ],
@@ -177,10 +237,38 @@ const navigationByRole = {
   ],
 };
 
-export default function Sidebar({ collapsed, onToggle }) {
-  const pathname = usePathname();
+export default function Sidebar({
+  collapsed,
+  onToggle,
+  mobileOpen = false,
+  onCloseMobile,
+  branding,
+}) {
+  const [pathname, setPathname] = useState("");
   const [role, setRole] = useState("admin");
   const [expandedSections, setExpandedSections] = useState({});
+  const [logoIndex, setLogoIndex] = useState(0);
+
+  const logoSources = [
+    branding?.logoUrl,
+    "/brand/hospital-default-logo.svg",
+    "/brand/logo-light.svg",
+  ].filter(Boolean);
+
+  const activeLogo = logoSources[logoIndex] || "";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const updatePathname = () => setPathname(window.location.pathname || "");
+    updatePathname();
+
+    window.addEventListener("popstate", updatePathname);
+
+    return () => {
+      window.removeEventListener("popstate", updatePathname);
+    };
+  }, []);
 
   useEffect(() => {
     const storedRole = localStorage.getItem("role");
@@ -189,13 +277,13 @@ export default function Sidebar({ collapsed, onToggle }) {
     const sections = {};
     nav.forEach((s) => (sections[s.section] = true));
     setExpandedSections(sections);
-  }, []);
+  }, [pathname]);
 
   const navigation = navigationByRole[role] || navigationByRole.admin;
 
   return (
     <aside
-      className={`fixed top-0 left-0 z-50 h-screen flex flex-col transition-all duration-300 bg-gradient-to-b from-[#1a2744] to-[#0f1a2e] border-r border-[#2a3a5e] ${collapsed ? "w-20" : "w-64"}`}
+      className={`fixed top-0 left-0 z-50 h-screen flex flex-col bg-gradient-to-b from-[#1a2744] to-[#0f1a2e] border-r border-[#2a3a5e] transition-all duration-300 transform w-72 sm:w-80 ${collapsed ? "lg:w-20" : "lg:w-64"} ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
     >
       {/* Logo */}
       <div className="flex items-center h-16 px-4 border-b border-[#2a3a5e] flex-shrink-0">
@@ -203,12 +291,27 @@ export default function Sidebar({ collapsed, onToggle }) {
           href="/dashboard"
           className="flex items-center gap-3 overflow-hidden"
         >
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-base">M</span>
-          </div>
+          {!activeLogo ? (
+            <div className="h-10 w-10 rounded-xl bg-white/10 ring-1 ring-white/20 flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-bold text-sm tracking-wide">
+                MC
+              </span>
+            </div>
+          ) : (
+            <div className="h-10 w-10 rounded-xl bg-white/10 ring-1 ring-white/20 flex items-center justify-center flex-shrink-0 p-1">
+              <img
+                src={activeLogo}
+                alt="MediCore"
+                className="h-full w-full object-contain"
+                onError={() => setLogoIndex((prev) => prev + 1)}
+              />
+            </div>
+          )}
           {!collapsed && (
             <div>
-              <h1 className="text-lg font-bold text-white">MediCore</h1>
+              <h1 className="text-base font-bold tracking-wide text-white">
+                MediCore
+              </h1>
               <p className="text-[10px] text-gray-400">HMS Platform</p>
             </div>
           )}
@@ -244,6 +347,10 @@ export default function Sidebar({ collapsed, onToggle }) {
                     <li key={item.name}>
                       <Link
                         href={item.href}
+                        onClick={() => {
+                          setPathname(item.href);
+                          onCloseMobile?.();
+                        }}
                         className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${isActive ? "bg-orange-500/20 text-orange-400" : "text-gray-400 hover:text-white hover:bg-white/5"}`}
                         title={collapsed ? item.name : undefined}
                       >
@@ -262,10 +369,11 @@ export default function Sidebar({ collapsed, onToggle }) {
       </nav>
 
       {/* Footer */}
-      <div className="p-3 border-t border-[#2a3a5e] flex-shrink-0">
+      <div className="p-3 border-t border-[#2a3a5e] flex-shrink-0 hidden lg:block">
         <button
+          type="button"
           onClick={onToggle}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-400 hover:text-white hover:bg-white/5"
+          className="relative z-10 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-400 hover:text-white hover:bg-white/5"
         >
           {collapsed ? (
             <ChevronRight className="h-4 w-4" />

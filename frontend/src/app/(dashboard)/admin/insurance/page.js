@@ -10,6 +10,7 @@ import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
 import Modal from "@/components/ui/Modal";
 import Spinner from "@/components/ui/Spinner";
+import EmptyState from "@/components/ui/EmptyState";
 import {
   useInsuranceCompanies,
   useInsuranceClaims,
@@ -44,8 +45,16 @@ export default function InsurancePage() {
   const [activeTab, setActiveTab] = useState("companies");
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showBillModal, setShowBillModal] = useState(false);
+  const [showApproveModal, setShowApproveModal] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [claimToApprove, setClaimToApprove] = useState(null);
+  const [claimStatusFilter, setClaimStatusFilter] = useState("all");
+  const [claimSearchTerm, setClaimSearchTerm] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [companyError, setCompanyError] = useState("");
+  const [claimError, setClaimError] = useState("");
+  const [approveError, setApproveError] = useState("");
+  const [approveAmount, setApproveAmount] = useState("");
 
   const [companyForm, setCompanyForm] = useState({
     name: "",
@@ -64,23 +73,71 @@ export default function InsurancePage() {
 
   const companies = Array.isArray(companiesData) ? companiesData : [];
   const claims = Array.isArray(claimsData) ? claimsData : [];
+  const claimStatusCounts = {
+    all: claims.length,
+    pending: claims.filter((c) => c.status === "pending").length,
+    approved: claims.filter((c) => c.status === "approved").length,
+    paid: claims.filter((c) => c.status === "paid").length,
+    rejected: claims.filter((c) => c.status === "rejected").length,
+  };
+  const filteredClaims =
+    claimStatusFilter === "all"
+      ? claims
+      : claims.filter((c) => c.status === claimStatusFilter);
+  const searchedClaims = filteredClaims.filter((c) => {
+    const query = claimSearchTerm.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      (c.patient_name || "").toLowerCase().includes(query) ||
+      (c.policy_number || "").toLowerCase().includes(query) ||
+      (c.company_name || "").toLowerCase().includes(query) ||
+      String(c.company || "")
+        .toLowerCase()
+        .includes(query)
+    );
+  });
+
+  const getErrorMessage = (err, fallback = "Failed") => {
+    const data = err?.response?.data;
+    if (!data) return fallback;
+    if (typeof data === "string") return data;
+    if (data.detail) return data.detail;
+    if (data.error) return data.error;
+    const firstKey = Object.keys(data)[0];
+    const firstVal = firstKey ? data[firstKey] : null;
+    if (Array.isArray(firstVal) && firstVal.length) return firstVal[0];
+    if (typeof firstVal === "string") return firstVal;
+    return fallback;
+  };
 
   // Save Company to Database
   const handleSaveCompany = async () => {
-    if (!companyForm.name) return toast.error("Name required");
+    if (!companyForm.name.trim()) {
+      setCompanyError("Company name is required");
+      return;
+    }
+    if (!companyForm.code.trim()) {
+      setCompanyError("Company code is required");
+      return;
+    }
+
+    setCompanyError("");
     setIsSaving(true);
     try {
+      const payload = {
+        ...companyForm,
+        name: companyForm.name.trim(),
+        code: companyForm.code.trim(),
+      };
       if (editing) {
-        await apiClient.patch(
-          `/insurance-companies/${editing.id}/`,
-          companyForm,
-        );
+        await apiClient.patch(`/insurance-companies/${editing.id}/`, payload);
         toast.success("Updated!");
       } else {
-        await apiClient.post("/insurance-companies/", companyForm);
+        await apiClient.post("/insurance-companies/", payload);
         toast.success("Added!");
       }
       setShowCompanyModal(false);
+      setCompanyError("");
       setCompanyForm({
         name: "",
         code: "",
@@ -91,7 +148,9 @@ export default function InsurancePage() {
       setEditing(null);
       refetchCompanies();
     } catch (err) {
-      toast.error("Failed to save");
+      const message = getErrorMessage(err, "Failed to save");
+      setCompanyError(message);
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -123,20 +182,24 @@ export default function InsurancePage() {
 
   // Create Insurance Claim (Bill)
   const handleCreateClaim = async () => {
-    if (!billForm.patient_name || !billForm.company)
-      return toast.error("Patient and company required");
+    if (!billForm.patient_name.trim() || !billForm.company) {
+      setClaimError("Patient and company are required");
+      return;
+    }
+    setClaimError("");
     setIsSaving(true);
     try {
       await apiClient.post("/insurance-claims/", {
-        patient_name: billForm.patient_name,
-        policy_number: billForm.policy_number,
+        patient_name: billForm.patient_name.trim(),
+        policy_number: billForm.policy_number.trim(),
         company: billForm.company,
         claim_amount: parseFloat(billForm.claim_amount || 0),
-        description: billForm.description,
+        description: billForm.description.trim(),
         status: "pending",
       });
       toast.success("Insurance claim created!");
       setShowBillModal(false);
+      setClaimError("");
       setBillForm({
         patient_name: "",
         policy_number: "",
@@ -146,7 +209,9 @@ export default function InsurancePage() {
       });
       refetchClaims();
     } catch (err) {
-      toast.error("Failed to create claim");
+      const message = getErrorMessage(err, "Failed to create claim");
+      setClaimError(message);
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -155,11 +220,53 @@ export default function InsurancePage() {
   // Update Claim Status
   const handleClaimUpdate = async (id, status) => {
     try {
-      await apiClient.patch(`/insurance-claims/${id}/`, { status });
+      await apiClient.post(`/insurance-claims/${id}/update_status/`, {
+        status,
+      });
       toast.success("Claim updated!");
       refetchClaims();
     } catch (err) {
-      toast.error("Failed");
+      toast.error(getErrorMessage(err, "Failed"));
+    }
+  };
+
+  const openApproveModal = (claim) => {
+    setClaimToApprove(claim);
+    setApproveAmount(String(claim?.claim_amount || ""));
+    setApproveError("");
+    setShowApproveModal(true);
+  };
+
+  const handleApproveClaim = async () => {
+    if (!claimToApprove) return;
+
+    const parsedAmount = parseFloat(approveAmount);
+    if (Number.isNaN(parsedAmount) || parsedAmount < 0) {
+      setApproveError("Approved amount must be a valid number");
+      return;
+    }
+
+    setApproveError("");
+    setIsSaving(true);
+    try {
+      await apiClient.post(
+        `/insurance-claims/${claimToApprove.id}/update_status/`,
+        {
+          status: "approved",
+          approved_amount: parsedAmount,
+        },
+      );
+      toast.success("Claim approved");
+      setShowApproveModal(false);
+      setClaimToApprove(null);
+      setApproveAmount("");
+      refetchClaims();
+    } catch (err) {
+      const message = getErrorMessage(err, "Failed to approve claim");
+      setApproveError(message);
+      toast.error(message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -197,6 +304,7 @@ export default function InsurancePage() {
               <Button
                 icon={Plus}
                 onClick={() => {
+                  setCompanyError("");
                   setEditing(null);
                   setCompanyForm({
                     name: "",
@@ -212,7 +320,13 @@ export default function InsurancePage() {
               </Button>
             )}
             {activeTab === "claims" && (
-              <Button icon={FileText} onClick={() => setShowBillModal(true)}>
+              <Button
+                icon={FileText}
+                onClick={() => {
+                  setClaimError("");
+                  setShowBillModal(true);
+                }}
+              >
                 New Claim
               </Button>
             )}
@@ -278,6 +392,7 @@ export default function InsurancePage() {
                   <div className="absolute top-3 right-12 flex gap-1">
                     <button
                       onClick={() => {
+                        setCompanyError("");
                         setEditing(c);
                         setCompanyForm({
                           name: c.name,
@@ -305,108 +420,209 @@ export default function InsurancePage() {
           ))}
 
         {/* Claims */}
-        {activeTab === "claims" &&
-          (claims.length === 0 ? (
-            <Card>
-              <div className="text-center py-12 text-gray-500">
-                No claims yet
-              </div>
-            </Card>
-          ) : (
-            <Card padding={false}>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Patient
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Company
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Policy #
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Amount
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Status
-                      </th>
-                      <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {claims.map((c) => (
-                      <tr key={c.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-3 text-sm font-medium">
-                          {c.patient_name}
-                        </td>
-                        <td className="px-3 py-3 text-sm">
-                          {c.company_name || c.company}
-                        </td>
-                        <td className="px-3 py-3 text-sm">{c.policy_number}</td>
-                        <td>
-                          $ {parseFloat(c.claim_amount || 0).toLocaleString()}
-                        </td>
-                        <td className="px-3 py-3">
-                          <Badge
-                            variant={
-                              c.status === "approved"
-                                ? "success"
-                                : c.status === "pending"
-                                  ? "warning"
-                                  : "danger"
-                            }
-                          >
-                            {c.status}
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-3">
-                          {c.status === "pending" && (
-                            <div className="flex justify-center gap-1">
-                              <Button
-                                size="sm"
-                                variant="success"
-                                onClick={() =>
-                                  handleClaimUpdate(c.id, "approved")
-                                }
-                              >
-                                ✓
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                onClick={() =>
-                                  handleClaimUpdate(c.id, "rejected")
-                                }
-                              >
-                                ✗
-                              </Button>
-                            </div>
-                          )}
-                        </td>
+        {activeTab === "claims" && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+              {[
+                { label: "All", value: claimStatusCounts.all },
+                { label: "Pending", value: claimStatusCounts.pending },
+                { label: "Approved", value: claimStatusCounts.approved },
+                { label: "Paid", value: claimStatusCounts.paid },
+                { label: "Rejected", value: claimStatusCounts.rejected },
+              ].map((item) => (
+                <Card key={item.label} className="text-center py-4">
+                  <p className="text-xl font-bold">{item.value}</p>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">
+                    {item.label}
+                  </p>
+                </Card>
+              ))}
+            </div>
+
+            <div className="max-w-md">
+              <input
+                type="text"
+                placeholder="Search patient, policy, or company..."
+                value={claimSearchTerm}
+                onChange={(e) => setClaimSearchTerm(e.target.value)}
+                className="w-full rounded-lg border px-4 py-2 text-sm"
+              />
+            </div>
+
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+              {[
+                { id: "all", label: "All" },
+                { id: "pending", label: "Pending" },
+                { id: "approved", label: "Approved" },
+                { id: "paid", label: "Paid" },
+                { id: "rejected", label: "Rejected" },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setClaimStatusFilter(f.id)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium ${claimStatusFilter === f.id ? "bg-white shadow-sm" : "text-gray-500"}`}
+                >
+                  {f.label} ({claimStatusCounts[f.id]})
+                </button>
+              ))}
+            </div>
+
+            {claims.length === 0 ? (
+              <Card>
+                <EmptyState
+                  imageSrc="/images/empty-states/insurance-empty.svg"
+                  imageAlt="No insurance claims"
+                  title="No claims yet"
+                  className="py-12"
+                  titleClassName="text-base font-medium text-gray-500 mb-0"
+                />
+              </Card>
+            ) : (
+              <Card padding={false}>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Patient
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Company
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Policy #
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Amount
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Approved
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Status
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Processed
+                        </th>
+                        <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                          Action
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          ))}
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {searchedClaims.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={8}
+                            className="px-3 py-8 text-center text-gray-500 text-sm"
+                          >
+                            No claims match your filter
+                          </td>
+                        </tr>
+                      )}
+                      {searchedClaims.map((c) => (
+                        <tr key={c.id} className="hover:bg-gray-50">
+                          <td className="px-3 py-3 text-sm font-medium">
+                            {c.patient_name}
+                          </td>
+                          <td className="px-3 py-3 text-sm">
+                            {c.company_name || c.company}
+                          </td>
+                          <td className="px-3 py-3 text-sm">
+                            {c.policy_number}
+                          </td>
+                          <td className="px-3 py-3 text-sm">
+                            $ {parseFloat(c.claim_amount || 0).toLocaleString()}
+                          </td>
+                          <td className="px-3 py-3 text-sm">
+                            {c.status === "approved" || c.status === "paid"
+                              ? `$ ${parseFloat(c.approved_amount || 0).toLocaleString()}`
+                              : "-"}
+                          </td>
+                          <td className="px-3 py-3">
+                            <Badge
+                              variant={
+                                c.status === "approved"
+                                  ? "success"
+                                  : c.status === "paid"
+                                    ? "info"
+                                    : c.status === "pending"
+                                      ? "warning"
+                                      : c.status === "rejected"
+                                        ? "danger"
+                                        : "default"
+                              }
+                            >
+                              {c.status}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-3 text-sm text-gray-600">
+                            {c.processed_date
+                              ? new Date(c.processed_date).toLocaleDateString()
+                              : "-"}
+                          </td>
+                          <td className="px-3 py-3">
+                            {c.status === "pending" && (
+                              <div className="flex justify-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="success"
+                                  onClick={() => openApproveModal(c)}
+                                >
+                                  ✓
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  onClick={() =>
+                                    handleClaimUpdate(c.id, "rejected")
+                                  }
+                                >
+                                  ✗
+                                </Button>
+                              </div>
+                            )}
+                            {c.status === "approved" && (
+                              <div className="flex justify-center">
+                                <Button
+                                  size="sm"
+                                  variant="primary"
+                                  onClick={() =>
+                                    handleClaimUpdate(c.id, "paid")
+                                  }
+                                >
+                                  Mark Paid
+                                </Button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
 
         {/* Company Modal */}
         <Modal
           isOpen={showCompanyModal}
-          onClose={() => setShowCompanyModal(false)}
+          onClose={() => {
+            setShowCompanyModal(false);
+            setCompanyError("");
+          }}
           title={editing ? "Edit Company" : "Add Company"}
           size="sm"
           footer={
             <>
               <Button
                 variant="secondary"
-                onClick={() => setShowCompanyModal(false)}
+                onClick={() => {
+                  setShowCompanyModal(false);
+                  setCompanyError("");
+                }}
               >
                 Cancel
               </Button>
@@ -417,6 +633,11 @@ export default function InsurancePage() {
           }
         >
           <div className="space-y-4">
+            {companyError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {companyError}
+              </div>
+            )}
             <Input
               label="Company Name *"
               value={companyForm.name}
@@ -462,14 +683,20 @@ export default function InsurancePage() {
         {/* Claim Modal */}
         <Modal
           isOpen={showBillModal}
-          onClose={() => setShowBillModal(false)}
+          onClose={() => {
+            setShowBillModal(false);
+            setClaimError("");
+          }}
           title="New Insurance Claim"
           size="md"
           footer={
             <>
               <Button
                 variant="secondary"
-                onClick={() => setShowBillModal(false)}
+                onClick={() => {
+                  setShowBillModal(false);
+                  setClaimError("");
+                }}
               >
                 Cancel
               </Button>
@@ -480,6 +707,11 @@ export default function InsurancePage() {
           }
         >
           <div className="space-y-4">
+            {claimError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {claimError}
+              </div>
+            )}
             <Input
               label="Patient Name *"
               value={billForm.patient_name}
@@ -522,6 +754,64 @@ export default function InsurancePage() {
                 setBillForm({ ...billForm, description: e.target.value })
               }
               placeholder="Reason for claim..."
+            />
+          </div>
+        </Modal>
+
+        {/* Approve Claim Modal */}
+        <Modal
+          isOpen={showApproveModal}
+          onClose={() => {
+            setShowApproveModal(false);
+            setClaimToApprove(null);
+            setApproveAmount("");
+            setApproveError("");
+          }}
+          title="Approve Claim"
+          size="sm"
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowApproveModal(false);
+                  setClaimToApprove(null);
+                  setApproveAmount("");
+                  setApproveError("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleApproveClaim} isLoading={isSaving}>
+                Approve
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            {approveError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {approveError}
+              </div>
+            )}
+            <p className="text-sm text-gray-600">
+              Patient:{" "}
+              <span className="font-medium">
+                {claimToApprove?.patient_name || "-"}
+              </span>
+            </p>
+            <p className="text-sm text-gray-600">
+              Requested:{" "}
+              <span className="font-medium">
+                ${" "}
+                {parseFloat(claimToApprove?.claim_amount || 0).toLocaleString()}
+              </span>
+            </p>
+            <Input
+              label="Approved Amount *"
+              type="number"
+              value={approveAmount}
+              onChange={(e) => setApproveAmount(e.target.value)}
             />
           </div>
         </Modal>

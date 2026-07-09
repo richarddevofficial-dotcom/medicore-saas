@@ -1,4 +1,6 @@
-from rest_framework import viewsets, filters
+from decimal import Decimal
+
+from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -8,6 +10,65 @@ from datetime import timedelta
 from .models import Patient
 from staff.models import StaffProfile
 from .serializers import PatientListSerializer, PatientDetailSerializer
+from billing.models import Bill
+
+
+def _resolve_request_hospital(request):
+    user = request.user
+    if user.is_superuser:
+        hospital_id = request.data.get('hospital_id') or request.query_params.get('hospital_id')
+        if not hospital_id:
+            return None
+        from hospitals.models import Hospital
+        return Hospital.objects.filter(id=hospital_id).first()
+
+    if hasattr(user, 'staff_profile'):
+        return user.staff_profile.hospital
+    return None
+
+
+def _get_patient_bill(patient):
+    return Bill.objects.filter(
+        hospital=patient.hospital,
+        patient_mrn=patient.mrn,
+    ).order_by('-created_at').first()
+
+
+def _refresh_bill_status(bill):
+    paid = Decimal(str(bill.amount_paid or 0))
+    total = Decimal(str(bill.total_amount or 0))
+    if paid >= total and total > 0:
+        bill.status = 'paid'
+    elif paid > 0:
+        bill.status = 'partial'
+    else:
+        bill.status = 'pending'
+
+
+def _stage_is_paid(patient, stage):
+    bill = _get_patient_bill(patient)
+    if not bill:
+        return False, 'No bill found. Please create and pay the bill first.'
+
+    paid = Decimal(str(bill.amount_paid or 0))
+    consultation_fee = Decimal(str(bill.consultation_fee or 0))
+    lab_fee = Decimal(str(bill.lab_fee or 0))
+
+    if stage == 'consultation':
+        if consultation_fee <= 0:
+            return False, 'Consultation fee has not been created yet.'
+        if paid >= consultation_fee:
+            return True, ''
+        return False, 'Consultation fee must be paid before the doctor can start.'
+
+    if stage == 'lab':
+        if consultation_fee <= 0 or lab_fee <= 0:
+            return False, 'Lab fee has not been created yet.'
+        if paid >= (consultation_fee + lab_fee):
+            return True, ''
+        return False, 'Lab fee must be paid before the lab can start.'
+
+    return True, ''
 
 class PatientViewSet(viewsets.ModelViewSet):
     queryset = Patient.objects.all()
@@ -22,10 +83,21 @@ class PatientViewSet(viewsets.ModelViewSet):
         if self.action == 'list':
             return PatientListSerializer
         return PatientDetailSerializer
+
+    def get_queryset(self):
+        hospital = _resolve_request_hospital(self.request)
+        if self.request.user.is_superuser and not hospital:
+            return Patient.objects.all()
+        if not hospital:
+            return Patient.objects.none()
+        return Patient.objects.filter(hospital=hospital)
     
     def perform_create(self, serializer):
-        from hospitals.models import Hospital
-        serializer.save(hospital=Hospital.objects.first(), status='registered')
+        hospital = _resolve_request_hospital(self.request)
+        if not hospital:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError('Hospital context is required')
+        serializer.save(hospital=hospital, status='registered')
     
     @action(detail=True, methods=['post'])
     def assign_doctor(self, request, mrn=None):
@@ -60,6 +132,21 @@ class PatientViewSet(viewsets.ModelViewSet):
         patient = self.get_object()
         lab_tests = request.data.get('lab_test_requested', '')
         if lab_tests:
+            bill = _get_patient_bill(patient)
+            if not bill:
+                return Response(
+                    {'error': 'No consultation bill found. Please create bill first.'},
+                    status=status.HTTP_402_PAYMENT_REQUIRED,
+                )
+
+            requested_lab_fee = request.data.get('lab_fee', 30)
+            lab_fee = Decimal(str(requested_lab_fee or 0))
+            if lab_fee > 0 and Decimal(str(bill.lab_fee or 0)) <= 0:
+                bill.lab_fee = lab_fee
+                bill.save()
+                _refresh_bill_status(bill)
+                bill.save(update_fields=['status', 'updated_at'])
+
             patient.lab_test_requested = lab_tests
             patient.status = 'lab_requested'
             patient.save()
@@ -68,6 +155,9 @@ class PatientViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def request_imaging(self, request, mrn=None):
         patient = self.get_object()
+        is_paid, message = _stage_is_paid(patient, 'consultation')
+        if not is_paid:
+            return Response({'error': message}, status=status.HTTP_402_PAYMENT_REQUIRED)
         imaging_info = request.data.get('imaging_requested', '')
         test_type = request.data.get('test_type', 'xray')
         body_part = request.data.get('body_part', '')
@@ -85,6 +175,9 @@ class PatientViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def start_lab_test(self, request, mrn=None):
         patient = self.get_object()
+        is_paid, message = _stage_is_paid(patient, 'lab')
+        if not is_paid:
+            return Response({'error': message}, status=status.HTTP_402_PAYMENT_REQUIRED)
         patient.status = 'lab_in_progress'
         patient.save()
         return Response(PatientDetailSerializer(patient).data)
@@ -101,6 +194,14 @@ class PatientViewSet(viewsets.ModelViewSet):
     def update_status(self, request, mrn=None):
         patient = self.get_object()
         new_status = request.data.get('status')
+        if new_status == 'in_consultation':
+            is_paid, message = _stage_is_paid(patient, 'consultation')
+            if not is_paid:
+                return Response({'error': message}, status=status.HTTP_402_PAYMENT_REQUIRED)
+        if new_status == 'lab_in_progress':
+            is_paid, message = _stage_is_paid(patient, 'lab')
+            if not is_paid:
+                return Response({'error': message}, status=status.HTTP_402_PAYMENT_REQUIRED)
         if 'diagnosis' in request.data:
             patient.diagnosis = request.data.get('diagnosis', '')
         if 'treatment_plan' in request.data:

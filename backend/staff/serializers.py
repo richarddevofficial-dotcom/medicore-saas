@@ -10,6 +10,12 @@ class UserSerializer(serializers.ModelSerializer):
 class StaffSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     department_name = serializers.CharField(source='department.name', read_only=True)
+    hospital_name = serializers.SerializerMethodField()
+
+    def get_hospital_name(self, obj):
+        if obj.user.is_superuser:
+            return 'MediCore'
+        return obj.hospital.name if obj.hospital else ''
     
     class Meta:
         model = StaffProfile

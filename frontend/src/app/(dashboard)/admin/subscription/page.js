@@ -1,20 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
 import Spinner from "@/components/ui/Spinner";
+import Alert from "@/components/ui/Alert";
 import { useSubscription } from "@/components/ui/SubscriptionGuard";
 import { SUBSCRIPTION_PLANS } from "@/lib/subscription-plans";
 import { Check, Crown, Building2, Users, Activity } from "lucide-react";
 
 export default function SubscriptionPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const subscription = useSubscription();
   const [redirectingPlan, setRedirectingPlan] = useState("");
+  const showRestrictedNotice = searchParams.get("restricted") === "1";
 
   const handleUpgrade = async (planId) => {
     setRedirectingPlan(planId);
@@ -33,6 +36,13 @@ export default function SubscriptionPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
+        {showRestrictedNotice && (
+          <Alert
+            type="warning"
+            title="Feature Not Available On Current Plan"
+            message="This module is available on a higher plan. Upgrade your subscription to unlock it."
+          />
+        )}
         <div>
           <h1 className="text-2xl font-bold">💳 Subscription Plans</h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -40,11 +50,12 @@ export default function SubscriptionPage() {
             <Badge variant="warning">
               {subscription.subscription_plan?.toUpperCase()}
             </Badge>
-            {subscription.days_left > 0 && (
-              <span className="ml-2 text-orange-600">
-                ({subscription.days_left} days left in trial)
-              </span>
-            )}
+            {subscription.subscription_plan === "trial" &&
+              subscription.days_left > 0 && (
+                <span className="ml-2 text-orange-600">
+                  ({subscription.days_left} days left in trial)
+                </span>
+              )}
           </p>
         </div>
 
