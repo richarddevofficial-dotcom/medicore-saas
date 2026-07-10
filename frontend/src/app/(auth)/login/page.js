@@ -176,7 +176,10 @@ export default function LoginPage() {
       {error && <Alert type="error" message={error} className="mb-4" />}
 
       {step === "credentials" ? (
-        <form onSubmit={handleCredentialSubmit} className="space-y-4">
+        <form
+          onSubmit={handleCredentialSubmit}
+          className="space-y-4 sm:space-y-5"
+        >
           <Input
             label="Username, Email or Phone Number"
             type="text"
@@ -184,6 +187,7 @@ export default function LoginPage() {
             onChange={(e) => setCredential(e.target.value)}
             placeholder="username, example@gmail.com, or 09XX XXX XXX"
             icon={credentialType === "phone" ? Phone : Mail}
+            className="h-11 text-base sm:text-sm"
             required
           />
           <Input
@@ -193,34 +197,35 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
             icon={Lock}
+            className="h-11 text-base sm:text-sm"
             required
           />
 
           <div className="flex justify-end -mt-1">
             <Link
               href="/forgot-password"
-              className="text-xs text-orange-600 font-medium hover:underline"
+              className="inline-block py-1 text-sm sm:text-xs text-orange-600 font-medium hover:underline"
             >
               Forgot password?
             </Link>
           </div>
 
-          <Button type="submit" fullWidth isLoading={isLoading}>
+          <Button type="submit" size="lg" fullWidth isLoading={isLoading}>
             Continue
           </Button>
 
-          <p className="text-center text-sm text-gray-600">
+          <p className="text-center text-sm text-gray-600 leading-relaxed">
             Don&apos;t have an account?{" "}
             <Link
               href="/register"
-              className="text-orange-600 font-medium hover:underline"
+              className="inline-block py-1 text-orange-600 font-medium hover:underline"
             >
               Register Hospital
             </Link>
           </p>
         </form>
       ) : (
-        <form onSubmit={handleOtpSubmit} className="space-y-4">
+        <form onSubmit={handleOtpSubmit} className="space-y-4 sm:space-y-5">
           <Input
             label="One-Time Password (OTP)"
             type="text"
@@ -230,19 +235,20 @@ export default function LoginPage() {
             }
             placeholder="Enter 6-digit code"
             icon={Lock}
+            className="h-11 text-base sm:text-sm"
             required
           />
 
-          <Button type="submit" fullWidth isLoading={isLoading}>
+          <Button type="submit" size="lg" fullWidth isLoading={isLoading}>
             Verify OTP & Sign In
           </Button>
 
-          <label className="flex items-center gap-2 text-sm text-gray-600">
+          <label className="flex items-start gap-2 text-sm text-gray-600 leading-relaxed">
             <input
               type="checkbox"
               checked={rememberDevice}
               onChange={(e) => setRememberDevice(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
             />
             Remember this device for faster future sign-in
           </label>
@@ -250,6 +256,7 @@ export default function LoginPage() {
           <Button
             type="button"
             variant="outline"
+            size="lg"
             fullWidth
             isLoading={isResending}
             disabled={resendCountdown > 0}
@@ -267,7 +274,7 @@ export default function LoginPage() {
               setOtp("");
               setError("");
             }}
-            className="w-full text-sm text-gray-500 hover:text-gray-700"
+            className="w-full py-2 text-sm text-gray-500 hover:text-gray-700"
           >
             Back to credentials
           </button>

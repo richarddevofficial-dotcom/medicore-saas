@@ -11,8 +11,8 @@ export default function AuthLayout({ children, title, subtitle }) {
   const activeLogo = logoSources[logoIndex] || "";
 
   return (
-    <div className="min-h-screen bg-gray-50 bg-[url('/images/auth/login-hero.svg')] bg-cover bg-center flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+    <div className="min-h-screen bg-gray-50 bg-[url('/images/auth/login-hero.svg')] bg-cover bg-center flex flex-col justify-center px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
+      <div className="mx-auto w-full max-w-md">
         <div className="flex justify-center">
           {!activeLogo ? (
             <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-sm">
@@ -37,12 +37,14 @@ export default function AuthLayout({ children, title, subtitle }) {
         </h2>
 
         {subtitle && (
-          <p className="mt-2 text-center text-sm text-gray-600">{subtitle}</p>
+          <p className="mt-2 px-2 text-center text-sm text-gray-600 break-words">
+            {subtitle}
+          </p>
         )}
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow-lg rounded-xl sm:px-10 border border-gray-100">
+      <div className="mt-6 mx-auto w-full max-w-md sm:mt-8">
+        <div className="bg-white py-6 px-4 shadow-lg rounded-xl border border-gray-100 sm:px-10 sm:py-8">
           {children}
         </div>
       </div>
