@@ -1,2 +1,18 @@
 .env
 *.env
+
+# Environment backups
+.env.backup
+.env.save
+.env.save.*
+
+# Docker backups
+docker-compose.yml.backup
+docker-compose.yml.before-frontend
+
+# Temporary page backups
+*.backup
+
+# Django collected static files
+backend/staticfiles/
+
