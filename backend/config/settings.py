@@ -219,3 +219,36 @@ DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@medicore.local')
 FRONTEND_APP_URL = os.getenv('FRONTEND_APP_URL', 'http://localhost:3000')
 PLATFORM_BASE_DOMAIN = os.getenv('PLATFORM_BASE_DOMAIN', 'medicore.com').strip().lower()
 PLATFORM_SUBDOMAIN_MODE = _env_bool('PLATFORM_SUBDOMAIN_MODE', True)
+
+# Public self-service registration API
+if 'publicapi' not in INSTALLED_APPS:
+    INSTALLED_APPS.append('publicapi')
+
+# Allow secure MediCore tenant subdomains.
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://([a-z0-9-]+\.)?medicorecloud\.com$",
+]
+
+# Allow secure MediCore tenant subdomains.
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://([a-z0-9-]+\.)?medicorecloud\.com$",
+]
+
+# MediCore SaaS subscription and commercial billing
+if 'saas_billing' not in INSTALLED_APPS:
+    INSTALLED_APPS.append('saas_billing')
+
+# Enforce MediCore trial and subscription access after authentication.
+_subscription_middleware = (
+    'saas_billing.middleware.SubscriptionAccessMiddleware'
+)
+
+if _subscription_middleware not in MIDDLEWARE:
+    auth_index = MIDDLEWARE.index(
+        'django.contrib.auth.middleware.AuthenticationMiddleware'
+    )
+
+    MIDDLEWARE.insert(
+        auth_index + 1,
+        _subscription_middleware,
+    )

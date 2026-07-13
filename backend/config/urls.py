@@ -877,3 +877,24 @@ urlpatterns = [
     # Router URLs
     path('api/v1/', include(router.urls)),
 ]
+# Public SaaS registration routes
+from django.urls import include as public_include
+from django.urls import path as public_path
+
+urlpatterns += [
+    public_path(
+        'api/v1/public/',
+        public_include('publicapi.urls'),
+    ),
+]
+
+# MediCore SaaS subscription and billing API
+from django.urls import include as billing_include
+from django.urls import path as billing_path
+
+urlpatterns += [
+    billing_path(
+        'api/v1/saas-billing/',
+        billing_include('saas_billing.urls'),
+    ),
+]

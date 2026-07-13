@@ -1,0 +1,68 @@
+from django.urls import path
+
+from .views import (
+    approve_manual_payment,
+    billing_dashboard,
+    download_invoice_pdf,
+    download_payment_receipt_pdf,
+    generate_initial_invoice,
+    hospital_invoices,
+    hospital_payments,
+    public_subscription_plans,
+    submit_manual_payment,
+    subscription_status,
+)
+
+
+urlpatterns = [
+    path(
+        "plans/",
+        public_subscription_plans,
+        name="public-subscription-plans",
+    ),
+    path(
+        "status/",
+        subscription_status,
+        name="subscription-status",
+    ),
+    path(
+        "dashboard/",
+        billing_dashboard,
+        name="billing-dashboard",
+    ),
+    path(
+        "invoices/",
+        hospital_invoices,
+        name="hospital-invoices",
+    ),
+    path(
+        "invoices/generate-initial/",
+        generate_initial_invoice,
+        name="generate-initial-invoice",
+    ),
+    path(
+        "invoices/<int:invoice_id>/pdf/",
+        download_invoice_pdf,
+        name="download-invoice-pdf",
+    ),
+    path(
+        "payments/",
+        hospital_payments,
+        name="hospital-payments",
+    ),
+    path(
+        "payments/manual/",
+        submit_manual_payment,
+        name="submit-manual-payment",
+    ),
+    path(
+        "payments/<int:payment_id>/approve/",
+        approve_manual_payment,
+        name="approve-manual-payment",
+    ),
+    path(
+        "payments/<int:payment_id>/receipt-pdf/",
+        download_payment_receipt_pdf,
+        name="download-payment-receipt-pdf",
+    ),
+]

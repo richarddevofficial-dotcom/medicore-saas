@@ -1,0 +1,160 @@
+from django.contrib import admin
+
+from .models import (
+    HospitalSubscription,
+    Invoice,
+    Payment,
+    PlanFeature,
+    SubscriptionPlan,
+)
+
+
+class PlanFeatureInline(admin.TabularInline):
+    model = PlanFeature
+    extra = 0
+
+
+@admin.register(SubscriptionPlan)
+class SubscriptionPlanAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "code",
+        "monthly_price",
+        "service_fee",
+        "currency",
+        "max_staff",
+        "max_patients",
+        "is_active",
+    )
+
+    list_filter = (
+        "is_active",
+        "currency",
+    )
+
+    search_fields = (
+        "name",
+        "code",
+    )
+
+    ordering = (
+        "display_order",
+        "monthly_price",
+    )
+
+    inlines = [
+        PlanFeatureInline,
+    ]
+
+
+@admin.register(HospitalSubscription)
+class HospitalSubscriptionAdmin(admin.ModelAdmin):
+    list_display = (
+        "hospital",
+        "plan",
+        "status",
+        "trial_ends_at",
+        "service_fee_paid",
+        "next_billing_date",
+        "current_monthly_price",
+    )
+
+    list_filter = (
+        "status",
+        "plan",
+        "service_fee_paid",
+        "auto_renew",
+    )
+
+    search_fields = (
+        "hospital__name",
+        "hospital__slug",
+        "hospital__email",
+        "plan__name",
+    )
+
+
+@admin.register(Invoice)
+class InvoiceAdmin(admin.ModelAdmin):
+    list_display = (
+        "invoice_number",
+        "hospital",
+        "invoice_type",
+        "status",
+        "total_amount",
+        "amount_paid",
+        "currency",
+        "due_date",
+    )
+
+    list_filter = (
+        "status",
+        "invoice_type",
+        "currency",
+    )
+
+    search_fields = (
+        "invoice_number",
+        "hospital__name",
+        "hospital__slug",
+    )
+
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+    )
+
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = (
+        "payment_reference",
+        "hospital",
+        "payment_type",
+        "amount",
+        "currency",
+        "gateway",
+        "status",
+        "paid_at",
+    )
+
+    list_filter = (
+        "status",
+        "payment_type",
+        "gateway",
+        "currency",
+    )
+
+    search_fields = (
+        "payment_reference",
+        "transaction_id",
+        "hospital__name",
+        "hospital__slug",
+    )
+
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+    )
+
+
+@admin.register(PlanFeature)
+class PlanFeatureAdmin(admin.ModelAdmin):
+    list_display = (
+        "feature_name",
+        "feature_code",
+        "plan",
+        "is_enabled",
+        "limit_value",
+    )
+
+    list_filter = (
+        "plan",
+        "is_enabled",
+    )
+
+    search_fields = (
+        "feature_name",
+        "feature_code",
+        "plan__name",
+    )

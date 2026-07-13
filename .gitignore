@@ -16,3 +16,6 @@ docker-compose.yml.before-frontend
 # Django collected static files
 backend/staticfiles/
 
+
+# Python configuration backups
+*.bak
