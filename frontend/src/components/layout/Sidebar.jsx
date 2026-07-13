@@ -71,6 +71,11 @@ const navigationByRole = {
         const items = [
           { name: "Subscription", href: "/admin/subscription", icon: Crown },
           { name: "Payments", href: "/admin/payment", icon: CreditCard },
+          {
+            name: "Billing & Subscription",
+            href: "/settings/billing",
+            icon: CreditCard,
+          },
         ];
         // Only show Super Admin for the true super-admin context.
         if (typeof window !== "undefined") {
@@ -143,6 +148,11 @@ const navigationByRole = {
       items: [
         { name: "Subscription", href: "/admin/subscription", icon: Crown },
         { name: "Payments", href: "/admin/payment", icon: CreditCard },
+        {
+          name: "Billing & Subscription",
+          href: "/settings/billing",
+          icon: CreditCard,
+        },
         { name: "Super Admin", href: "/super-admin", icon: Shield },
         { name: "Settings", href: "/admin/settings", icon: Settings },
       ],
