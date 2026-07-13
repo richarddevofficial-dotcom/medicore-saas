@@ -116,19 +116,19 @@ export default function BillingPage() {
         responseType: "blob",
       });
 
-      const contentDisposition = response.headers["content-disposition"] || "";
+      const disposition = response.headers["content-disposition"] || "";
 
-      const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
 
       const filename = filenameMatch?.[1] || fallbackFilename;
 
-      const blobUrl = window.URL.createObjectURL(
-        new Blob([response.data], {
-          type: "application/pdf",
-        }),
-      );
+      const blob = new Blob([response.data], {
+        type: "application/pdf",
+      });
 
+      const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
+
       link.href = blobUrl;
       link.download = filename;
 
@@ -138,7 +138,13 @@ export default function BillingPage() {
 
       window.URL.revokeObjectURL(blobUrl);
     } catch (requestError) {
-      setError("Unable to download the PDF.");
+      console.error("PDF download failed:", requestError);
+
+      setError(
+        requestError.response?.status === 401
+          ? "Your session has expired. Please sign in again."
+          : "Unable to download the PDF.",
+      );
     }
   }
 
@@ -396,6 +402,7 @@ export default function BillingPage() {
                 <TableHeading>Method</TableHeading>
                 <TableHeading>Status</TableHeading>
                 <TableHeading>Date</TableHeading>
+                <TableHeading>Action</TableHeading>
               </tr>
             </thead>
 
@@ -422,12 +429,33 @@ export default function BillingPage() {
                     <TableCell>
                       {dateValue(payment.paid_at || payment.created_at)}
                     </TableCell>
+                    <TableCell>
+                      {payment.status === "success" ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            downloadFile(
+                              `/saas-billing/payments/${payment.id}/receipt-pdf/`,
+                              `receipt-${payment.payment_reference}.pdf`,
+                            )
+                          }
+                          className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          <Download size={14} />
+                          Receipt
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-400">
+                          Awaiting approval
+                        </span>
+                      )}
+                    </TableCell>
                   </tr>
                 ))
               ) : (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-6 py-10 text-center text-slate-500"
                   >
                     No payments available.
