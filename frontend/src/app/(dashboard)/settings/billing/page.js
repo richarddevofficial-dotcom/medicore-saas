@@ -116,28 +116,29 @@ export default function BillingPage() {
         responseType: "blob",
       });
 
-      const contentDisposition =
-        response.headers?.["content-disposition"] || "";
-      const filenameMatch = contentDisposition.match(
-        /filename\*?=(?:UTF-8''|"?)([^";]+)/i,
-      );
-      const resolvedFilename = filenameMatch
-        ? decodeURIComponent(filenameMatch[1].replace(/"/g, "").trim())
-        : fallbackFilename;
+      const contentDisposition = response.headers["content-disposition"] || "";
 
-      const blobUrl = window.URL.createObjectURL(response.data);
+      const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+
+      const filename = filenameMatch?.[1] || fallbackFilename;
+
+      const blobUrl = window.URL.createObjectURL(
+        new Blob([response.data], {
+          type: "application/pdf",
+        }),
+      );
+
       const link = document.createElement("a");
       link.href = blobUrl;
-      link.download = resolvedFilename;
+      link.download = filename;
+
       document.body.appendChild(link);
       link.click();
       link.remove();
+
       window.URL.revokeObjectURL(blobUrl);
     } catch (requestError) {
-      setError(
-        requestError.response?.data?.error ||
-          "Unable to download file right now.",
-      );
+      setError("Unable to download the PDF.");
     }
   }
 
@@ -337,19 +338,31 @@ export default function BillingPage() {
                     <TableCell>{dateValue(invoice.due_date)}</TableCell>
 
                     <TableCell>
-                      {["pending", "overdue"].includes(invoice.status) ? (
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => setSelectedInvoice(invoice)}
-                          className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                          onClick={() =>
+                            downloadFile(
+                              `/saas-billing/invoices/${invoice.id}/pdf/`,
+                              `${invoice.invoice_number}.pdf`,
+                            )
+                          }
+                          className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                         >
-                          Submit payment
+                          <Download size={14} />
+                          PDF
                         </button>
-                      ) : (
-                        <span className="text-xs text-slate-400">
-                          No action
-                        </span>
-                      )}
+
+                        {["pending", "overdue"].includes(invoice.status) && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedInvoice(invoice)}
+                            className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                          >
+                            Submit payment
+                          </button>
+                        )}
+                      </div>
                     </TableCell>
                   </tr>
                 ))
