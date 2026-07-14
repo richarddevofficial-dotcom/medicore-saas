@@ -91,3 +91,60 @@ def get_subscription_access(subscription):
         "trial_days_remaining": trial_days_remaining,
         "grace_days_remaining": grace_days_remaining,
     }
+
+
+def get_hospital_plan_limits(hospital):
+    """Return effective limits for a hospital from SaaS plan (fallback to legacy hospital fields)."""
+    limits = {
+        "plan_code": (getattr(hospital, "subscription_plan", "trial") or "trial").lower(),
+        "max_staff": getattr(hospital, "max_staff", None),
+        "max_patients": getattr(hospital, "max_patients", None),
+    }
+
+    if not hospital:
+        return limits
+
+    subscription = (
+        HospitalSubscription.objects
+        .select_related("plan")
+        .filter(hospital=hospital)
+        .first()
+    )
+    if subscription and subscription.plan:
+        limits["plan_code"] = (subscription.plan.code or limits["plan_code"]).lower()
+        limits["max_staff"] = subscription.plan.max_staff
+        limits["max_patients"] = subscription.plan.max_patients
+
+    return limits
+
+
+def check_hospital_limit(hospital, resource_type):
+    """Check if a hospital can create another resource within plan limits."""
+    if resource_type not in {"staff", "patients"}:
+        raise ValueError("resource_type must be 'staff' or 'patients'")
+
+    limits = get_hospital_plan_limits(hospital)
+    plan_code = limits["plan_code"]
+
+    if resource_type == "staff":
+        from staff.models import StaffProfile
+
+        current_count = StaffProfile.objects.filter(hospital=hospital, is_active=True).count()
+        max_allowed = limits.get("max_staff")
+        label = "staff"
+    else:
+        from patients.models import Patient
+
+        current_count = Patient.objects.filter(hospital=hospital).count()
+        max_allowed = limits.get("max_patients")
+        label = "patients"
+
+    allowed = max_allowed is None or current_count < max_allowed
+    return {
+        "allowed": allowed,
+        "resource_type": resource_type,
+        "label": label,
+        "current": current_count,
+        "limit": max_allowed,
+        "plan_code": plan_code,
+    }

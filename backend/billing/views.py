@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
+from django.http import HttpResponse
 from datetime import timedelta
 from django.db.models import Sum
 from django.contrib.auth.models import User
@@ -742,6 +743,24 @@ class SubscriptionPaymentViewSet(viewsets.ModelViewSet):
             'summary': summary,
             'rows': rows,
         })
+
+    @action(detail=True, methods=['get'])
+    def receipt_pdf(self, request, pk=None):
+        payment = self.get_object()
+
+        if not request.user.is_superuser:
+            staff_profile = getattr(request.user, 'staff_profile', None)
+            if not staff_profile or staff_profile.hospital_id != payment.hospital_id:
+                return Response({'error': 'You do not have permission to view this receipt'}, status=403)
+
+        if payment.status != 'paid':
+            return Response({'error': 'Receipt is available only for paid payments'}, status=400)
+
+        receipt_pdf_bytes = _build_subscription_receipt_pdf(payment)
+        filename = f"subscription-receipt-SUB-{payment.id:06d}.pdf"
+        response = HttpResponse(receipt_pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
 
     @action(detail=True, methods=['post'])
     def review(self, request, pk=None):

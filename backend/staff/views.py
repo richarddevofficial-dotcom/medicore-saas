@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from auditlog.models import AuditLog
 from config.password_links import send_password_setup_email
+from saas_billing.services import check_hospital_limit
 from .models import StaffProfile
 from .serializers import StaffSerializer, StaffCreateSerializer
 
@@ -90,11 +91,45 @@ class StaffViewSet(viewsets.ModelViewSet):
             if not hospital_id:
                 from rest_framework.exceptions import ValidationError
                 raise ValidationError({"hospital": "Superuser must specify hospital"})
-            self._created_staff = serializer.save(hospital_id=hospital_id)
+            from hospitals.models import Hospital
+            from rest_framework.exceptions import ValidationError
+
+            hospital = Hospital.objects.filter(id=hospital_id).first()
+            if not hospital:
+                raise ValidationError({"hospital": "Hospital not found"})
+
+            limit_check = check_hospital_limit(hospital, 'staff')
+            if not limit_check['allowed']:
+                raise ValidationError(
+                    {
+                        "plan_limit": (
+                            f"{limit_check['plan_code'].upper()} plan allows up to "
+                            f"{limit_check['limit']} active staff. "
+                            "Upgrade your plan to add more staff."
+                        )
+                    }
+                )
+
+            self._created_staff = serializer.save(hospital=hospital)
         else:
             # Regular staff use their own hospital
             if hasattr(user, 'staff_profile'):
-                self._created_staff = serializer.save(hospital=user.staff_profile.hospital)
+                from rest_framework.exceptions import ValidationError
+
+                hospital = user.staff_profile.hospital
+                limit_check = check_hospital_limit(hospital, 'staff')
+                if not limit_check['allowed']:
+                    raise ValidationError(
+                        {
+                            "plan_limit": (
+                                f"{limit_check['plan_code'].upper()} plan allows up to "
+                                f"{limit_check['limit']} active staff. "
+                                "Upgrade your plan to add more staff."
+                            )
+                        }
+                    )
+
+                self._created_staff = serializer.save(hospital=hospital)
             else:
                 from rest_framework.exceptions import ValidationError
                 raise ValidationError("User has no staff profile")

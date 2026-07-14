@@ -4,8 +4,9 @@ from rest_framework.decorators import (
 )
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from django.core.mail import send_mail
 
-from .invoice_services import create_initial_invoice
+from .invoice_services import create_initial_invoice, create_plan_change_invoice
 from .models import (
     HospitalSubscription,
     Invoice,
@@ -398,6 +399,85 @@ def hospital_payments(request):
         .order_by("-created_at")
     )
 
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def request_plan_change(request):
+    hospital = get_user_hospital(request.user)
+    staff_profile = getattr(request.user, "staff_profile", None)
+
+    if not hospital:
+        return Response({"error": "Hospital account not found."}, status=404)
+
+    if not staff_profile or staff_profile.role != "admin":
+        return Response(
+            {
+                "error": (
+                    "Only the hospital administrator can request "
+                    "a plan change."
+                )
+            },
+            status=403,
+        )
+
+    target_plan_code = str(request.data.get("target_plan_code", "")).strip().lower()
+    billing_cycle_months = int(request.data.get("billing_cycle_months") or 1)
+
+    if not target_plan_code:
+        return Response({"error": "target_plan_code is required."}, status=400)
+
+    try:
+        subscription = (
+            HospitalSubscription.objects
+            .select_related("hospital", "plan")
+            .get(hospital=hospital)
+        )
+    except HospitalSubscription.DoesNotExist:
+        return Response({"error": "Hospital subscription not configured."}, status=404)
+
+    try:
+        target_plan = SubscriptionPlan.objects.get(code=target_plan_code, is_active=True)
+    except SubscriptionPlan.DoesNotExist:
+        return Response({"error": "Target plan not found or inactive."}, status=404)
+
+    if subscription.plan_id == target_plan.id:
+        return Response(
+            {"error": "Target plan must be different from current plan."},
+            status=400,
+        )
+
+    try:
+        invoice, created = create_plan_change_invoice(
+            subscription=subscription,
+            target_plan=target_plan,
+            billing_cycle_months=billing_cycle_months,
+        )
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=400)
+
+    return Response(
+        {
+            "success": True,
+            "created": created,
+            "message": (
+                "Plan change invoice created and awaiting payment approval."
+                if created
+                else "An unpaid plan change invoice already exists."
+            ),
+            "current_plan": {
+                "code": subscription.plan.code,
+                "name": subscription.plan.name,
+            },
+            "target_plan": {
+                "code": target_plan.code,
+                "name": target_plan.name,
+            },
+            "invoice": serialize_invoice(invoice),
+        },
+        status=201 if created else 200,
+    )
+
     return Response(
         {
             "count": payments.count(),
@@ -679,6 +759,13 @@ def approve_manual_payment(request, payment_id):
         .get(id=payment.subscription_id)
     )
 
+    target_plan = None
+    invoice_metadata = invoice.metadata or {}
+    if invoice_metadata.get("pending_plan_change"):
+        target_plan_code = str(invoice_metadata.get("target_plan_code", "")).strip().lower()
+        if target_plan_code:
+            target_plan = SubscriptionPlan.objects.filter(code=target_plan_code, is_active=True).first()
+
     if payment.amount != invoice.balance_due:
         return Response(
             {
@@ -741,6 +828,11 @@ def approve_manual_payment(request, payment_id):
         subscription.service_fee_paid = True
         subscription.service_fee_paid_at = now
 
+    if target_plan:
+        subscription.plan = target_plan
+        subscription.current_monthly_price = target_plan.monthly_price
+        subscription.current_service_fee = target_plan.service_fee
+
     subscription.status = (
         HospitalSubscription.STATUS_ACTIVE
     )
@@ -772,14 +864,40 @@ def approve_manual_payment(request, payment_id):
     hospital.subscription_status = "active"
     hospital.is_active = True
 
+    # Keep legacy limits synchronized for existing modules still reading hospital limits.
+    if subscription.plan.max_staff is not None:
+        hospital.max_staff = subscription.plan.max_staff
+    if subscription.plan.max_patients is not None:
+        hospital.max_patients = subscription.plan.max_patients
+
     hospital.save(
         update_fields=[
             "subscription_plan",
             "subscription_status",
             "is_active",
+            "max_staff",
+            "max_patients",
             "updated_at",
         ]
     )
+
+    if target_plan and hospital.email:
+        try:
+            send_mail(
+                subject="MediCore Plan Update Confirmed",
+                message=(
+                    f"Hello {hospital.name},\n\n"
+                    f"Your plan change has been approved.\n"
+                    f"New plan: {target_plan.name}\n"
+                    f"Status: Active\n\n"
+                    "Thank you for using MediCore SaaS."
+                ),
+                from_email=None,
+                recipient_list=[hospital.email],
+                fail_silently=True,
+            )
+        except Exception:
+            pass
 
     return Response(
         {

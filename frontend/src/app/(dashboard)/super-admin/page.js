@@ -27,11 +27,17 @@ import {
 import {
   ResponsiveContainer,
   LineChart,
+  BarChart,
   CartesianGrid,
   XAxis,
   YAxis,
   Tooltip,
   Line,
+  Bar,
+  PieChart as RePieChart,
+  Pie,
+  Cell,
+  Legend,
 } from "recharts";
 import toast from "react-hot-toast";
 import apiClient from "@/lib/api-client";
@@ -60,12 +66,44 @@ export default function SuperAdminDashboard() {
   const [reviewStatus, setReviewStatus] = useState("paid");
   const [reviewNote, setReviewNote] = useState("");
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [billingSearchTerm, setBillingSearchTerm] = useState("");
+  const [billingPlanFilter, setBillingPlanFilter] = useState("all");
+  const [billingPaymentStatusFilter, setBillingPaymentStatusFilter] =
+    useState("all");
   const [superAdminForm, setSuperAdminForm] = useState({
     first_name: "",
     last_name: "",
     email: "",
     password: "",
     admin_type: "secondary",
+  });
+
+  const planDistributionChart = data?.plan_distribution_chart || [];
+  const planDistributionColors = ["#f59e0b", "#3b82f6", "#10b981", "#6366f1"];
+
+  const filteredRecentPayments = (
+    data?.recent_subscription_payments || []
+  ).filter((payment) => {
+    const search = billingSearchTerm.toLowerCase();
+    const matchesSearch =
+      (payment.hospital_name || "").toLowerCase().includes(search) ||
+      (payment.transaction_id || "").toLowerCase().includes(search);
+    const matchesPlan =
+      billingPlanFilter === "all" || payment.plan === billingPlanFilter;
+    const matchesStatus =
+      billingPaymentStatusFilter === "all" ||
+      payment.status === billingPaymentStatusFilter;
+    return matchesSearch && matchesPlan && matchesStatus;
+  });
+
+  const filteredInvoices = (data?.recent_invoices || []).filter((invoice) => {
+    const search = billingSearchTerm.toLowerCase();
+    const matchesSearch = (invoice.hospital_name || "")
+      .toLowerCase()
+      .includes(search);
+    const matchesPlan =
+      billingPlanFilter === "all" || invoice.plan === billingPlanFilter;
+    return matchesSearch && matchesPlan;
   });
 
   const formatUSD = (value) =>
@@ -480,6 +518,138 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  const handleExportComprehensiveExcel = async () => {
+    try {
+      const { data: reportData } = await apiClient.get(
+        "/subscription-payments/comprehensive_report/",
+      );
+      const rows = reportData?.rows || [];
+      if (!rows.length) {
+        toast.error("No subscription payment data to export");
+        return;
+      }
+
+      const excelRows = [
+        ["Receipt ID", "Hospital", "Plan", "Amount", "Status", "Payment Date"],
+        ...rows.map((item) => [
+          item.receipt_id,
+          item.hospital_name,
+          item.plan,
+          Number(item.amount || 0).toFixed(2),
+          item.status,
+          item.payment_date || "",
+        ]),
+      ];
+
+      const excelContent = excelRows.map((row) => row.join("\t")).join("\n");
+      const blob = new Blob([excelContent], {
+        type: "application/vnd.ms-excel;charset=utf-8;",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `subscription-billing-center-${new Date().toISOString().slice(0, 10)}.xls`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("Excel report downloaded");
+    } catch {
+      toast.error("Failed to download Excel report");
+    }
+  };
+
+  const handleExportComprehensivePdf = async () => {
+    try {
+      const { data: reportData } = await apiClient.get(
+        "/subscription-payments/comprehensive_report/",
+      );
+      const rows = reportData?.rows || [];
+      if (!rows.length) {
+        toast.error("No subscription payment data to export");
+        return;
+      }
+
+      const tableRows = rows
+        .slice(0, 80)
+        .map(
+          (item) => `
+            <tr>
+              <td>${item.receipt_id}</td>
+              <td>${item.hospital_name}</td>
+              <td>${item.plan}</td>
+              <td>${Number(item.amount || 0).toFixed(2)}</td>
+              <td>${item.status}</td>
+              <td>${item.payment_date || "-"}</td>
+            </tr>`,
+        )
+        .join("");
+
+      const popup = window.open("", "_blank", "width=1200,height=800");
+      if (!popup) {
+        toast.error("Please allow popups to export PDF");
+        return;
+      }
+      popup.document.write(`
+        <html>
+          <head>
+            <title>Super Admin Billing Report</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 24px; }
+              h1 { margin: 0 0 8px; }
+              p { margin: 0 0 16px; color: #555; }
+              table { width: 100%; border-collapse: collapse; }
+              th, td { border: 1px solid #ddd; padding: 8px; font-size: 12px; }
+              th { background: #f3f4f6; text-align: left; }
+            </style>
+          </head>
+          <body>
+            <h1>Super Admin Billing Report</h1>
+            <p>Generated at: ${new Date().toLocaleString()}</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Receipt ID</th>
+                  <th>Hospital</th>
+                  <th>Plan</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th>Payment Date</th>
+                </tr>
+              </thead>
+              <tbody>${tableRows}</tbody>
+            </table>
+          </body>
+        </html>
+      `);
+      popup.document.close();
+      popup.focus();
+      popup.print();
+      toast.success("PDF print dialog opened");
+    } catch {
+      toast.error("Failed to prepare PDF export");
+    }
+  };
+
+  const handleDownloadSubscriptionReceipt = async (paymentId) => {
+    try {
+      const response = await apiClient.get(
+        `/subscription-payments/${paymentId}/receipt_pdf/`,
+        { responseType: "blob" },
+      );
+      const blobUrl = window.URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `subscription-receipt-${paymentId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch {
+      toast.error("Failed to download receipt PDF");
+    }
+  };
+
   if (loading)
     return (
       <DashboardLayout>
@@ -513,9 +683,23 @@ export default function SuperAdminDashboard() {
           >
             Download Comprehensive CSV
           </Button>
+          <Button
+            variant="outline"
+            icon={Download}
+            onClick={handleExportComprehensiveExcel}
+          >
+            Export Excel
+          </Button>
+          <Button
+            variant="outline"
+            icon={Download}
+            onClick={handleExportComprehensivePdf}
+          >
+            Export PDF
+          </Button>
         </div>
 
-        {/* Stats */}
+        {/* SaaS Control Center Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="text-center">
             <Building2 className="h-6 w-6 text-blue-600 mx-auto mb-1" />
@@ -525,19 +709,154 @@ export default function SuperAdminDashboard() {
           <Card className="text-center">
             <Activity className="h-6 w-6 text-green-600 mx-auto mb-1" />
             <p className="text-2xl font-bold">{data?.active_hospitals || 0}</p>
-            <p className="text-xs text-gray-500">Active</p>
+            <p className="text-xs text-gray-500">Active Hospitals</p>
           </Card>
           <Card className="text-center">
             <Users className="h-6 w-6 text-purple-600 mx-auto mb-1" />
-            <p className="text-2xl font-bold">{data?.total_patients || 0}</p>
-            <p className="text-xs text-gray-500">Total Patients</p>
+            <p className="text-2xl font-bold">{data?.trial_hospitals || 0}</p>
+            <p className="text-xs text-gray-500">Trial Hospitals</p>
+          </Card>
+          <Card className="text-center">
+            <AlertTriangle className="h-6 w-6 text-amber-600 mx-auto mb-1" />
+            <p className="text-2xl font-bold">
+              {data?.grace_period_hospitals || 0}
+            </p>
+            <p className="text-xs text-gray-500">Grace Period</p>
+          </Card>
+          <Card className="text-center">
+            <AlertTriangle className="h-6 w-6 text-red-600 mx-auto mb-1" />
+            <p className="text-2xl font-bold">
+              {data?.suspended_hospitals || 0}
+            </p>
+            <p className="text-xs text-gray-500">Suspended Hospitals</p>
           </Card>
           <Card className="text-center">
             <DollarSign className="h-6 w-6 text-orange-600 mx-auto mb-1" />
             <p className="text-2xl font-bold">
-              SSP {(data?.total_revenue || 0).toLocaleString()}
+              {formatUSD(data?.monthly_revenue || 0)}
             </p>
-            <p className="text-xs text-gray-500">Total Revenue</p>
+            <p className="text-xs text-gray-500">Monthly Revenue</p>
+          </Card>
+          <Card className="text-center">
+            <CreditCard className="h-6 w-6 text-indigo-600 mx-auto mb-1" />
+            <p className="text-2xl font-bold">
+              {data?.pending_payments_count || 0}
+            </p>
+            <p className="text-xs text-gray-500">Pending Payments</p>
+          </Card>
+          <Card className="text-center">
+            <PieChart className="h-6 w-6 text-gray-700 mx-auto mb-1" />
+            <p className="text-2xl font-bold">{data?.overdue_invoices || 0}</p>
+            <p className="text-xs text-gray-500">Overdue Invoices</p>
+          </Card>
+        </div>
+
+        {/* Core SaaS Charts */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <Card>
+            <div className="flex items-start md:items-center justify-between mb-4 gap-2 flex-wrap">
+              <h2 className="font-semibold">Revenue per month</h2>
+            </div>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data?.revenue_per_month || []}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip
+                    formatter={(value) => [formatUSD(value), "Revenue"]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="amount"
+                    stroke="#0ea5e9"
+                    strokeWidth={3}
+                    dot={{ r: 3 }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-start md:items-center justify-between mb-4 gap-2 flex-wrap">
+              <h2 className="font-semibold">New hospitals per month</h2>
+            </div>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data?.new_hospitals_per_month || []}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                  <Tooltip formatter={(value) => [value, "Hospitals"]} />
+                  <Bar dataKey="count" fill="#6366f1" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-start md:items-center justify-between mb-4 gap-2 flex-wrap">
+              <h2 className="font-semibold">Plan distribution</h2>
+            </div>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <RePieChart>
+                  <Pie
+                    data={planDistributionChart}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={90}
+                    dataKey="value"
+                    nameKey="name"
+                    label
+                  >
+                    {planDistributionChart.map((entry, index) => (
+                      <Cell
+                        key={`${entry.name}-${index}`}
+                        fill={
+                          planDistributionColors[
+                            index % planDistributionColors.length
+                          ]
+                        }
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => [value, "Hospitals"]} />
+                  <Legend />
+                </RePieChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-start md:items-center justify-between mb-4 gap-2 flex-wrap">
+              <h2 className="font-semibold">Trial conversion rate</h2>
+            </div>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data?.trial_conversion_rate || []}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
+                  <Tooltip
+                    formatter={(value) => [
+                      `${Number(value || 0).toFixed(2)}%`,
+                      "Conversion",
+                    ]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="rate"
+                    stroke="#10b981"
+                    strokeWidth={3}
+                    dot={{ r: 3 }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </Card>
         </div>
 
@@ -995,6 +1314,46 @@ export default function SuperAdminDashboard() {
 
         {/* Hospitals List */}
         <Card padding={false}>
+          <div className="px-4 py-3 border-b border-gray-200 flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+            <div>
+              <h2 className="font-semibold">Super Admin Billing Center</h2>
+              <p className="text-xs text-gray-500 mt-1">
+                Search hospitals, filter by plan/payment status, and review
+                invoices/receipts.
+              </p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <input
+                type="text"
+                placeholder="Search hospital or transaction..."
+                value={billingSearchTerm}
+                onChange={(e) => setBillingSearchTerm(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
+              <select
+                value={billingPlanFilter}
+                onChange={(e) => setBillingPlanFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              >
+                <option value="all">All Plans</option>
+                <option value="trial">Trial</option>
+                <option value="basic">Basic</option>
+                <option value="pro">Pro</option>
+                <option value="enterprise">Enterprise</option>
+              </select>
+              <select
+                value={billingPaymentStatusFilter}
+                onChange={(e) => setBillingPaymentStatusFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              >
+                <option value="all">All Payment Status</option>
+                <option value="pending">Pending</option>
+                <option value="paid">Paid</option>
+                <option value="failed">Failed</option>
+                <option value="refunded">Refunded</option>
+              </select>
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -1224,6 +1583,91 @@ export default function SuperAdminDashboard() {
 
         <Card padding={false}>
           <div className="px-4 py-3 border-b border-gray-200">
+            <h2 className="font-semibold">Recent SaaS Invoices</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Invoice #
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Hospital
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Plan
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Total
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Balance
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Status
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Due
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredInvoices.map((invoice) => (
+                  <tr key={invoice.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-3 font-medium">
+                      {invoice.invoice_number}
+                    </td>
+                    <td className="px-3 py-3">{invoice.hospital_name}</td>
+                    <td className="px-3 py-3 uppercase">{invoice.plan}</td>
+                    <td className="px-3 py-3">
+                      {invoice.currency}{" "}
+                      {Number(invoice.total_amount || 0).toFixed(2)}
+                    </td>
+                    <td className="px-3 py-3">
+                      {invoice.currency}{" "}
+                      {Number(invoice.balance_due || 0).toFixed(2)}
+                    </td>
+                    <td className="px-3 py-3">
+                      <Badge
+                        variant={
+                          invoice.status === "paid"
+                            ? "success"
+                            : invoice.status === "overdue"
+                              ? "danger"
+                              : "warning"
+                        }
+                      >
+                        {invoice.status}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-3 text-sm text-gray-500">
+                      {invoice.due_date
+                        ? new Date(invoice.due_date).toLocaleDateString()
+                        : "-"}
+                    </td>
+                  </tr>
+                ))}
+                {filteredInvoices.length === 0 && (
+                  <tr>
+                    <td colSpan="7" className="text-center py-8 text-gray-500">
+                      <EmptyState
+                        imageSrc="/images/empty-states/billing-empty.svg"
+                        imageAlt="No invoices"
+                        title="No invoices match the current filters"
+                        className="py-2 px-0"
+                        titleClassName="text-sm font-normal text-gray-500 mb-0"
+                      />
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        <Card padding={false}>
+          <div className="px-4 py-3 border-b border-gray-200">
             <h2 className="font-semibold">Recent Subscription Payments</h2>
           </div>
           <div className="overflow-x-auto">
@@ -1254,7 +1698,7 @@ export default function SuperAdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {(data?.recent_subscription_payments || []).map((payment) => (
+                {filteredRecentPayments.map((payment) => (
                   <tr key={payment.id} className="hover:bg-gray-50">
                     <td className="px-3 py-3 font-medium">
                       {payment.hospital_name}
@@ -1294,6 +1738,15 @@ export default function SuperAdminDashboard() {
                           >
                             Resend Receipt
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              handleDownloadSubscriptionReceipt(payment.id)
+                            }
+                          >
+                            View Receipt PDF
+                          </Button>
                           <Badge
                             variant={getReceiptStatusVariant(
                               payment.receipt_delivery_status,
@@ -1315,13 +1768,13 @@ export default function SuperAdminDashboard() {
                     </td>
                   </tr>
                 ))}
-                {(data?.recent_subscription_payments || []).length === 0 && (
+                {filteredRecentPayments.length === 0 && (
                   <tr>
                     <td colSpan="7" className="text-center py-8 text-gray-500">
                       <EmptyState
                         imageSrc="/images/empty-states/billing-empty.svg"
                         imageAlt="No subscription payments"
-                        title="No subscription payments recorded yet"
+                        title="No subscription payments match the current filters"
                         className="py-2 px-0"
                         titleClassName="text-sm font-normal text-gray-500 mb-0"
                       />

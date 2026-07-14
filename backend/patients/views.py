@@ -9,6 +9,7 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import Patient
 from staff.models import StaffProfile
+from saas_billing.services import check_hospital_limit
 from .serializers import PatientListSerializer, PatientDetailSerializer
 from billing.models import Bill
 
@@ -97,6 +98,21 @@ class PatientViewSet(viewsets.ModelViewSet):
         if not hospital:
             from rest_framework.exceptions import ValidationError
             raise ValidationError('Hospital context is required')
+
+        from rest_framework.exceptions import ValidationError
+
+        limit_check = check_hospital_limit(hospital, 'patients')
+        if not limit_check['allowed']:
+            raise ValidationError(
+                {
+                    'plan_limit': (
+                        f"{limit_check['plan_code'].upper()} plan allows up to "
+                        f"{limit_check['limit']} patients. "
+                        'Upgrade your plan to register more patients.'
+                    )
+                }
+            )
+
         serializer.save(hospital=hospital, status='registered')
     
     @action(detail=True, methods=['post'])

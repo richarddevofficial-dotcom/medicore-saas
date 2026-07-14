@@ -9,6 +9,7 @@ from .views import (
     hospital_invoices,
     hospital_payments,
     public_subscription_plans,
+    request_plan_change,
     submit_manual_payment,
     subscription_status,
 )
@@ -54,6 +55,11 @@ urlpatterns = [
         "payments/manual/",
         submit_manual_payment,
         name="submit-manual-payment",
+    ),
+    path(
+        "plan-change/request/",
+        request_plan_change,
+        name="request-plan-change",
     ),
     path(
         "payments/<int:payment_id>/approve/",

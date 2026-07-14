@@ -12,6 +12,7 @@ from patients.models import Patient
 from billing.models import Bill, SubscriptionPayment, ReceiptEmailJob
 from auditlog.models import AuditLog, NotificationEvent
 from staff.models import StaffProfile
+from saas_billing.models import HospitalSubscription, Invoice, Payment
 from rest_framework_simplejwt.tokens import RefreshToken
 
 SYSTEM_SUPER_ADMIN_EMAIL = 'drichigroup@gmail.com'
@@ -81,11 +82,29 @@ def super_admin_stats(request):
     total_hospitals = Hospital.objects.count()
     active_hospitals = Hospital.objects.filter(is_active=True).count()
     trial_hospitals = Hospital.objects.filter(subscription_plan='trial').count()
+    grace_period_hospitals = HospitalSubscription.objects.filter(
+        status=HospitalSubscription.STATUS_GRACE,
+    ).count()
+    suspended_hospitals = HospitalSubscription.objects.filter(
+        status=HospitalSubscription.STATUS_SUSPENDED,
+    ).count()
     total_patients = Patient.objects.count()
     total_revenue = float(Bill.objects.filter(status='paid').aggregate(total=Sum('total_amount')).get('total') or 0)
+    monthly_revenue = float(
+        Payment.objects.filter(
+            status=Payment.STATUS_SUCCESS,
+            paid_at__gte=month_start,
+        ).aggregate(total=Sum('amount')).get('total') or 0
+    )
+    overdue_invoices = Invoice.objects.filter(
+        status=Invoice.STATUS_OVERDUE,
+    ).count()
 
     paid_subscription_qs = SubscriptionPayment.objects.filter(status='paid')
     pending_subscription_qs = SubscriptionPayment.objects.filter(status='pending')
+    pending_manual_payment_count = Payment.objects.filter(
+        status=Payment.STATUS_PENDING,
+    ).count()
 
     subscription_collections_total = float(
         paid_subscription_qs.aggregate(total=Sum('amount')).get('total') or 0
@@ -96,6 +115,7 @@ def super_admin_stats(request):
     pending_subscription_amount = float(
         pending_subscription_qs.aggregate(total=Sum('amount')).get('total') or 0
     )
+    pending_payments_count = pending_subscription_qs.count() + pending_manual_payment_count
 
     plan_distribution_rows = Hospital.objects.values('subscription_plan').annotate(total=Count('id'))
     plan_distribution_map = {row['subscription_plan']: row['total'] for row in plan_distribution_rows}
@@ -114,6 +134,72 @@ def super_admin_stats(request):
         'failed': payment_status_map.get('failed', 0),
         'refunded': payment_status_map.get('refunded', 0),
     }
+
+    plan_distribution_chart = [
+        {'name': 'Trial', 'value': plan_distribution.get('trial', 0)},
+        {'name': 'Starter', 'value': plan_distribution.get('basic', 0)},
+        {'name': 'Professional', 'value': plan_distribution.get('pro', 0)},
+        {'name': 'Enterprise', 'value': plan_distribution.get('enterprise', 0)},
+    ]
+
+    # Last 12 months datasets for dashboard charts.
+    months = []
+    for offset in range(11, -1, -1):
+        year = now.year
+        month = now.month - offset
+        while month <= 0:
+            month += 12
+            year -= 1
+        month_start_date = datetime(year, month, 1, tzinfo=now.tzinfo)
+        if month == 12:
+            next_month_start = datetime(year + 1, 1, 1, tzinfo=now.tzinfo)
+        else:
+            next_month_start = datetime(year, month + 1, 1, tzinfo=now.tzinfo)
+        months.append((month_start_date, next_month_start))
+
+    revenue_per_month = []
+    new_hospitals_per_month = []
+    trial_conversion_rate = []
+
+    for month_start_date, next_month_start in months:
+        month_label = month_start_date.strftime('%b %Y')
+        month_revenue = float(
+            Payment.objects.filter(
+                status=Payment.STATUS_SUCCESS,
+                paid_at__gte=month_start_date,
+                paid_at__lt=next_month_start,
+            ).aggregate(total=Sum('amount')).get('total') or 0
+        )
+        revenue_per_month.append({
+            'month': month_label,
+            'amount': month_revenue,
+        })
+
+        new_hospitals_count = Hospital.objects.filter(
+            created_at__gte=month_start_date,
+            created_at__lt=next_month_start,
+        ).count()
+        new_hospitals_per_month.append({
+            'month': month_label,
+            'count': new_hospitals_count,
+        })
+
+        trials_ended = HospitalSubscription.objects.filter(
+            trial_ends_at__gte=month_start_date,
+            trial_ends_at__lt=next_month_start,
+        ).count()
+        converted = HospitalSubscription.objects.filter(
+            activated_at__gte=month_start_date,
+            activated_at__lt=next_month_start,
+            trial_started_at__isnull=False,
+        ).count()
+        conversion_rate = round((converted / trials_ended) * 100, 2) if trials_ended else 0
+        trial_conversion_rate.append({
+            'month': month_label,
+            'rate': conversion_rate,
+            'converted': converted,
+            'trial_ended': trials_ended,
+        })
 
     # Monthly trend for the last 6 months (including current month).
     monthly_subscription_collections = []
@@ -159,6 +245,26 @@ def super_admin_stats(request):
         }
         for payment in SubscriptionPayment.objects.select_related('hospital').all()[:10]
     ]
+
+    recent_invoices = [
+        {
+            'id': invoice.id,
+            'invoice_number': invoice.invoice_number,
+            'hospital_name': invoice.hospital.name,
+            'plan': invoice.subscription.plan.code,
+            'status': invoice.status,
+            'total_amount': float(invoice.total_amount or 0),
+            'balance_due': float(invoice.balance_due or 0),
+            'currency': invoice.currency,
+            'issued_at': invoice.issued_at,
+            'due_date': invoice.due_date,
+        }
+        for invoice in (
+            Invoice.objects
+            .select_related('hospital', 'subscription__plan')
+            .order_by('-created_at')[:25]
+        )
+    ]
     
     # Hospital breakdown with grouped aggregates to avoid N+1 queries.
     patient_counts = dict(
@@ -190,15 +296,25 @@ def super_admin_stats(request):
         'total_hospitals': total_hospitals,
         'active_hospitals': active_hospitals,
         'trial_hospitals': trial_hospitals,
+        'grace_period_hospitals': grace_period_hospitals,
+        'suspended_hospitals': suspended_hospitals,
         'total_patients': total_patients,
         'total_revenue': total_revenue,
+        'monthly_revenue': monthly_revenue,
         'subscription_collections_total': subscription_collections_total,
         'subscription_collections_this_month': subscription_collections_this_month,
         'pending_subscription_amount': pending_subscription_amount,
+        'pending_payments_count': pending_payments_count,
+        'overdue_invoices': overdue_invoices,
         'plan_distribution': plan_distribution,
+        'plan_distribution_chart': plan_distribution_chart,
         'payment_status_counts': payment_status_counts,
         'monthly_subscription_collections': monthly_subscription_collections,
+        'revenue_per_month': revenue_per_month,
+        'new_hospitals_per_month': new_hospitals_per_month,
+        'trial_conversion_rate': trial_conversion_rate,
         'recent_subscription_payments': recent_subscription_payments,
+        'recent_invoices': recent_invoices,
         'hospitals': hospitals,
     })
 
