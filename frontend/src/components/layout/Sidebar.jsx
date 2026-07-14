@@ -50,7 +50,6 @@ const navigationByRole = {
         { name: "Departments", href: "/admin/departments", icon: Building2 },
         { name: "Rooms & Wards", href: "/admin/rooms", icon: Bed },
         { name: "Pharmacy", href: "/admin/medicines", icon: Pill },
-        { name: "Service Fees", href: "/admin/services", icon: Receipt },
         { name: "Laboratory", href: "/admin/lab", icon: FlaskConical },
         { name: "Imaging", href: "/admin/imaging", icon: Camera },
         { name: "Insurance", href: "/admin/insurance", icon: Shield },
