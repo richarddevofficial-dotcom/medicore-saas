@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -43,7 +42,6 @@ import toast from "react-hot-toast";
 import apiClient from "@/lib/api-client";
 
 export default function SuperAdminDashboard() {
-  const router = useRouter();
   const [data, setData] = useState(null);
   const [pendingPayments, setPendingPayments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -244,7 +242,6 @@ export default function SuperAdminDashboard() {
       setLoading(false);
     }
   };
-
   const openReviewModal = (payment, status) => {
     setReviewingPayment(payment);
     setReviewStatus(status);
@@ -254,8 +251,16 @@ export default function SuperAdminDashboard() {
 
   const handleReviewPayment = async () => {
     const trimmedNote = reviewNote.trim();
+    const isSuperAdmin =
+      typeof window !== "undefined" &&
+      localStorage.getItem("role") === "super_admin";
 
     if (!reviewingPayment) {
+      return;
+    }
+
+    if (!isSuperAdmin) {
+      toast.error("Only super admins can review payments");
       return;
     }
 

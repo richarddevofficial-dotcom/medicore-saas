@@ -112,6 +112,11 @@ const navigationByRole = {
       section: "MAIN",
       items: [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+        {
+          name: "Platform Dashboard",
+          href: "/platform/dashboard",
+          icon: Building2,
+        },
         { name: "Patients", href: "/patients", icon: Users },
         { name: "Appointments", href: "/appointments", icon: Calendar },
         { name: "Doctors", href: "/doctors", icon: Stethoscope },
