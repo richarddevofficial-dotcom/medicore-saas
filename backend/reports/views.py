@@ -17,7 +17,7 @@ def _resolve_report_hospital(request):
     if hasattr(request.user, 'staff_profile'):
         return request.user.staff_profile.hospital
     if request.user.is_superuser:
-        hospital_id = request.query_params.get('hospital_id')
+        hospital_id = request.headers.get('X-Impersonating-Hospital-Id') or request.query_params.get('hospital_id')
         if hospital_id:
             from hospitals.models import Hospital
             return Hospital.objects.filter(id=hospital_id).first()
@@ -79,10 +79,10 @@ def dashboard_report(request):
     today = timezone.now().date()
     hospital = _resolve_report_hospital(request)
 
-    patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.all()
-    bills_qs = Bill.objects.filter(hospital=hospital) if hospital else Bill.objects.all()
-    staff_qs = StaffProfile.objects.filter(hospital=hospital) if hospital else StaffProfile.objects.all()
-    meds_qs = Medicine.objects.filter(hospital=hospital) if hospital else Medicine.objects.all()
+    patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()
+    bills_qs = Bill.objects.filter(hospital=hospital) if hospital else Bill.objects.none()
+    staff_qs = StaffProfile.objects.filter(hospital=hospital) if hospital else StaffProfile.objects.none()
+    meds_qs = Medicine.objects.filter(hospital=hospital) if hospital else Medicine.objects.none()
 
     return Response({
         'patients': {
@@ -111,7 +111,7 @@ def staff_report(request):
     """Report for doctors - patients treated"""
     today = timezone.now().date()
     hospital = _resolve_report_hospital(request)
-    patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.all()
+    patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()
     
     return Response({
         'patients_treated_today': patients_qs.filter(status='treated', updated_at__date=today).count(),
@@ -128,7 +128,7 @@ def reception_report(request):
     """Report for receptionists - patients registered"""
     today = timezone.now().date()
     hospital = _resolve_report_hospital(request)
-    patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.all()
+    patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()
     
     return Response({
         'patients_registered_today': patients_qs.filter(created_at__date=today).count(),
@@ -145,7 +145,7 @@ def cashier_report(request):
     """Report for cashiers - bills and payments"""
     today = timezone.now().date()
     hospital = _resolve_report_hospital(request)
-    bills_qs = Bill.objects.filter(hospital=hospital) if hospital else Bill.objects.all()
+    bills_qs = Bill.objects.filter(hospital=hospital) if hospital else Bill.objects.none()
     
     bills_today = bills_qs.filter(created_at__date=today)
     paid_today_qs = bills_today.filter(status='paid')
@@ -169,7 +169,7 @@ def pharmacy_report(request):
     from pharmacy.models import Prescription
     today = timezone.now().date()
     hospital = _resolve_report_hospital(request)
-    prescriptions_qs = Prescription.objects.filter(hospital=hospital) if hospital else Prescription.objects.all()
+    prescriptions_qs = Prescription.objects.filter(hospital=hospital) if hospital else Prescription.objects.none()
     
     return Response({
         'dispensed_today': prescriptions_qs.filter(status='dispensed', dispensed_at__date=today).count(),
@@ -186,7 +186,7 @@ def lab_report(request):
     """Report for lab technicians - tests performed"""
     today = timezone.now().date()
     hospital = _resolve_report_hospital(request)
-    patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.all()
+    patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()
     
     return Response({
         'tests_completed_today': patients_qs.filter(status='lab_completed', updated_at__date=today).count(),
@@ -206,9 +206,9 @@ def detailed_report(request):
         return Response({'error': date_error}, status=400)
 
     hospital = _resolve_report_hospital(request)
-    patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.all()
-    bills_qs = Bill.objects.filter(hospital=hospital) if hospital else Bill.objects.all()
-    appointments_qs = Appointment.objects.filter(hospital=hospital) if hospital else Appointment.objects.all()
+    patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()
+    bills_qs = Bill.objects.filter(hospital=hospital) if hospital else Bill.objects.none()
+    appointments_qs = Appointment.objects.filter(hospital=hospital) if hospital else Appointment.objects.none()
 
     # Patients
     total_patients = patients_qs.count()
@@ -266,9 +266,7 @@ def detailed_report(request):
 def reconciliation_report(request):
     """Reconciliation report for subscription payment and receipt delivery lifecycle."""
     hospital = _resolve_report_hospital(request)
-    payments_qs = SubscriptionPayment.objects.select_related('hospital').all()
-    if hospital:
-        payments_qs = payments_qs.filter(hospital=hospital)
+    payments_qs = SubscriptionPayment.objects.select_related('hospital').filter(hospital=hospital) if hospital else SubscriptionPayment.objects.none()
 
     start_date, end_date, filter_mode, date_error = _build_date_filters(request)
     if date_error:
@@ -345,8 +343,8 @@ def dashboard_charts(request):
     """Real data for dashboard charts"""
     today = timezone.now().date()
     hospital = _resolve_report_hospital(request)
-    patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.all()
-    bills_qs = Bill.objects.filter(hospital=hospital) if hospital else Bill.objects.all()
+    patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()
+    bills_qs = Bill.objects.filter(hospital=hospital) if hospital else Bill.objects.none()
     
     # Monthly data (last 7 months)
     monthly_data = []

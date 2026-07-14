@@ -64,6 +64,12 @@ class StaffViewSet(viewsets.ModelViewSet):
             ).exclude(
                 user__email=SYSTEM_SUPER_ADMIN_EMAIL,
             )
+            hospital_id = (
+                self.request.headers.get('X-Impersonating-Hospital-Id')
+                or self.request.query_params.get('hospital_id')
+            )
+            if hospital_id:
+                queryset = queryset.filter(hospital_id=hospital_id)
         elif hasattr(user, 'staff_profile'):
             queryset = StaffProfile.objects.filter(hospital=user.staff_profile.hospital)
         else:

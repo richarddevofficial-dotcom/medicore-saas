@@ -494,10 +494,21 @@ class BillViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def stats(self, request):
-        try:
-            hospital = request.user.staff_profile.hospital
-        except Exception:
-            hospital = None
+        hospital = None
+        if request.user.is_superuser:
+            hospital_id = (
+                request.headers.get('X-Impersonating-Hospital-Id')
+                or request.query_params.get('hospital_id')
+            )
+            if hospital_id:
+                from hospitals.models import Hospital
+
+                hospital = Hospital.objects.filter(id=hospital_id).first()
+        else:
+            try:
+                hospital = request.user.staff_profile.hospital
+            except Exception:
+                hospital = None
 
         bills = Bill.objects.filter(hospital=hospital) if hospital else Bill.objects.none()
         today = timezone.now().date()

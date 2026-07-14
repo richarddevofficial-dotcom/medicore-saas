@@ -17,7 +17,11 @@ from billing.models import Bill
 def _resolve_request_hospital(request):
     user = request.user
     if user.is_superuser:
-        hospital_id = request.data.get('hospital_id') or request.query_params.get('hospital_id')
+        hospital_id = (
+            request.headers.get('X-Impersonating-Hospital-Id')
+            or request.data.get('hospital_id')
+            or request.query_params.get('hospital_id')
+        )
         if not hospital_id:
             return None
         from hospitals.models import Hospital
@@ -233,8 +237,14 @@ class PatientViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def doctor_queue(self, request):
+        hospital = _resolve_request_hospital(request)
+        if request.user.is_superuser and not hospital:
+            queryset = Patient.objects.none()
+        else:
+            queryset = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()
+
         doctor_id = request.query_params.get('doctor_id')
-        queryset = Patient.objects.filter(
+        queryset = queryset.filter(
             status__in=['waiting', 'in_consultation', 'lab_requested', 'lab_in_progress', 
                        'lab_completed', 'imaging_requested', 'imaging_completed']
         )
@@ -244,7 +254,8 @@ class PatientViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def lab_queue(self, request):
-        patients = Patient.objects.filter(
+        hospital = _resolve_request_hospital(request)
+        patients = (Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()).filter(
             status__in=['lab_requested', 'lab_in_progress', 'lab_completed']
         )
         return Response(PatientListSerializer(patients, many=True).data)
@@ -252,12 +263,15 @@ class PatientViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         today = timezone.now().date()
+        hospital = _resolve_request_hospital(request)
+        patients = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()
+
         return Response({
-            'total_patients': Patient.objects.count(),
-            'active_patients': Patient.objects.filter(is_active=True).count(),
-            'today_new': Patient.objects.filter(created_at__date=today).count(),
-            'waiting': Patient.objects.filter(status='waiting').count(),
-            'in_consultation': Patient.objects.filter(status='in_consultation').count(),
-            'lab_requested': Patient.objects.filter(status__in=['lab_requested', 'lab_in_progress', 'lab_completed']).count(),
-            'treated_today': Patient.objects.filter(status='treated', updated_at__date=today).count(),
+            'total_patients': patients.count(),
+            'active_patients': patients.filter(is_active=True).count(),
+            'today_new': patients.filter(created_at__date=today).count(),
+            'waiting': patients.filter(status='waiting').count(),
+            'in_consultation': patients.filter(status='in_consultation').count(),
+            'lab_requested': patients.filter(status__in=['lab_requested', 'lab_in_progress', 'lab_completed']).count(),
+            'treated_today': patients.filter(status='treated', updated_at__date=today).count(),
         })
