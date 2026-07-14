@@ -203,7 +203,8 @@ export default function SuperAdminDashboard() {
       localStorage.setItem("role", data.user.role);
       localStorage.setItem("is_superuser", String(data.user.is_superuser));
       toast.success(`Switched to ${data.hospital.name}`);
-      router.push("/dashboard");
+      // Force a full navigation so auth/role state is re-evaluated immediately.
+      window.location.assign("/admin");
     } catch (err) {
       toast.error("Failed to switch");
     }
