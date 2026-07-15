@@ -10,6 +10,8 @@ from .billing_center_views import (
     billing_center_hospital_credits,
     billing_center_hospital_detail,
     billing_center_hospitals,
+    billing_center_invoices,
+    billing_center_payments,
     billing_center_reactivate_subscription,
     billing_center_resend_invoice_reminder,
     billing_center_suspend_subscription,
@@ -22,6 +24,16 @@ urlpatterns = [
         "dashboard/",
         billing_center_dashboard,
         name="billing-center-dashboard",
+    ),
+    path(
+        "invoices/",
+        billing_center_invoices,
+        name="billing-center-invoices",
+    ),
+    path(
+        "payments/",
+        billing_center_payments,
+        name="billing-center-payments",
     ),
     path(
         "hospitals/",

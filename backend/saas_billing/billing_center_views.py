@@ -2616,3 +2616,513 @@ def billing_center_hospital_credits(
         },
         status=201,
     )
+
+
+# ============================================================
+# Super Admin Invoice and Payment Center
+# ============================================================
+
+from datetime import datetime
+
+
+def parse_date_query(value):
+    if not value:
+        return None
+
+    try:
+        return datetime.strptime(
+            str(value).strip(),
+            "%Y-%m-%d",
+        ).date()
+    except (TypeError, ValueError):
+        return None
+
+
+def paginate_queryset(request, queryset):
+    try:
+        page_size = int(
+            request.query_params.get(
+                "page_size",
+                20,
+            )
+        )
+    except (TypeError, ValueError):
+        page_size = 20
+
+    page_size = max(1, min(page_size, 100))
+
+    try:
+        page_number = int(
+            request.query_params.get(
+                "page",
+                1,
+            )
+        )
+    except (TypeError, ValueError):
+        page_number = 1
+
+    page_number = max(1, page_number)
+
+    paginator = Paginator(
+        queryset,
+        page_size,
+    )
+
+    try:
+        page = paginator.page(page_number)
+    except EmptyPage:
+        page = paginator.page(
+            paginator.num_pages
+            if paginator.num_pages
+            else 1
+        )
+
+    return paginator, page, page_size
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def billing_center_invoices(request):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can access the invoice center."
+                )
+            },
+            status=403,
+        )
+
+    queryset = (
+        Invoice.objects
+        .select_related(
+            "hospital",
+            "subscription",
+            "subscription__plan",
+        )
+        .all()
+    )
+
+    search = str(
+        request.query_params.get("search", "")
+    ).strip()
+
+    status_filter = str(
+        request.query_params.get("status", "")
+    ).strip().lower()
+
+    invoice_type_filter = str(
+        request.query_params.get(
+            "invoice_type",
+            "",
+        )
+    ).strip().lower()
+
+    hospital_filter = str(
+        request.query_params.get(
+            "hospital",
+            "",
+        )
+    ).strip()
+
+    date_from = parse_date_query(
+        request.query_params.get("date_from")
+    )
+
+    date_to = parse_date_query(
+        request.query_params.get("date_to")
+    )
+
+    if search:
+        queryset = queryset.filter(
+            Q(invoice_number__icontains=search)
+            | Q(hospital__name__icontains=search)
+            | Q(hospital__slug__icontains=search)
+            | Q(hospital__email__icontains=search)
+            | Q(description__icontains=search)
+        )
+
+    if status_filter:
+        queryset = queryset.filter(
+            status=status_filter
+        )
+
+    if invoice_type_filter:
+        queryset = queryset.filter(
+            invoice_type=invoice_type_filter
+        )
+
+    if hospital_filter:
+        queryset = queryset.filter(
+            Q(hospital__name__icontains=hospital_filter)
+            | Q(hospital__slug__icontains=hospital_filter)
+        )
+
+    if date_from:
+        queryset = queryset.filter(
+            created_at__date__gte=date_from
+        )
+
+    if date_to:
+        queryset = queryset.filter(
+            created_at__date__lte=date_to
+        )
+
+    allowed_ordering = {
+        "created_at": "created_at",
+        "-created_at": "-created_at",
+        "due_date": "due_date",
+        "-due_date": "-due_date",
+        "total_amount": "total_amount",
+        "-total_amount": "-total_amount",
+        "invoice_number": "invoice_number",
+        "-invoice_number": "-invoice_number",
+        "hospital": "hospital__name",
+        "-hospital": "-hospital__name",
+    }
+
+    ordering_request = str(
+        request.query_params.get(
+            "ordering",
+            "-created_at",
+        )
+    ).strip()
+
+    ordering = allowed_ordering.get(
+        ordering_request,
+        "-created_at",
+    )
+
+    queryset = queryset.order_by(
+        ordering,
+        "id",
+    )
+
+    paginator, page, page_size = paginate_queryset(
+        request,
+        queryset,
+    )
+
+    totals = queryset.aggregate(
+        total_amount=Sum("total_amount"),
+        amount_paid=Sum("amount_paid"),
+    )
+
+    total_amount = (
+        totals["total_amount"]
+        or Decimal("0.00")
+    )
+
+    amount_paid = (
+        totals["amount_paid"]
+        or Decimal("0.00")
+    )
+
+    return Response(
+        {
+            "summary": {
+                "matching_invoices": paginator.count,
+                "pending": queryset.filter(
+                    status=Invoice.STATUS_PENDING
+                ).count(),
+                "overdue": queryset.filter(
+                    status=Invoice.STATUS_OVERDUE
+                ).count(),
+                "paid": queryset.filter(
+                    status=Invoice.STATUS_PAID
+                ).count(),
+                "total_amount": decimal_value(
+                    total_amount
+                ),
+                "amount_paid": decimal_value(
+                    amount_paid
+                ),
+                "outstanding_balance": decimal_value(
+                    total_amount - amount_paid
+                ),
+            },
+            "filters": {
+                "search": search,
+                "status": status_filter or None,
+                "invoice_type": (
+                    invoice_type_filter or None
+                ),
+                "hospital": hospital_filter or None,
+                "date_from": (
+                    date_from.isoformat()
+                    if date_from
+                    else None
+                ),
+                "date_to": (
+                    date_to.isoformat()
+                    if date_to
+                    else None
+                ),
+                "ordering": ordering_request,
+            },
+            "pagination": {
+                "page": page.number,
+                "page_size": page_size,
+                "total_pages": paginator.num_pages,
+                "total_items": paginator.count,
+                "has_next": page.has_next(),
+                "has_previous": page.has_previous(),
+            },
+            "results": [
+                {
+                    **serialize_billing_invoice(invoice),
+                    "hospital": {
+                        "id": invoice.hospital.id,
+                        "name": invoice.hospital.name,
+                        "slug": invoice.hospital.slug,
+                        "email": invoice.hospital.email,
+                    },
+                    "plan": (
+                        {
+                            "id": invoice.subscription.plan.id,
+                            "code": (
+                                invoice.subscription.plan.code
+                            ),
+                            "name": (
+                                invoice.subscription.plan.name
+                            ),
+                        }
+                        if invoice.subscription
+                        and invoice.subscription.plan
+                        else None
+                    ),
+                }
+                for invoice in page.object_list
+            ],
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def billing_center_payments(request):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can access the payment center."
+                )
+            },
+            status=403,
+        )
+
+    queryset = (
+        Payment.objects
+        .select_related(
+            "hospital",
+            "invoice",
+            "subscription",
+            "subscription__plan",
+        )
+        .all()
+    )
+
+    search = str(
+        request.query_params.get("search", "")
+    ).strip()
+
+    status_filter = str(
+        request.query_params.get("status", "")
+    ).strip().lower()
+
+    payment_type_filter = str(
+        request.query_params.get(
+            "payment_type",
+            "",
+        )
+    ).strip().lower()
+
+    gateway_filter = str(
+        request.query_params.get("gateway", "")
+    ).strip().lower()
+
+    hospital_filter = str(
+        request.query_params.get(
+            "hospital",
+            "",
+        )
+    ).strip()
+
+    date_from = parse_date_query(
+        request.query_params.get("date_from")
+    )
+
+    date_to = parse_date_query(
+        request.query_params.get("date_to")
+    )
+
+    if search:
+        queryset = queryset.filter(
+            Q(payment_reference__icontains=search)
+            | Q(transaction_id__icontains=search)
+            | Q(invoice__invoice_number__icontains=search)
+            | Q(hospital__name__icontains=search)
+            | Q(hospital__slug__icontains=search)
+            | Q(hospital__email__icontains=search)
+        )
+
+    if status_filter:
+        queryset = queryset.filter(
+            status=status_filter
+        )
+
+    if payment_type_filter:
+        queryset = queryset.filter(
+            payment_type=payment_type_filter
+        )
+
+    if gateway_filter:
+        queryset = queryset.filter(
+            gateway=gateway_filter
+        )
+
+    if hospital_filter:
+        queryset = queryset.filter(
+            Q(hospital__name__icontains=hospital_filter)
+            | Q(hospital__slug__icontains=hospital_filter)
+        )
+
+    if date_from:
+        queryset = queryset.filter(
+            created_at__date__gte=date_from
+        )
+
+    if date_to:
+        queryset = queryset.filter(
+            created_at__date__lte=date_to
+        )
+
+    allowed_ordering = {
+        "created_at": "created_at",
+        "-created_at": "-created_at",
+        "paid_at": "paid_at",
+        "-paid_at": "-paid_at",
+        "amount": "amount",
+        "-amount": "-amount",
+        "payment_reference": "payment_reference",
+        "-payment_reference": "-payment_reference",
+        "hospital": "hospital__name",
+        "-hospital": "-hospital__name",
+    }
+
+    ordering_request = str(
+        request.query_params.get(
+            "ordering",
+            "-created_at",
+        )
+    ).strip()
+
+    ordering = allowed_ordering.get(
+        ordering_request,
+        "-created_at",
+    )
+
+    queryset = queryset.order_by(
+        ordering,
+        "id",
+    )
+
+    paginator, page, page_size = paginate_queryset(
+        request,
+        queryset,
+    )
+
+    successful_total = (
+        queryset.filter(
+            status=Payment.STATUS_SUCCESS
+        )
+        .aggregate(total=Sum("amount"))["total"]
+        or Decimal("0.00")
+    )
+
+    pending_total = (
+        queryset.filter(
+            status=Payment.STATUS_PENDING
+        )
+        .aggregate(total=Sum("amount"))["total"]
+        or Decimal("0.00")
+    )
+
+    return Response(
+        {
+            "summary": {
+                "matching_payments": paginator.count,
+                "pending": queryset.filter(
+                    status=Payment.STATUS_PENDING
+                ).count(),
+                "successful": queryset.filter(
+                    status=Payment.STATUS_SUCCESS
+                ).count(),
+                "failed": queryset.filter(
+                    status=Payment.STATUS_FAILED
+                ).count(),
+                "successful_amount": decimal_value(
+                    successful_total
+                ),
+                "pending_amount": decimal_value(
+                    pending_total
+                ),
+            },
+            "filters": {
+                "search": search,
+                "status": status_filter or None,
+                "payment_type": (
+                    payment_type_filter or None
+                ),
+                "gateway": gateway_filter or None,
+                "hospital": hospital_filter or None,
+                "date_from": (
+                    date_from.isoformat()
+                    if date_from
+                    else None
+                ),
+                "date_to": (
+                    date_to.isoformat()
+                    if date_to
+                    else None
+                ),
+                "ordering": ordering_request,
+            },
+            "pagination": {
+                "page": page.number,
+                "page_size": page_size,
+                "total_pages": paginator.num_pages,
+                "total_items": paginator.count,
+                "has_next": page.has_next(),
+                "has_previous": page.has_previous(),
+            },
+            "results": [
+                {
+                    **serialize_billing_payment(payment),
+                    "hospital": {
+                        "id": payment.hospital.id,
+                        "name": payment.hospital.name,
+                        "slug": payment.hospital.slug,
+                        "email": payment.hospital.email,
+                    },
+                    "plan": (
+                        {
+                            "id": payment.subscription.plan.id,
+                            "code": (
+                                payment.subscription.plan.code
+                            ),
+                            "name": (
+                                payment.subscription.plan.name
+                            ),
+                        }
+                        if payment.subscription
+                        and payment.subscription.plan
+                        else None
+                    ),
+                }
+                for payment in page.object_list
+            ],
+        }
+    )
