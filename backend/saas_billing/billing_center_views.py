@@ -2067,3 +2067,552 @@ def billing_center_waive_service_fee(
             ),
         }
     )
+
+
+# ============================================================
+# Super Admin Billing Operations
+# ============================================================
+
+from decimal import Decimal, InvalidOperation
+
+from django.conf import settings
+from django.core.mail import send_mail
+
+from .invoice_services import create_initial_invoice
+from .models import (
+    HospitalBillingNote,
+    HospitalCredit,
+)
+from .renewal_services import (
+    create_monthly_renewal_invoice,
+)
+
+
+def serialize_billing_note(note):
+    return {
+        "id": note.id,
+        "title": note.title,
+        "note": note.note,
+        "is_internal": note.is_internal,
+        "author": (
+            {
+                "id": note.author.id,
+                "username": note.author.username,
+                "email": note.author.email,
+            }
+            if note.author
+            else None
+        ),
+        "created_at": note.created_at.isoformat(),
+        "updated_at": note.updated_at.isoformat(),
+    }
+
+
+def serialize_credit_entry(entry):
+    return {
+        "id": entry.id,
+        "entry_type": entry.entry_type,
+        "amount": decimal_value(entry.amount),
+        "currency": entry.currency,
+        "reason": entry.reason,
+        "reference": entry.reference,
+        "metadata": entry.metadata or {},
+        "created_by": (
+            {
+                "id": entry.created_by.id,
+                "username": entry.created_by.username,
+                "email": entry.created_by.email,
+            }
+            if entry.created_by
+            else None
+        ),
+        "created_at": entry.created_at.isoformat(),
+    }
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_generate_invoice(
+    request,
+    hospital_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can generate billing invoices."
+                )
+            },
+            status=403,
+        )
+
+    hospital = get_billing_center_hospital(hospital_id)
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital not found."},
+            status=404,
+        )
+
+    subscription = get_billing_center_subscription(
+        hospital
+    )
+
+    if not subscription:
+        return Response(
+            {
+                "error": (
+                    "Hospital subscription is not configured."
+                )
+            },
+            status=404,
+        )
+
+    invoice_type = str(
+        request.data.get("invoice_type", "monthly")
+    ).strip().lower()
+
+    if invoice_type == "initial":
+        invoice, created = create_initial_invoice(
+            subscription
+        )
+
+    elif invoice_type == "monthly":
+        if not subscription.next_billing_date:
+            subscription.next_billing_date = (
+                timezone.localdate()
+            )
+
+            subscription.save(
+                update_fields=[
+                    "next_billing_date",
+                    "updated_at",
+                ]
+            )
+
+        invoice, created = (
+            create_monthly_renewal_invoice(
+                subscription
+            )
+        )
+
+    else:
+        return Response(
+            {
+                "error": (
+                    "invoice_type must be either "
+                    "'initial' or 'monthly'."
+                )
+            },
+            status=400,
+        )
+
+    if not invoice:
+        return Response(
+            {
+                "error": (
+                    "Invoice could not be generated for "
+                    "the current subscription state."
+                )
+            },
+            status=400,
+        )
+
+    return Response(
+        {
+            "success": True,
+            "created": created,
+            "message": (
+                "Invoice generated successfully."
+                if created
+                else "An equivalent invoice already exists."
+            ),
+            "invoice": serialize_billing_invoice(
+                invoice
+            ),
+        },
+        status=201 if created else 200,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def billing_center_resend_invoice_reminder(
+    request,
+    hospital_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can resend invoice reminders."
+                )
+            },
+            status=403,
+        )
+
+    hospital = get_billing_center_hospital(hospital_id)
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital not found."},
+            status=404,
+        )
+
+    invoice_id = request.data.get("invoice_id")
+
+    if not invoice_id:
+        return Response(
+            {"error": "invoice_id is required."},
+            status=400,
+        )
+
+    invoice = (
+        Invoice.objects
+        .filter(
+            id=invoice_id,
+            hospital=hospital,
+        )
+        .select_related(
+            "hospital",
+            "subscription",
+        )
+        .first()
+    )
+
+    if not invoice:
+        return Response(
+            {"error": "Invoice not found."},
+            status=404,
+        )
+
+    recipient = (
+        hospital.email or ""
+    ).strip().lower()
+
+    try:
+        from staff.models import StaffProfile
+
+        admin_profile = (
+            StaffProfile.objects
+            .filter(
+                hospital=hospital,
+                role="admin",
+                is_active=True,
+                user__is_active=True,
+            )
+            .select_related("user")
+            .first()
+        )
+
+        if (
+            admin_profile
+            and admin_profile.user.email
+        ):
+            recipient = (
+                admin_profile.user.email
+                .strip()
+                .lower()
+            )
+    except Exception:
+        pass
+
+    if not recipient:
+        return Response(
+            {
+                "error": (
+                    "No hospital administrator email "
+                    "is configured."
+                )
+            },
+            status=400,
+        )
+
+    subject = (
+        f"MediCore invoice reminder — "
+        f"{invoice.invoice_number}"
+    )
+
+    message = (
+        f"Hello {hospital.name} Administrator,\n\n"
+        f"This is a reminder regarding MediCore invoice "
+        f"{invoice.invoice_number}.\n\n"
+        f"Invoice total: {invoice.currency} "
+        f"{invoice.total_amount}\n"
+        f"Amount paid: {invoice.currency} "
+        f"{invoice.amount_paid}\n"
+        f"Balance due: {invoice.currency} "
+        f"{invoice.balance_due}\n"
+        f"Due date: {invoice.due_date}\n"
+        f"Status: {invoice.status}\n\n"
+        f"Open your billing portal:\n"
+        f"https://{hospital.slug}.medicorecloud.com/"
+        f"settings/billing\n\n"
+        f"Support: support@medicorecloud.com\n\n"
+        f"Regards,\n"
+        f"MediCore HMS Team"
+    )
+
+    sent = send_mail(
+        subject=subject,
+        message=message,
+        from_email=getattr(
+            settings,
+            "DEFAULT_FROM_EMAIL",
+            "noreply@medicorecloud.com",
+        ),
+        recipient_list=[recipient],
+        fail_silently=False,
+    )
+
+    if sent != 1:
+        return Response(
+            {"error": "Reminder email was not sent."},
+            status=500,
+        )
+
+    return Response(
+        {
+            "success": True,
+            "message": "Invoice reminder sent.",
+            "recipient": recipient,
+            "invoice_number": invoice.invoice_number,
+        }
+    )
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def billing_center_billing_notes(
+    request,
+    hospital_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can manage billing notes."
+                )
+            },
+            status=403,
+        )
+
+    hospital = get_billing_center_hospital(hospital_id)
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital not found."},
+            status=404,
+        )
+
+    if request.method == "GET":
+        notes = (
+            HospitalBillingNote.objects
+            .filter(hospital=hospital)
+            .select_related("author")
+            .order_by("-created_at")[:100]
+        )
+
+        return Response(
+            {
+                "results": [
+                    serialize_billing_note(note)
+                    for note in notes
+                ]
+            }
+        )
+
+    title = str(
+        request.data.get("title", "")
+    ).strip()
+
+    note_text = str(
+        request.data.get("note", "")
+    ).strip()
+
+    if not note_text:
+        return Response(
+            {"error": "note is required."},
+            status=400,
+        )
+
+    note = HospitalBillingNote.objects.create(
+        hospital=hospital,
+        author=request.user,
+        title=title,
+        note=note_text,
+        is_internal=True,
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": "Billing note added.",
+            "note": serialize_billing_note(note),
+        },
+        status=201,
+    )
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_hospital_credits(
+    request,
+    hospital_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can manage hospital credits."
+                )
+            },
+            status=403,
+        )
+
+    hospital = get_billing_center_hospital(hospital_id)
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital not found."},
+            status=404,
+        )
+
+    subscription = get_billing_center_subscription(
+        hospital
+    )
+
+    if request.method == "GET":
+        entries = (
+            HospitalCredit.objects
+            .filter(hospital=hospital)
+            .select_related(
+                "subscription",
+                "created_by",
+            )
+            .order_by("-created_at")[:100]
+        )
+
+        credits = (
+            HospitalCredit.objects
+            .filter(
+                hospital=hospital,
+                entry_type=HospitalCredit.CREDIT,
+            )
+            .aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
+
+        debits = (
+            HospitalCredit.objects
+            .filter(
+                hospital=hospital,
+                entry_type=HospitalCredit.DEBIT,
+            )
+            .aggregate(total=Sum("amount"))["total"]
+            or Decimal("0.00")
+        )
+
+        return Response(
+            {
+                "balance": decimal_value(
+                    credits - debits
+                ),
+                "currency": (
+                    subscription.currency
+                    if subscription
+                    else hospital.currency
+                ),
+                "results": [
+                    serialize_credit_entry(entry)
+                    for entry in entries
+                ],
+            }
+        )
+
+    entry_type = str(
+        request.data.get(
+            "entry_type",
+            HospitalCredit.CREDIT,
+        )
+    ).strip().lower()
+
+    if entry_type not in {
+        HospitalCredit.CREDIT,
+        HospitalCredit.DEBIT,
+    }:
+        return Response(
+            {
+                "error": (
+                    "entry_type must be credit or debit."
+                )
+            },
+            status=400,
+        )
+
+    try:
+        amount = Decimal(
+            str(request.data.get("amount", "0"))
+        )
+    except (InvalidOperation, TypeError, ValueError):
+        return Response(
+            {"error": "Invalid amount."},
+            status=400,
+        )
+
+    if amount <= Decimal("0.00"):
+        return Response(
+            {
+                "error": (
+                    "amount must be greater than zero."
+                )
+            },
+            status=400,
+        )
+
+    reason = str(
+        request.data.get("reason", "")
+    ).strip()
+
+    if not reason:
+        return Response(
+            {"error": "reason is required."},
+            status=400,
+        )
+
+    entry = HospitalCredit.objects.create(
+        hospital=hospital,
+        subscription=subscription,
+        entry_type=entry_type,
+        amount=amount,
+        currency=(
+            subscription.currency
+            if subscription
+            else hospital.currency
+        ),
+        reason=reason,
+        reference=str(
+            request.data.get("reference", "")
+        ).strip(),
+        created_by=request.user,
+        metadata={
+            "source": "billing_center",
+        },
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": (
+                f"Hospital {entry_type} recorded."
+            ),
+            "entry": serialize_credit_entry(entry),
+        },
+        status=201,
+    )

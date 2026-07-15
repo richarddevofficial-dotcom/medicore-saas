@@ -1,13 +1,17 @@
 from django.urls import path
 
 from .billing_center_views import (
+    billing_center_billing_notes,
     billing_center_change_plan,
     billing_center_dashboard,
     billing_center_end_trial,
     billing_center_extend_trial,
+    billing_center_generate_invoice,
+    billing_center_hospital_credits,
     billing_center_hospital_detail,
     billing_center_hospitals,
     billing_center_reactivate_subscription,
+    billing_center_resend_invoice_reminder,
     billing_center_suspend_subscription,
     billing_center_waive_service_fee,
 )
@@ -58,5 +62,25 @@ urlpatterns = [
         "hospitals/<int:hospital_id>/waive-service-fee/",
         billing_center_waive_service_fee,
         name="billing-center-waive-service-fee",
+    ),
+    path(
+        "hospitals/<int:hospital_id>/generate-invoice/",
+        billing_center_generate_invoice,
+        name="billing-center-generate-invoice",
+    ),
+    path(
+        "hospitals/<int:hospital_id>/resend-invoice-reminder/",
+        billing_center_resend_invoice_reminder,
+        name="billing-center-resend-invoice-reminder",
+    ),
+    path(
+        "hospitals/<int:hospital_id>/notes/",
+        billing_center_billing_notes,
+        name="billing-center-billing-notes",
+    ),
+    path(
+        "hospitals/<int:hospital_id>/credits/",
+        billing_center_hospital_credits,
+        name="billing-center-hospital-credits",
     ),
 ]

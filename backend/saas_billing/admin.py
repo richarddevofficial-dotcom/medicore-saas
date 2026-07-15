@@ -462,3 +462,69 @@ class BillingReminderLogAdmin(admin.ModelAdmin):
         "metadata",
         "created_at",
     )
+
+
+from .models import (
+    HospitalBillingNote,
+    HospitalCredit,
+)
+
+
+@admin.register(HospitalBillingNote)
+class HospitalBillingNoteAdmin(admin.ModelAdmin):
+    list_display = (
+        "hospital",
+        "title",
+        "author",
+        "is_internal",
+        "created_at",
+    )
+
+    list_filter = (
+        "is_internal",
+        "created_at",
+    )
+
+    search_fields = (
+        "hospital__name",
+        "hospital__slug",
+        "title",
+        "note",
+        "author__email",
+        "author__username",
+    )
+
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+    )
+
+
+@admin.register(HospitalCredit)
+class HospitalCreditAdmin(admin.ModelAdmin):
+    list_display = (
+        "hospital",
+        "entry_type",
+        "amount",
+        "currency",
+        "reason",
+        "created_by",
+        "created_at",
+    )
+
+    list_filter = (
+        "entry_type",
+        "currency",
+        "created_at",
+    )
+
+    search_fields = (
+        "hospital__name",
+        "hospital__slug",
+        "reason",
+        "reference",
+    )
+
+    readonly_fields = (
+        "created_at",
+    )

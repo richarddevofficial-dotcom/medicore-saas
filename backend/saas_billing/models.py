@@ -1,3 +1,4 @@
+from django.conf import settings
 import uuid
 from decimal import Decimal
 
@@ -704,4 +705,121 @@ class BillingReminderLog(models.Model):
         return (
             f"{self.hospital.name} - "
             f"{self.get_reminder_type_display()}"
+        )
+
+
+class HospitalBillingNote(models.Model):
+    hospital = models.ForeignKey(
+        Hospital,
+        on_delete=models.CASCADE,
+        related_name="billing_notes",
+    )
+
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_billing_notes",
+    )
+
+    title = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+    )
+
+    note = models.TextField()
+
+    is_internal = models.BooleanField(
+        default=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.hospital.name} - {self.title or 'Billing note'}"
+
+
+class HospitalCredit(models.Model):
+    CREDIT = "credit"
+    DEBIT = "debit"
+
+    ENTRY_TYPE_CHOICES = [
+        (CREDIT, "Credit"),
+        (DEBIT, "Debit"),
+    ]
+
+    hospital = models.ForeignKey(
+        Hospital,
+        on_delete=models.CASCADE,
+        related_name="billing_credits",
+    )
+
+    subscription = models.ForeignKey(
+        HospitalSubscription,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="credit_entries",
+    )
+
+    entry_type = models.CharField(
+        max_length=10,
+        choices=ENTRY_TYPE_CHOICES,
+    )
+
+    amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+    )
+
+    currency = models.CharField(
+        max_length=10,
+        default="USD",
+    )
+
+    reason = models.CharField(
+        max_length=255,
+    )
+
+    reference = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_hospital_credits",
+    )
+
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return (
+            f"{self.hospital.name} - "
+            f"{self.entry_type} {self.currency} {self.amount}"
         )
