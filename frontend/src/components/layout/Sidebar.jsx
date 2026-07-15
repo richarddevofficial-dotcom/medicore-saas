@@ -153,8 +153,8 @@ const navigationByRole = {
         { name: "Subscription", href: "/admin/subscription", icon: Crown },
         { name: "Payments", href: "/admin/payment", icon: CreditCard },
         {
-          name: "Billing & Subscription",
-          href: "/settings/billing",
+          name: "Billing Center",
+          href: "/platform/billing",
           icon: CreditCard,
         },
         { name: "Super Admin", href: "/super-admin", icon: Shield },
