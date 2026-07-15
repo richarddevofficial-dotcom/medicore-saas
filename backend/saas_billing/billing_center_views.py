@@ -3803,3 +3803,698 @@ def billing_center_download_receipt_pdf(
         ),
         content_type="application/pdf",
     )
+
+
+# ============================================================
+# Revenue Analytics and CSV Reports
+# ============================================================
+
+import csv
+
+from django.http import HttpResponse
+
+
+def csv_response(filename):
+    response = HttpResponse(
+        content_type="text/csv",
+    )
+
+    response[
+        "Content-Disposition"
+    ] = f'attachment; filename="{filename}"'
+
+    return response
+
+
+def get_analytics_date_range(request):
+    today = timezone.localdate()
+
+    date_from = parse_date_query(
+        request.query_params.get("date_from")
+    )
+
+    date_to = parse_date_query(
+        request.query_params.get("date_to")
+    )
+
+    if not date_from:
+        date_from = today - timedelta(days=365)
+
+    if not date_to:
+        date_to = today
+
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+
+    return date_from, date_to
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def billing_center_analytics(request):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can access revenue analytics."
+                )
+            },
+            status=403,
+        )
+
+    date_from, date_to = get_analytics_date_range(
+        request
+    )
+
+    subscriptions = (
+        HospitalSubscription.objects
+        .select_related(
+            "hospital",
+            "plan",
+        )
+    )
+
+    successful_payments = Payment.objects.filter(
+        status=Payment.STATUS_SUCCESS,
+        paid_at__date__gte=date_from,
+        paid_at__date__lte=date_to,
+    )
+
+    all_payments_in_range = Payment.objects.filter(
+        created_at__date__gte=date_from,
+        created_at__date__lte=date_to,
+    )
+
+    paid_invoices = Invoice.objects.filter(
+        status=Invoice.STATUS_PAID,
+        paid_at__date__gte=date_from,
+        paid_at__date__lte=date_to,
+    )
+
+    open_invoices = Invoice.objects.filter(
+        status__in=[
+            Invoice.STATUS_PENDING,
+            Invoice.STATUS_OVERDUE,
+        ]
+    )
+
+    total_revenue = (
+        successful_payments.aggregate(
+            total=Sum("amount")
+        )["total"]
+        or Decimal("0.00")
+    )
+
+    month_start = timezone.localdate().replace(
+        day=1
+    )
+
+    revenue_this_month = (
+        Payment.objects.filter(
+            status=Payment.STATUS_SUCCESS,
+            paid_at__date__gte=month_start,
+            paid_at__date__lte=timezone.localdate(),
+        )
+        .aggregate(total=Sum("amount"))["total"]
+        or Decimal("0.00")
+    )
+
+    service_fee_revenue = (
+        paid_invoices.aggregate(
+            total=Sum("service_fee_amount")
+        )["total"]
+        or Decimal("0.00")
+    )
+
+    subscription_revenue = (
+        paid_invoices.aggregate(
+            total=Sum("subscription_amount")
+        )["total"]
+        or Decimal("0.00")
+    )
+
+    estimated_mrr = (
+        subscriptions.filter(
+            status=HospitalSubscription.STATUS_ACTIVE
+        )
+        .aggregate(
+            total=Sum("current_monthly_price")
+        )["total"]
+        or Decimal("0.00")
+    )
+
+    estimated_arr = (
+        estimated_mrr * Decimal("12")
+    )
+
+    open_invoice_totals = open_invoices.aggregate(
+        total_amount=Sum("total_amount"),
+        amount_paid=Sum("amount_paid"),
+    )
+
+    outstanding_balance = (
+        (
+            open_invoice_totals["total_amount"]
+            or Decimal("0.00")
+        )
+        - (
+            open_invoice_totals["amount_paid"]
+            or Decimal("0.00")
+        )
+    )
+
+    if outstanding_balance < Decimal("0.00"):
+        outstanding_balance = Decimal("0.00")
+
+    revenue_by_month = list(
+        successful_payments
+        .annotate(month=TruncMonth("paid_at"))
+        .values("month")
+        .annotate(
+            revenue=Sum("amount"),
+            payments=Count("id"),
+        )
+        .order_by("month")
+    )
+
+    revenue_by_plan = list(
+        successful_payments
+        .values(
+            "subscription__plan__code",
+            "subscription__plan__name",
+        )
+        .annotate(
+            revenue=Sum("amount"),
+            payments=Count("id"),
+        )
+        .order_by("-revenue")
+    )
+
+    revenue_by_country = list(
+        successful_payments
+        .values("hospital__country")
+        .annotate(
+            revenue=Sum("amount"),
+            payments=Count("id"),
+        )
+        .order_by("-revenue")
+    )
+
+    subscription_distribution = list(
+        subscriptions
+        .values("status")
+        .annotate(total=Count("id"))
+        .order_by("status")
+    )
+
+    plan_distribution = list(
+        subscriptions
+        .values(
+            "plan__code",
+            "plan__name",
+        )
+        .annotate(total=Count("id"))
+        .order_by("plan__display_order")
+    )
+
+    successful_payment_count = (
+        all_payments_in_range.filter(
+            status=Payment.STATUS_SUCCESS
+        ).count()
+    )
+
+    total_payment_count = (
+        all_payments_in_range.count()
+    )
+
+    payment_success_rate = (
+        round(
+            (
+                successful_payment_count
+                / total_payment_count
+            ) * 100,
+            2,
+        )
+        if total_payment_count
+        else 0
+    )
+
+    active_count = subscriptions.filter(
+        status=HospitalSubscription.STATUS_ACTIVE
+    ).count()
+
+    trial_count = subscriptions.filter(
+        status=HospitalSubscription.STATUS_TRIAL
+    ).count()
+
+    grace_count = subscriptions.filter(
+        status=HospitalSubscription.STATUS_GRACE
+    ).count()
+
+    expired_count = subscriptions.filter(
+        status=HospitalSubscription.STATUS_EXPIRED
+    ).count()
+
+    conversion_base = (
+        active_count
+        + trial_count
+        + grace_count
+        + expired_count
+    )
+
+    trial_conversion_rate = (
+        round(
+            (
+                active_count
+                / conversion_base
+            ) * 100,
+            2,
+        )
+        if conversion_base
+        else 0
+    )
+
+    average_revenue_per_active_hospital = (
+        total_revenue / active_count
+        if active_count
+        else Decimal("0.00")
+    )
+
+    return Response(
+        {
+            "date_range": {
+                "date_from": date_from.isoformat(),
+                "date_to": date_to.isoformat(),
+            },
+            "summary": {
+                "currency": "USD",
+                "total_revenue": decimal_value(
+                    total_revenue
+                ),
+                "revenue_this_month": decimal_value(
+                    revenue_this_month
+                ),
+                "service_fee_revenue": decimal_value(
+                    service_fee_revenue
+                ),
+                "subscription_revenue": decimal_value(
+                    subscription_revenue
+                ),
+                "estimated_mrr": decimal_value(
+                    estimated_mrr
+                ),
+                "estimated_arr": decimal_value(
+                    estimated_arr
+                ),
+                "outstanding_balance": decimal_value(
+                    outstanding_balance
+                ),
+                "average_revenue_per_active_hospital": (
+                    decimal_value(
+                        average_revenue_per_active_hospital
+                    )
+                ),
+                "payment_success_rate": (
+                    payment_success_rate
+                ),
+                "trial_conversion_rate": (
+                    trial_conversion_rate
+                ),
+                "active_subscriptions": active_count,
+                "trial_subscriptions": trial_count,
+                "grace_subscriptions": grace_count,
+                "expired_subscriptions": expired_count,
+                "suspended_subscriptions": (
+                    subscriptions.filter(
+                        status=(
+                            HospitalSubscription
+                            .STATUS_SUSPENDED
+                        )
+                    ).count()
+                ),
+            },
+            "revenue_by_month": [
+                {
+                    "month": (
+                        item["month"].strftime("%Y-%m")
+                        if item["month"]
+                        else None
+                    ),
+                    "revenue": decimal_value(
+                        item["revenue"]
+                    ),
+                    "payments": item["payments"],
+                }
+                for item in revenue_by_month
+            ],
+            "revenue_by_plan": [
+                {
+                    "plan_code": (
+                        item[
+                            "subscription__plan__code"
+                        ]
+                    ),
+                    "plan_name": (
+                        item[
+                            "subscription__plan__name"
+                        ]
+                    ),
+                    "revenue": decimal_value(
+                        item["revenue"]
+                    ),
+                    "payments": item["payments"],
+                }
+                for item in revenue_by_plan
+            ],
+            "revenue_by_country": [
+                {
+                    "country": (
+                        item["hospital__country"]
+                        or "Not specified"
+                    ),
+                    "revenue": decimal_value(
+                        item["revenue"]
+                    ),
+                    "payments": item["payments"],
+                }
+                for item in revenue_by_country
+            ],
+            "subscription_distribution": [
+                {
+                    "status": item["status"],
+                    "total": item["total"],
+                }
+                for item in subscription_distribution
+            ],
+            "plan_distribution": [
+                {
+                    "plan_code": item["plan__code"],
+                    "plan_name": item["plan__name"],
+                    "total": item["total"],
+                }
+                for item in plan_distribution
+            ],
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def billing_center_revenue_csv(request):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can export revenue reports."
+                )
+            },
+            status=403,
+        )
+
+    date_from, date_to = get_analytics_date_range(
+        request
+    )
+
+    payments = (
+        Payment.objects
+        .filter(
+            status=Payment.STATUS_SUCCESS,
+            paid_at__date__gte=date_from,
+            paid_at__date__lte=date_to,
+        )
+        .select_related(
+            "hospital",
+            "invoice",
+            "subscription",
+            "subscription__plan",
+        )
+        .order_by("paid_at", "id")
+    )
+
+    response = csv_response(
+        (
+            f"medicore-revenue-"
+            f"{date_from}-to-{date_to}.csv"
+        )
+    )
+
+    writer = csv.writer(response)
+
+    writer.writerow(
+        [
+            "Payment Reference",
+            "Transaction ID",
+            "Hospital",
+            "Hospital Slug",
+            "Country",
+            "Plan",
+            "Payment Type",
+            "Invoice Number",
+            "Amount",
+            "Currency",
+            "Gateway",
+            "Payment Method",
+            "Paid At",
+        ]
+    )
+
+    for payment in payments:
+        writer.writerow(
+            [
+                payment.payment_reference,
+                payment.transaction_id,
+                payment.hospital.name,
+                payment.hospital.slug,
+                payment.hospital.country,
+                (
+                    payment.subscription.plan.name
+                    if payment.subscription
+                    and payment.subscription.plan
+                    else ""
+                ),
+                payment.payment_type,
+                payment.invoice.invoice_number,
+                payment.amount,
+                payment.currency,
+                payment.gateway,
+                payment.payment_method,
+                (
+                    payment.paid_at.isoformat()
+                    if payment.paid_at
+                    else ""
+                ),
+            ]
+        )
+
+    return response
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def billing_center_invoices_csv(request):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can export invoice reports."
+                )
+            },
+            status=403,
+        )
+
+    date_from, date_to = get_analytics_date_range(
+        request
+    )
+
+    invoices = (
+        Invoice.objects
+        .filter(
+            created_at__date__gte=date_from,
+            created_at__date__lte=date_to,
+        )
+        .select_related(
+            "hospital",
+            "subscription",
+            "subscription__plan",
+        )
+        .order_by("created_at", "id")
+    )
+
+    response = csv_response(
+        (
+            f"medicore-invoices-"
+            f"{date_from}-to-{date_to}.csv"
+        )
+    )
+
+    writer = csv.writer(response)
+
+    writer.writerow(
+        [
+            "Invoice Number",
+            "Hospital",
+            "Hospital Slug",
+            "Country",
+            "Plan",
+            "Invoice Type",
+            "Status",
+            "Service Fee",
+            "Subscription Amount",
+            "Adjustment Amount",
+            "Subtotal",
+            "Tax",
+            "Total",
+            "Amount Paid",
+            "Balance Due",
+            "Currency",
+            "Issued At",
+            "Due Date",
+            "Paid At",
+            "Created At",
+        ]
+    )
+
+    for invoice in invoices:
+        writer.writerow(
+            [
+                invoice.invoice_number,
+                invoice.hospital.name,
+                invoice.hospital.slug,
+                invoice.hospital.country,
+                (
+                    invoice.subscription.plan.name
+                    if invoice.subscription
+                    and invoice.subscription.plan
+                    else ""
+                ),
+                invoice.invoice_type,
+                invoice.status,
+                invoice.service_fee_amount,
+                invoice.subscription_amount,
+                invoice.adjustment_amount,
+                invoice.subtotal,
+                invoice.tax_amount,
+                invoice.total_amount,
+                invoice.amount_paid,
+                invoice.balance_due,
+                invoice.currency,
+                (
+                    invoice.issued_at.isoformat()
+                    if invoice.issued_at
+                    else ""
+                ),
+                (
+                    invoice.due_date.isoformat()
+                    if invoice.due_date
+                    else ""
+                ),
+                (
+                    invoice.paid_at.isoformat()
+                    if invoice.paid_at
+                    else ""
+                ),
+                invoice.created_at.isoformat(),
+            ]
+        )
+
+    return response
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def billing_center_payments_csv(request):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can export payment reports."
+                )
+            },
+            status=403,
+        )
+
+    date_from, date_to = get_analytics_date_range(
+        request
+    )
+
+    payments = (
+        Payment.objects
+        .filter(
+            created_at__date__gte=date_from,
+            created_at__date__lte=date_to,
+        )
+        .select_related(
+            "hospital",
+            "invoice",
+            "subscription",
+            "subscription__plan",
+        )
+        .order_by("created_at", "id")
+    )
+
+    response = csv_response(
+        (
+            f"medicore-payments-"
+            f"{date_from}-to-{date_to}.csv"
+        )
+    )
+
+    writer = csv.writer(response)
+
+    writer.writerow(
+        [
+            "Payment Reference",
+            "Transaction ID",
+            "Hospital",
+            "Hospital Slug",
+            "Country",
+            "Plan",
+            "Invoice Number",
+            "Payment Type",
+            "Amount",
+            "Currency",
+            "Gateway",
+            "Payment Method",
+            "Status",
+            "Paid At",
+            "Created At",
+            "Notes",
+        ]
+    )
+
+    for payment in payments:
+        writer.writerow(
+            [
+                payment.payment_reference,
+                payment.transaction_id,
+                payment.hospital.name,
+                payment.hospital.slug,
+                payment.hospital.country,
+                (
+                    payment.subscription.plan.name
+                    if payment.subscription
+                    and payment.subscription.plan
+                    else ""
+                ),
+                payment.invoice.invoice_number,
+                payment.payment_type,
+                payment.amount,
+                payment.currency,
+                payment.gateway,
+                payment.payment_method,
+                payment.status,
+                (
+                    payment.paid_at.isoformat()
+                    if payment.paid_at
+                    else ""
+                ),
+                payment.created_at.isoformat(),
+                payment.notes,
+            ]
+        )
+
+    return response

@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .billing_center_views import (
+    billing_center_analytics,
     billing_center_approve_payment,
     billing_center_billing_notes,
     billing_center_change_plan,
@@ -14,12 +15,15 @@ from .billing_center_views import (
     billing_center_hospital_detail,
     billing_center_hospitals,
     billing_center_invoices,
+    billing_center_invoices_csv,
     billing_center_mark_invoice_overdue,
     billing_center_mark_invoice_paid,
     billing_center_payments,
+    billing_center_payments_csv,
     billing_center_reactivate_subscription,
     billing_center_reject_payment,
     billing_center_resend_invoice_reminder,
+    billing_center_revenue_csv,
     billing_center_suspend_subscription,
     billing_center_void_invoice,
     billing_center_waive_service_fee,
@@ -31,6 +35,26 @@ urlpatterns = [
         "dashboard/",
         billing_center_dashboard,
         name="billing-center-dashboard",
+    ),
+    path(
+        "analytics/",
+        billing_center_analytics,
+        name="billing-center-analytics",
+    ),
+    path(
+        "reports/revenue.csv",
+        billing_center_revenue_csv,
+        name="billing-center-revenue-csv",
+    ),
+    path(
+        "reports/invoices.csv",
+        billing_center_invoices_csv,
+        name="billing-center-invoices-csv",
+    ),
+    path(
+        "reports/payments.csv",
+        billing_center_payments_csv,
+        name="billing-center-payments-csv",
     ),
     path(
         "invoices/",
