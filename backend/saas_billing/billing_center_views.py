@@ -1439,3 +1439,631 @@ def billing_center_hospital_detail(
             "timeline": timeline,
         }
     )
+
+
+# ============================================================
+# Super Admin Subscription Management Actions
+# ============================================================
+
+from datetime import timedelta
+
+from django.db import transaction
+
+from .models import SubscriptionPlan
+from .plan_change_services import (
+    PlanChangeError,
+    validate_target_plan,
+)
+
+
+def get_billing_center_hospital(hospital_id):
+    return Hospital.objects.filter(
+        id=hospital_id
+    ).first()
+
+
+def get_billing_center_subscription(hospital):
+    return (
+        HospitalSubscription.objects
+        .filter(hospital=hospital)
+        .select_related(
+            "hospital",
+            "plan",
+        )
+        .first()
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_extend_trial(
+    request,
+    hospital_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can extend trials."
+                )
+            },
+            status=403,
+        )
+
+    hospital = get_billing_center_hospital(
+        hospital_id
+    )
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital not found."},
+            status=404,
+        )
+
+    subscription = get_billing_center_subscription(
+        hospital
+    )
+
+    if not subscription:
+        return Response(
+            {
+                "error": (
+                    "Hospital subscription is not configured."
+                )
+            },
+            status=404,
+        )
+
+    try:
+        days = int(
+            request.data.get("days", 0)
+        )
+    except (TypeError, ValueError):
+        days = 0
+
+    if days < 1 or days > 365:
+        return Response(
+            {
+                "error": (
+                    "days must be between 1 and 365."
+                )
+            },
+            status=400,
+        )
+
+    now = timezone.now()
+
+    if (
+        subscription.trial_ends_at
+        and subscription.trial_ends_at > now
+    ):
+        base_date = subscription.trial_ends_at
+    else:
+        base_date = now
+
+    subscription.status = (
+        HospitalSubscription.STATUS_TRIAL
+    )
+
+    if not subscription.trial_started_at:
+        subscription.trial_started_at = now
+
+    subscription.trial_ends_at = (
+        base_date + timedelta(days=days)
+    )
+
+    subscription.grace_period_ends_at = None
+
+    subscription.save(
+        update_fields=[
+            "status",
+            "trial_started_at",
+            "trial_ends_at",
+            "grace_period_ends_at",
+            "updated_at",
+        ]
+    )
+
+    hospital.subscription_status = "trial"
+    hospital.is_active = True
+
+    hospital.save(
+        update_fields=[
+            "subscription_status",
+            "is_active",
+            "updated_at",
+        ]
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": (
+                f"Trial extended by {days} day(s)."
+            ),
+            "trial_ends_at": (
+                subscription.trial_ends_at
+                .isoformat()
+            ),
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_end_trial(
+    request,
+    hospital_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can end trials."
+                )
+            },
+            status=403,
+        )
+
+    hospital = get_billing_center_hospital(
+        hospital_id
+    )
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital not found."},
+            status=404,
+        )
+
+    subscription = get_billing_center_subscription(
+        hospital
+    )
+
+    if not subscription:
+        return Response(
+            {
+                "error": (
+                    "Hospital subscription is not configured."
+                )
+            },
+            status=404,
+        )
+
+    now = timezone.now()
+
+    subscription.status = (
+        HospitalSubscription.STATUS_GRACE
+    )
+
+    subscription.trial_ends_at = now
+    subscription.grace_period_ends_at = (
+        now + timedelta(days=7)
+    )
+
+    subscription.save(
+        update_fields=[
+            "status",
+            "trial_ends_at",
+            "grace_period_ends_at",
+            "updated_at",
+        ]
+    )
+
+    hospital.subscription_status = "grace"
+    hospital.is_active = True
+
+    hospital.save(
+        update_fields=[
+            "subscription_status",
+            "is_active",
+            "updated_at",
+        ]
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": (
+                "Trial ended and grace period started."
+            ),
+            "grace_period_ends_at": (
+                subscription
+                .grace_period_ends_at
+                .isoformat()
+            ),
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_suspend_subscription(
+    request,
+    hospital_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can suspend subscriptions."
+                )
+            },
+            status=403,
+        )
+
+    hospital = get_billing_center_hospital(
+        hospital_id
+    )
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital not found."},
+            status=404,
+        )
+
+    subscription = get_billing_center_subscription(
+        hospital
+    )
+
+    if not subscription:
+        return Response(
+            {
+                "error": (
+                    "Hospital subscription is not configured."
+                )
+            },
+            status=404,
+        )
+
+    subscription.status = (
+        HospitalSubscription.STATUS_SUSPENDED
+    )
+
+    subscription.save(
+        update_fields=[
+            "status",
+            "updated_at",
+        ]
+    )
+
+    hospital.subscription_status = "suspended"
+
+    # Keep the hospital active so tenant routing,
+    # login and the billing portal continue working.
+    hospital.is_active = True
+
+    hospital.save(
+        update_fields=[
+            "subscription_status",
+            "is_active",
+            "updated_at",
+        ]
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": "Subscription suspended.",
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_reactivate_subscription(
+    request,
+    hospital_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can reactivate subscriptions."
+                )
+            },
+            status=403,
+        )
+
+    hospital = get_billing_center_hospital(
+        hospital_id
+    )
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital not found."},
+            status=404,
+        )
+
+    subscription = get_billing_center_subscription(
+        hospital
+    )
+
+    if not subscription:
+        return Response(
+            {
+                "error": (
+                    "Hospital subscription is not configured."
+                )
+            },
+            status=404,
+        )
+
+    now = timezone.now()
+
+    subscription.status = (
+        HospitalSubscription.STATUS_ACTIVE
+    )
+
+    subscription.grace_period_ends_at = None
+
+    if not subscription.activated_at:
+        subscription.activated_at = now
+
+    if not subscription.next_billing_date:
+        subscription.next_billing_date = (
+            timezone.localdate()
+            + timedelta(days=30)
+        )
+
+    subscription.save(
+        update_fields=[
+            "status",
+            "grace_period_ends_at",
+            "activated_at",
+            "next_billing_date",
+            "updated_at",
+        ]
+    )
+
+    hospital.subscription_status = "active"
+    hospital.is_active = True
+
+    hospital.save(
+        update_fields=[
+            "subscription_status",
+            "is_active",
+            "updated_at",
+        ]
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": "Subscription reactivated.",
+            "next_billing_date": (
+                subscription
+                .next_billing_date
+                .isoformat()
+                if subscription.next_billing_date
+                else None
+            ),
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_change_plan(
+    request,
+    hospital_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can change subscription plans."
+                )
+            },
+            status=403,
+        )
+
+    hospital = get_billing_center_hospital(
+        hospital_id
+    )
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital not found."},
+            status=404,
+        )
+
+    subscription = get_billing_center_subscription(
+        hospital
+    )
+
+    if not subscription:
+        return Response(
+            {
+                "error": (
+                    "Hospital subscription is not configured."
+                )
+            },
+            status=404,
+        )
+
+    plan_code = str(
+        request.data.get("plan_code", "")
+    ).strip().lower()
+
+    if not plan_code:
+        return Response(
+            {"error": "plan_code is required."},
+            status=400,
+        )
+
+    target_plan = SubscriptionPlan.objects.filter(
+        code=plan_code,
+        is_active=True,
+    ).first()
+
+    if not target_plan:
+        return Response(
+            {"error": "Subscription plan not found."},
+            status=404,
+        )
+
+    if target_plan.id == subscription.plan_id:
+        return Response(
+            {
+                "error": (
+                    "The selected plan is already active."
+                )
+            },
+            status=409,
+        )
+
+    try:
+        validate_target_plan(
+            subscription,
+            target_plan,
+        )
+    except PlanChangeError as error:
+        return Response(
+            {"error": str(error)},
+            status=400,
+        )
+
+    subscription.plan = target_plan
+    subscription.current_monthly_price = (
+        target_plan.monthly_price
+    )
+    subscription.current_service_fee = (
+        target_plan.service_fee
+    )
+    subscription.currency = target_plan.currency
+
+    subscription.save(
+        update_fields=[
+            "plan",
+            "current_monthly_price",
+            "current_service_fee",
+            "currency",
+            "updated_at",
+        ]
+    )
+
+    hospital.subscription_plan = (
+        target_plan.code
+    )
+
+    if target_plan.max_staff is not None:
+        hospital.max_staff = (
+            target_plan.max_staff
+        )
+
+    if target_plan.max_patients is not None:
+        hospital.max_patients = (
+            target_plan.max_patients
+        )
+
+    hospital.save(
+        update_fields=[
+            "subscription_plan",
+            "max_staff",
+            "max_patients",
+            "updated_at",
+        ]
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": (
+                f"Plan changed to "
+                f"{target_plan.name}."
+            ),
+            "plan": {
+                "id": target_plan.id,
+                "code": target_plan.code,
+                "name": target_plan.name,
+                "monthly_price": decimal_value(
+                    target_plan.monthly_price
+                ),
+                "service_fee": decimal_value(
+                    target_plan.service_fee
+                ),
+                "currency": target_plan.currency,
+            },
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_waive_service_fee(
+    request,
+    hospital_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can waive service fees."
+                )
+            },
+            status=403,
+        )
+
+    hospital = get_billing_center_hospital(
+        hospital_id
+    )
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital not found."},
+            status=404,
+        )
+
+    subscription = get_billing_center_subscription(
+        hospital
+    )
+
+    if not subscription:
+        return Response(
+            {
+                "error": (
+                    "Hospital subscription is not configured."
+                )
+            },
+            status=404,
+        )
+
+    now = timezone.now()
+
+    subscription.service_fee_paid = True
+    subscription.service_fee_paid_at = now
+
+    subscription.save(
+        update_fields=[
+            "service_fee_paid",
+            "service_fee_paid_at",
+            "updated_at",
+        ]
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": (
+                "Service fee marked as waived/paid."
+            ),
+            "service_fee_paid": True,
+            "service_fee_paid_at": (
+                subscription
+                .service_fee_paid_at
+                .isoformat()
+            ),
+        }
+    )
