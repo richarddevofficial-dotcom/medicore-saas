@@ -12,9 +12,6 @@ from saas_billing.renewal_services import (
     create_monthly_renewal_invoice,
     process_expired_trial,
 )
-from saas_billing.suspension_services import (
-    suspend_expired_grace_subscription,
-)
 from saas_billing.reminder_services import (
     build_invoice_message,
     build_trial_message,
@@ -67,9 +64,6 @@ class Command(BaseCommand):
             "grace_subscriptions": 0,
             "expired_subscriptions": 0,
             "suspended_subscriptions": 0,
-            "grace_periods_expired": 0,
-            "subscriptions_suspended_today": 0,
-            "suspensions_skipped": 0,
             "pending_payments": 0,
             "trial_reminders_sent": 0,
             "invoice_reminders_sent": 0,
@@ -285,49 +279,6 @@ class Command(BaseCommand):
                     == HospitalSubscription.STATUS_GRACE
                 ):
                     summary["grace_subscriptions"] += 1
-
-                    grace_end = (
-                        subscription.grace_period_ends_at
-                    )
-
-                    if grace_end and grace_end <= now:
-                        summary[
-                            "grace_periods_expired"
-                        ] += 1
-
-                        updated_subscription, suspended, reason = (
-                            suspend_expired_grace_subscription(
-                                subscription
-                            )
-                        )
-
-                        if suspended:
-                            summary[
-                                "subscriptions_suspended_today"
-                            ] += 1
-
-                            self.print_item(
-                                verbose_items,
-                                (
-                                    f"Suspended subscription: "
-                                    f"{updated_subscription.hospital.name} "
-                                    f"— grace ended "
-                                    f"{grace_end.isoformat()}"
-                                ),
-                            )
-                        else:
-                            summary[
-                                "suspensions_skipped"
-                            ] += 1
-
-                            self.print_item(
-                                verbose_items,
-                                (
-                                    f"Suspension skipped: "
-                                    f"{subscription.hospital.name} "
-                                    f"— {reason}"
-                                ),
-                            )
 
                 elif (
                     subscription.status
@@ -552,18 +503,6 @@ class Command(BaseCommand):
             (
                 "Suspended subscriptions",
                 summary["suspended_subscriptions"],
-            ),
-            (
-                "Expired grace periods",
-                summary["grace_periods_expired"],
-            ),
-            (
-                "Subscriptions suspended today",
-                summary["subscriptions_suspended_today"],
-            ),
-            (
-                "Suspensions skipped",
-                summary["suspensions_skipped"],
             ),
             (
                 "Payments awaiting approval",

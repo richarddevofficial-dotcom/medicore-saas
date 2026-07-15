@@ -14,6 +14,7 @@ from .models import (
 )
 from .serializers import SubscriptionPlanSerializer
 from .services import get_subscription_access
+from .plan_change_services import activate_plan_change
 
 
 def get_user_hospital(user):
@@ -822,6 +823,16 @@ def approve_manual_payment(request, payment_id):
     )
 
     if (
+        invoice.status == Invoice.STATUS_PAID
+        and invoice.invoice_type == Invoice.TYPE_ADJUSTMENT
+        and (invoice.metadata or {}).get("target_plan_id")
+    ):
+        subscription = activate_plan_change(
+            subscription=subscription,
+            invoice=invoice,
+        )
+
+    if (
         invoice.service_fee_amount
         > Decimal("0.00")
     ):
@@ -1179,4 +1190,280 @@ def download_payment_receipt_pdf(
         as_attachment=True,
         filename=filename,
         content_type="application/pdf",
+    )
+
+
+# ============================================================
+# Subscription entitlements and plan usage
+# ============================================================
+
+from .entitlements import build_hospital_entitlements
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def hospital_entitlements(request):
+    hospital = get_user_hospital(request.user)
+
+    if not hospital:
+        if request.user.is_superuser:
+            return Response(
+                {
+                    "is_platform_super_admin": True,
+                    "subscription_limits_apply": False,
+                }
+            )
+
+        return Response(
+            {"error": "Hospital account not found."},
+            status=404,
+        )
+
+    return Response(
+        {
+            "hospital": {
+                "id": hospital.id,
+                "name": hospital.name,
+                "slug": hospital.slug,
+            },
+            "entitlements": (
+                build_hospital_entitlements(
+                    hospital
+                )
+            ),
+        }
+    )
+
+
+# ============================================================
+# Plan upgrade and downgrade workflow
+# ============================================================
+
+from .plan_change_services import (
+    PlanChangeError,
+    activate_plan_change,
+    create_plan_change_invoice,
+    determine_plan_change_type,
+    validate_target_plan,
+)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def available_plan_changes(request):
+    hospital = get_user_hospital(request.user)
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital account not found."},
+            status=404,
+        )
+
+    try:
+        subscription = (
+            HospitalSubscription.objects
+            .select_related("plan", "hospital")
+            .get(hospital=hospital)
+        )
+    except HospitalSubscription.DoesNotExist:
+        return Response(
+            {
+                "error": (
+                    "Hospital subscription not configured."
+                )
+            },
+            status=404,
+        )
+
+    plans = SubscriptionPlan.objects.filter(
+        is_active=True
+    ).order_by("display_order")
+
+    results = []
+
+    for plan in plans:
+        if plan.id == subscription.plan_id:
+            allowed = False
+            reason = "Current plan"
+            change_type = "current"
+        else:
+            change_type = determine_plan_change_type(
+                subscription.plan,
+                plan,
+            )
+
+            try:
+                usage = validate_target_plan(
+                    subscription,
+                    plan,
+                )
+
+                allowed = True
+                reason = None
+            except PlanChangeError as error:
+                allowed = False
+                reason = str(error)
+                usage = {
+                    "staff_used": None,
+                    "staff_limit": plan.max_staff,
+                    "patients_used": None,
+                    "patients_limit": plan.max_patients,
+                }
+
+        results.append(
+            {
+                "id": plan.id,
+                "code": plan.code,
+                "name": plan.name,
+                "description": plan.description,
+                "currency": plan.currency,
+                "monthly_price": str(
+                    plan.monthly_price
+                ),
+                "service_fee": str(
+                    plan.service_fee
+                ),
+                "max_staff": plan.max_staff,
+                "max_patients": plan.max_patients,
+                "storage_gb": plan.storage_gb,
+                "features": plan.features,
+                "change_type": change_type,
+                "allowed": allowed,
+                "reason": reason,
+            }
+        )
+
+    return Response(
+        {
+            "current_plan": {
+                "id": subscription.plan.id,
+                "code": subscription.plan.code,
+                "name": subscription.plan.name,
+                "monthly_price": str(
+                    subscription.current_monthly_price
+                ),
+            },
+            "plans": results,
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def request_plan_change(request):
+    hospital = get_user_hospital(request.user)
+    staff_profile = getattr(
+        request.user,
+        "staff_profile",
+        None,
+    )
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital account not found."},
+            status=404,
+        )
+
+    if (
+        not staff_profile
+        or staff_profile.role != "admin"
+    ):
+        return Response(
+            {
+                "error": (
+                    "Only the hospital administrator "
+                    "can change the subscription plan."
+                )
+            },
+            status=403,
+        )
+
+    plan_code = str(
+        request.data.get("plan_code", "")
+    ).strip().lower()
+
+    if not plan_code:
+        return Response(
+            {"error": "plan_code is required."},
+            status=400,
+        )
+
+    try:
+        target_plan = SubscriptionPlan.objects.get(
+            code=plan_code,
+            is_active=True,
+        )
+    except SubscriptionPlan.DoesNotExist:
+        return Response(
+            {"error": "Subscription plan not found."},
+            status=404,
+        )
+
+    try:
+        subscription = (
+            HospitalSubscription.objects
+            .select_related("plan", "hospital")
+            .get(hospital=hospital)
+        )
+
+        invoice, created = (
+            create_plan_change_invoice(
+                subscription=subscription,
+                target_plan=target_plan,
+            )
+        )
+    except HospitalSubscription.DoesNotExist:
+        return Response(
+            {
+                "error": (
+                    "Hospital subscription not configured."
+                )
+            },
+            status=404,
+        )
+    except PlanChangeError as error:
+        return Response(
+            {"error": str(error)},
+            status=400,
+        )
+
+    refreshed_subscription = (
+        HospitalSubscription.objects
+        .select_related("plan")
+        .get(pk=subscription.pk)
+    )
+
+    immediately_activated = (
+        refreshed_subscription.plan_id
+        == target_plan.id
+    )
+
+    return Response(
+        {
+            "success": True,
+            "created": created,
+            "immediately_activated": (
+                immediately_activated
+            ),
+            "message": (
+                f"{target_plan.name} plan activated."
+                if immediately_activated
+                else (
+                    "Plan-change invoice created. "
+                    "Submit payment to complete the upgrade."
+                )
+            ),
+            "invoice": serialize_invoice(invoice),
+            "target_plan": {
+                "code": target_plan.code,
+                "name": target_plan.name,
+                "monthly_price": str(
+                    target_plan.monthly_price
+                ),
+                "service_fee": str(
+                    target_plan.service_fee
+                ),
+            },
+        },
+        status=201 if created else 200,
     )

@@ -898,3 +898,16 @@ urlpatterns += [
         billing_include('saas_billing.urls'),
     ),
 ]
+
+# MediCore platform super-admin SaaS dashboard
+from django.urls import include as saas_admin_include
+from django.urls import path as saas_admin_path
+
+urlpatterns += [
+    saas_admin_path(
+        'api/v1/saas-admin/',
+        saas_admin_include(
+            'saas_billing.admin_urls'
+        ),
+    ),
+]

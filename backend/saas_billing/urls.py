@@ -2,10 +2,12 @@ from django.urls import path
 
 from .views import (
     approve_manual_payment,
+    available_plan_changes,
     billing_dashboard,
     download_invoice_pdf,
     download_payment_receipt_pdf,
     generate_initial_invoice,
+    hospital_entitlements,
     hospital_invoices,
     hospital_payments,
     public_subscription_plans,
@@ -13,7 +15,6 @@ from .views import (
     submit_manual_payment,
     subscription_status,
 )
-
 
 urlpatterns = [
     path(
@@ -25,6 +26,21 @@ urlpatterns = [
         "status/",
         subscription_status,
         name="subscription-status",
+    ),
+    path(
+        "entitlements/",
+        hospital_entitlements,
+        name="hospital-entitlements",
+    ),
+    path(
+        "plan-changes/",
+        available_plan_changes,
+        name="available-plan-changes",
+    ),
+    path(
+        "plan-changes/request/",
+        request_plan_change,
+        name="request-plan-change",
     ),
     path(
         "dashboard/",
@@ -55,11 +71,6 @@ urlpatterns = [
         "payments/manual/",
         submit_manual_payment,
         name="submit-manual-payment",
-    ),
-    path(
-        "plan-change/request/",
-        request_plan_change,
-        name="request-plan-change",
     ),
     path(
         "payments/<int:payment_id>/approve/",
