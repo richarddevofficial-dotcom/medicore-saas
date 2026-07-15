@@ -1,9 +1,12 @@
 from django.urls import path
 
 from .billing_center_views import (
+    billing_center_approve_payment,
     billing_center_billing_notes,
     billing_center_change_plan,
     billing_center_dashboard,
+    billing_center_download_invoice_pdf,
+    billing_center_download_receipt_pdf,
     billing_center_end_trial,
     billing_center_extend_trial,
     billing_center_generate_invoice,
@@ -11,10 +14,14 @@ from .billing_center_views import (
     billing_center_hospital_detail,
     billing_center_hospitals,
     billing_center_invoices,
+    billing_center_mark_invoice_overdue,
+    billing_center_mark_invoice_paid,
     billing_center_payments,
     billing_center_reactivate_subscription,
+    billing_center_reject_payment,
     billing_center_resend_invoice_reminder,
     billing_center_suspend_subscription,
+    billing_center_void_invoice,
     billing_center_waive_service_fee,
 )
 
@@ -31,9 +38,44 @@ urlpatterns = [
         name="billing-center-invoices",
     ),
     path(
+        "invoices/<int:invoice_id>/void/",
+        billing_center_void_invoice,
+        name="billing-center-void-invoice",
+    ),
+    path(
+        "invoices/<int:invoice_id>/mark-overdue/",
+        billing_center_mark_invoice_overdue,
+        name="billing-center-mark-invoice-overdue",
+    ),
+    path(
+        "invoices/<int:invoice_id>/mark-paid/",
+        billing_center_mark_invoice_paid,
+        name="billing-center-mark-invoice-paid",
+    ),
+    path(
+        "invoices/<int:invoice_id>/pdf/",
+        billing_center_download_invoice_pdf,
+        name="billing-center-invoice-pdf",
+    ),
+    path(
         "payments/",
         billing_center_payments,
         name="billing-center-payments",
+    ),
+    path(
+        "payments/<int:payment_id>/approve/",
+        billing_center_approve_payment,
+        name="billing-center-approve-payment",
+    ),
+    path(
+        "payments/<int:payment_id>/reject/",
+        billing_center_reject_payment,
+        name="billing-center-reject-payment",
+    ),
+    path(
+        "payments/<int:payment_id>/receipt-pdf/",
+        billing_center_download_receipt_pdf,
+        name="billing-center-receipt-pdf",
     ),
     path(
         "hospitals/",

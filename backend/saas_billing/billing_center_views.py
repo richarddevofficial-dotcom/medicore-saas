@@ -3126,3 +3126,680 @@ def billing_center_payments(request):
             ],
         }
     )
+
+
+# ============================================================
+# Super Admin Invoice and Payment Actions
+# ============================================================
+
+from django.http import FileResponse
+
+from .pdf_services import (
+    build_invoice_pdf,
+    build_payment_receipt_pdf,
+)
+from .suspension_services import (
+    reactivate_subscription_after_payment,
+)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_approve_payment(
+    request,
+    payment_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can approve payments."
+                )
+            },
+            status=403,
+        )
+
+    payment = (
+        Payment.objects
+        .select_for_update()
+        .select_related(
+            "hospital",
+            "invoice",
+            "subscription",
+            "subscription__plan",
+        )
+        .filter(id=payment_id)
+        .first()
+    )
+
+    if not payment:
+        return Response(
+            {"error": "Payment not found."},
+            status=404,
+        )
+
+    if payment.status == Payment.STATUS_SUCCESS:
+        return Response(
+            {
+                "error": (
+                    "This payment has already been approved."
+                )
+            },
+            status=409,
+        )
+
+    if payment.status != Payment.STATUS_PENDING:
+        return Response(
+            {
+                "error": (
+                    "Only pending payments can be approved."
+                )
+            },
+            status=400,
+        )
+
+    invoice = (
+        Invoice.objects
+        .select_for_update()
+        .filter(id=payment.invoice_id)
+        .first()
+    )
+
+    subscription = (
+        HospitalSubscription.objects
+        .select_for_update()
+        .select_related("hospital", "plan")
+        .filter(id=payment.subscription_id)
+        .first()
+    )
+
+    if not invoice or not subscription:
+        return Response(
+            {
+                "error": (
+                    "Payment invoice or subscription "
+                    "could not be found."
+                )
+            },
+            status=400,
+        )
+
+    if payment.amount != invoice.balance_due:
+        return Response(
+            {
+                "error": (
+                    "Payment amount does not match "
+                    "the outstanding balance."
+                ),
+                "payment_amount": decimal_value(
+                    payment.amount
+                ),
+                "balance_due": decimal_value(
+                    invoice.balance_due
+                ),
+            },
+            status=400,
+        )
+
+    now = timezone.now()
+
+    payment.status = Payment.STATUS_SUCCESS
+    payment.paid_at = now
+    payment.gateway_response = {
+        **(payment.gateway_response or {}),
+        "approved_by_user_id": request.user.id,
+        "approved_by_email": request.user.email,
+        "approved_at": now.isoformat(),
+        "approval_source": "billing_center",
+    }
+
+    payment.save(
+        update_fields=[
+            "status",
+            "paid_at",
+            "gateway_response",
+            "updated_at",
+        ]
+    )
+
+    invoice.amount_paid = (
+        invoice.amount_paid + payment.amount
+    )
+
+    if invoice.amount_paid >= invoice.total_amount:
+        invoice.amount_paid = invoice.total_amount
+        invoice.status = Invoice.STATUS_PAID
+        invoice.paid_at = now
+
+    invoice.save(
+        update_fields=[
+            "amount_paid",
+            "status",
+            "paid_at",
+            "updated_at",
+        ]
+    )
+
+    if (
+        invoice.service_fee_amount
+        > Decimal("0.00")
+    ):
+        subscription.service_fee_paid = True
+        subscription.service_fee_paid_at = now
+
+    subscription.next_billing_date = (
+        timezone.localdate()
+        + timedelta(days=30)
+    )
+
+    subscription.save(
+        update_fields=[
+            "service_fee_paid",
+            "service_fee_paid_at",
+            "next_billing_date",
+            "updated_at",
+        ]
+    )
+
+    subscription, _reactivated = (
+        reactivate_subscription_after_payment(
+            subscription
+        )
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": "Payment approved successfully.",
+            "payment": serialize_billing_payment(
+                payment
+            ),
+            "invoice": serialize_billing_invoice(
+                invoice
+            ),
+            "subscription_status": (
+                subscription.status
+            ),
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_reject_payment(
+    request,
+    payment_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can reject payments."
+                )
+            },
+            status=403,
+        )
+
+    payment = (
+        Payment.objects
+        .select_for_update()
+        .filter(id=payment_id)
+        .first()
+    )
+
+    if not payment:
+        return Response(
+            {"error": "Payment not found."},
+            status=404,
+        )
+
+    if payment.status != Payment.STATUS_PENDING:
+        return Response(
+            {
+                "error": (
+                    "Only pending payments can be rejected."
+                )
+            },
+            status=400,
+        )
+
+    reason = str(
+        request.data.get("reason", "")
+    ).strip()
+
+    if not reason:
+        return Response(
+            {"error": "reason is required."},
+            status=400,
+        )
+
+    payment.status = Payment.STATUS_FAILED
+    payment.gateway_response = {
+        **(payment.gateway_response or {}),
+        "rejected_by_user_id": request.user.id,
+        "rejected_by_email": request.user.email,
+        "rejected_at": timezone.now().isoformat(),
+        "rejection_reason": reason,
+        "rejection_source": "billing_center",
+    }
+
+    payment.save(
+        update_fields=[
+            "status",
+            "gateway_response",
+            "updated_at",
+        ]
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": "Payment rejected.",
+            "payment": serialize_billing_payment(
+                payment
+            ),
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_void_invoice(
+    request,
+    invoice_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can void invoices."
+                )
+            },
+            status=403,
+        )
+
+    invoice = (
+        Invoice.objects
+        .select_for_update()
+        .filter(id=invoice_id)
+        .first()
+    )
+
+    if not invoice:
+        return Response(
+            {"error": "Invoice not found."},
+            status=404,
+        )
+
+    if invoice.status == Invoice.STATUS_PAID:
+        return Response(
+            {
+                "error": (
+                    "A paid invoice cannot be voided."
+                )
+            },
+            status=400,
+        )
+
+    reason = str(
+        request.data.get("reason", "")
+    ).strip()
+
+    if not reason:
+        return Response(
+            {"error": "reason is required."},
+            status=400,
+        )
+
+    if not hasattr(Invoice, "STATUS_VOID"):
+        return Response(
+            {
+                "error": (
+                    "Invoice model does not define "
+                    "STATUS_VOID."
+                )
+            },
+            status=500,
+        )
+
+    invoice.status = Invoice.STATUS_VOID
+    invoice.metadata = {
+        **(invoice.metadata or {}),
+        "voided_by_user_id": request.user.id,
+        "voided_by_email": request.user.email,
+        "voided_at": timezone.now().isoformat(),
+        "void_reason": reason,
+    }
+
+    invoice.save(
+        update_fields=[
+            "status",
+            "metadata",
+            "updated_at",
+        ]
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": "Invoice voided.",
+            "invoice": serialize_billing_invoice(
+                invoice
+            ),
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_mark_invoice_overdue(
+    request,
+    invoice_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can mark invoices overdue."
+                )
+            },
+            status=403,
+        )
+
+    invoice = (
+        Invoice.objects
+        .select_for_update()
+        .filter(id=invoice_id)
+        .first()
+    )
+
+    if not invoice:
+        return Response(
+            {"error": "Invoice not found."},
+            status=404,
+        )
+
+    if invoice.status == Invoice.STATUS_PAID:
+        return Response(
+            {
+                "error": (
+                    "A paid invoice cannot be marked overdue."
+                )
+            },
+            status=400,
+        )
+
+    invoice.status = Invoice.STATUS_OVERDUE
+
+    invoice.save(
+        update_fields=[
+            "status",
+            "updated_at",
+        ]
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": "Invoice marked overdue.",
+            "invoice": serialize_billing_invoice(
+                invoice
+            ),
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_mark_invoice_paid(
+    request,
+    invoice_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can mark invoices paid."
+                )
+            },
+            status=403,
+        )
+
+    invoice = (
+        Invoice.objects
+        .select_for_update()
+        .select_related(
+            "hospital",
+            "subscription",
+        )
+        .filter(id=invoice_id)
+        .first()
+    )
+
+    if not invoice:
+        return Response(
+            {"error": "Invoice not found."},
+            status=404,
+        )
+
+    if invoice.status == Invoice.STATUS_PAID:
+        return Response(
+            {
+                "error": (
+                    "Invoice is already marked paid."
+                )
+            },
+            status=409,
+        )
+
+    reference = str(
+        request.data.get(
+            "reference",
+            f"MANUAL-{invoice.invoice_number}",
+        )
+    ).strip()
+
+    notes = str(
+        request.data.get(
+            "notes",
+            "Marked paid by platform administrator.",
+        )
+    ).strip()
+
+    now = timezone.now()
+    balance_due = invoice.balance_due
+
+    payment = Payment.objects.create(
+        hospital=invoice.hospital,
+        subscription=invoice.subscription,
+        invoice=invoice,
+        payment_reference=(
+            f"PAY-MANUAL-{timezone.now().strftime('%Y%m%d%H%M%S')}"
+        ),
+        transaction_id=reference,
+        payment_type=invoice.invoice_type,
+        amount=balance_due,
+        currency=invoice.currency,
+        gateway="manual_admin",
+        payment_method="manual",
+        status=Payment.STATUS_SUCCESS,
+        paid_at=now,
+        notes=notes,
+        gateway_response={
+            "created_by_user_id": request.user.id,
+            "created_by_email": request.user.email,
+            "created_at": now.isoformat(),
+            "source": "billing_center_mark_paid",
+        },
+    )
+
+    invoice.amount_paid = invoice.total_amount
+    invoice.status = Invoice.STATUS_PAID
+    invoice.paid_at = now
+
+    invoice.save(
+        update_fields=[
+            "amount_paid",
+            "status",
+            "paid_at",
+            "updated_at",
+        ]
+    )
+
+    subscription = invoice.subscription
+
+    if subscription:
+        if (
+            invoice.service_fee_amount
+            > Decimal("0.00")
+        ):
+            subscription.service_fee_paid = True
+            subscription.service_fee_paid_at = now
+
+        subscription.next_billing_date = (
+            timezone.localdate()
+            + timedelta(days=30)
+        )
+
+        subscription.save(
+            update_fields=[
+                "service_fee_paid",
+                "service_fee_paid_at",
+                "next_billing_date",
+                "updated_at",
+            ]
+        )
+
+        subscription, _reactivated = (
+            reactivate_subscription_after_payment(
+                subscription
+            )
+        )
+
+    return Response(
+        {
+            "success": True,
+            "message": "Invoice marked paid.",
+            "invoice": serialize_billing_invoice(
+                invoice
+            ),
+            "payment": serialize_billing_payment(
+                payment
+            ),
+        },
+        status=201,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def billing_center_download_invoice_pdf(
+    request,
+    invoice_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can download this invoice."
+                )
+            },
+            status=403,
+        )
+
+    invoice = (
+        Invoice.objects
+        .select_related(
+            "hospital",
+            "subscription",
+            "subscription__plan",
+        )
+        .filter(id=invoice_id)
+        .first()
+    )
+
+    if not invoice:
+        return Response(
+            {"error": "Invoice not found."},
+            status=404,
+        )
+
+    pdf_buffer = build_invoice_pdf(invoice)
+
+    return FileResponse(
+        pdf_buffer,
+        as_attachment=True,
+        filename=f"{invoice.invoice_number}.pdf",
+        content_type="application/pdf",
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def billing_center_download_receipt_pdf(
+    request,
+    payment_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can download this receipt."
+                )
+            },
+            status=403,
+        )
+
+    payment = (
+        Payment.objects
+        .select_related(
+            "hospital",
+            "invoice",
+            "subscription",
+            "subscription__plan",
+        )
+        .filter(id=payment_id)
+        .first()
+    )
+
+    if not payment:
+        return Response(
+            {"error": "Payment not found."},
+            status=404,
+        )
+
+    if payment.status != Payment.STATUS_SUCCESS:
+        return Response(
+            {
+                "error": (
+                    "Receipts are only available "
+                    "for successful payments."
+                )
+            },
+            status=400,
+        )
+
+    pdf_buffer = build_payment_receipt_pdf(
+        payment
+    )
+
+    return FileResponse(
+        pdf_buffer,
+        as_attachment=True,
+        filename=(
+            f"receipt-{payment.payment_reference}.pdf"
+        ),
+        content_type="application/pdf",
+    )
