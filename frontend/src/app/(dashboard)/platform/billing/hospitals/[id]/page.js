@@ -71,6 +71,16 @@ export default function HospitalBillingDetailPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const [actionModal, setActionModal] = useState({
+    open: false,
+    type: "",
+    title: "",
+    description: "",
+    confirmLabel: "Confirm",
+    danger: false,
+    fields: {},
+  });
+
   const [noteTitle, setNoteTitle] = useState("");
   const [noteText, setNoteText] = useState("");
 
@@ -202,57 +212,231 @@ export default function HospitalBillingDetailPage() {
     }
   }
 
-  async function extendTrial() {
-    const days = window.prompt(
-      "How many days should be added to the trial?",
-      "7",
-    );
-
-    if (!days) {
-      return;
-    }
-
-    await runAction(
-      "extend-trial",
-      `/billing-center/hospitals/${hospitalId}/extend-trial/`,
-      { days: Number(days) },
-    );
-  }
-
-  async function changePlan() {
-    const planCode = window.prompt(
-      "Enter the target plan code, for example starter, pro or enterprise:",
-    );
-
-    if (!planCode) {
-      return;
-    }
-
-    await runAction(
-      "change-plan",
-      `/billing-center/hospitals/${hospitalId}/change-plan/`,
-      { plan_code: planCode.trim().toLowerCase() },
-    );
-  }
-
-  async function generateInvoice() {
-    const invoiceType = window.prompt(
-      "Enter invoice type: initial or monthly",
-      "monthly",
-    );
-
-    if (!invoiceType) {
-      return;
-    }
-
-    await runAction(
-      "generate-invoice",
-      `/billing-center/hospitals/${hospitalId}/generate-invoice/`,
-      {
-        invoice_type:
-          invoiceType.trim().toLowerCase(),
+  function openActionModal(type) {
+    const configurations = {
+      extend_trial: {
+        title: "Extend Trial",
+        description:
+          "Choose how many additional days should be added to this hospital trial.",
+        confirmLabel: "Extend Trial",
+        danger: false,
+        fields: {
+          days: "7",
+        },
       },
-    );
+      end_trial: {
+        title: "End Trial",
+        description:
+          "This will end the current trial immediately and start the configured grace period.",
+        confirmLabel: "End Trial",
+        danger: true,
+        fields: {},
+      },
+      suspend: {
+        title: "Suspend Subscription",
+        description:
+          "The hospital subscription will be suspended. Billing access will remain available.",
+        confirmLabel: "Suspend Subscription",
+        danger: true,
+        fields: {
+          reason: "",
+        },
+      },
+      reactivate: {
+        title: "Reactivate Subscription",
+        description:
+          "The hospital subscription will be restored to active status.",
+        confirmLabel: "Reactivate",
+        danger: false,
+        fields: {},
+      },
+      change_plan: {
+        title: "Change Subscription Plan",
+        description:
+          "Select the new subscription plan for this hospital.",
+        confirmLabel: "Change Plan",
+        danger: false,
+        fields: {
+          plan_code: "",
+        },
+      },
+      waive_service_fee: {
+        title: "Waive Service Fee",
+        description:
+          "The service fee will be marked as waived or paid.",
+        confirmLabel: "Waive Service Fee",
+        danger: false,
+        fields: {
+          reason: "",
+        },
+      },
+      generate_invoice: {
+        title: "Generate Invoice",
+        description:
+          "Choose whether to generate an initial or monthly renewal invoice.",
+        confirmLabel: "Generate Invoice",
+        danger: false,
+        fields: {
+          invoice_type: "monthly",
+        },
+      },
+    };
+
+    const configuration = configurations[type];
+
+    if (!configuration) {
+      return;
+    }
+
+    setActionModal({
+      open: true,
+      type,
+      ...configuration,
+    });
+  }
+
+  function closeActionModal() {
+    if (actionLoading) {
+      return;
+    }
+
+    setActionModal({
+      open: false,
+      type: "",
+      title: "",
+      description: "",
+      confirmLabel: "Confirm",
+      danger: false,
+      fields: {},
+    });
+  }
+
+  function updateActionModalField(name, value) {
+    setActionModal((current) => ({
+      ...current,
+      fields: {
+        ...current.fields,
+        [name]: value,
+      },
+    }));
+  }
+
+  async function submitActionModal(event) {
+    event.preventDefault();
+
+    const { type, fields } = actionModal;
+
+    let actionName = type;
+    let path = "";
+    let payload = {};
+
+    if (type === "extend_trial") {
+      const days = Number(fields.days);
+
+      if (!Number.isInteger(days) || days < 1 || days > 365) {
+        setError(
+          "Trial extension must be between 1 and 365 days.",
+        );
+        return;
+      }
+
+      actionName = "extend-trial";
+      path =
+        `/billing-center/hospitals/${hospitalId}/extend-trial/`;
+      payload = { days };
+    }
+
+    if (type === "end_trial") {
+      actionName = "end-trial";
+      path =
+        `/billing-center/hospitals/${hospitalId}/end-trial/`;
+    }
+
+    if (type === "suspend") {
+      actionName = "suspend";
+      path =
+        `/billing-center/hospitals/${hospitalId}/suspend/`;
+      payload = {
+        reason: String(fields.reason || "").trim(),
+      };
+    }
+
+    if (type === "reactivate") {
+      actionName = "reactivate";
+      path =
+        `/billing-center/hospitals/${hospitalId}/reactivate/`;
+    }
+
+    if (type === "change_plan") {
+      const planCode = String(
+        fields.plan_code || "",
+      )
+        .trim()
+        .toLowerCase();
+
+      if (!planCode) {
+        setError("Please select a subscription plan.");
+        return;
+      }
+
+      actionName = "change-plan";
+      path =
+        `/billing-center/hospitals/${hospitalId}/change-plan/`;
+      payload = {
+        plan_code: planCode,
+      };
+    }
+
+    if (type === "waive_service_fee") {
+      actionName = "waive-service-fee";
+      path =
+        `/billing-center/hospitals/${hospitalId}/waive-service-fee/`;
+      payload = {
+        reason: String(fields.reason || "").trim(),
+      };
+    }
+
+    if (type === "generate_invoice") {
+      actionName = "generate-invoice";
+      path =
+        `/billing-center/hospitals/${hospitalId}/generate-invoice/`;
+      payload = {
+        invoice_type:
+          fields.invoice_type || "monthly",
+      };
+    }
+
+    if (!path) {
+      setError("The selected billing action is invalid.");
+      return;
+    }
+
+    try {
+      setActionLoading(actionName);
+      setError("");
+      setSuccess("");
+
+      const response = await apiClient.post(
+        path,
+        payload,
+      );
+
+      setSuccess(
+        response.data?.message ||
+          "Action completed successfully.",
+      );
+
+      closeActionModal();
+      await refreshAll();
+    } catch (requestError) {
+      setError(
+        requestError.response?.data?.error ||
+          requestError.response?.data?.detail ||
+          "Unable to complete the action.",
+      );
+    } finally {
+      setActionLoading("");
+    }
   }
 
   async function resendReminder(invoice) {
@@ -608,93 +792,72 @@ export default function HospitalBillingDetailPage() {
           Subscription Actions
         </h2>
 
+        <p className="mt-1 text-sm text-slate-500">
+          Manage the hospital subscription, trial, plan and invoices.
+        </p>
+
         <div className="mt-5 flex flex-wrap gap-3">
           <ActionButton
             label="Extend Trial"
-            loading={
-              actionLoading === "extend-trial"
+            loading={actionLoading === "extend-trial"}
+            onClick={() =>
+              openActionModal("extend_trial")
             }
-            onClick={extendTrial}
           />
 
           <ActionButton
             label="End Trial"
-            loading={
-              actionLoading === "end-trial"
-            }
+            danger
+            loading={actionLoading === "end-trial"}
             onClick={() =>
-              runAction(
-                "end-trial",
-                `/billing-center/hospitals/${hospitalId}/end-trial/`,
-                {},
-                "End the trial and start the grace period?",
-              )
+              openActionModal("end_trial")
             }
           />
 
           <ActionButton
             label="Suspend"
             danger
-            loading={
-              actionLoading === "suspend"
-            }
+            loading={actionLoading === "suspend"}
             onClick={() =>
-              runAction(
-                "suspend",
-                `/billing-center/hospitals/${hospitalId}/suspend/`,
-                {},
-                "Suspend this hospital subscription?",
-              )
+              openActionModal("suspend")
             }
           />
 
           <ActionButton
             label="Reactivate"
             success
-            loading={
-              actionLoading === "reactivate"
-            }
+            loading={actionLoading === "reactivate"}
             onClick={() =>
-              runAction(
-                "reactivate",
-                `/billing-center/hospitals/${hospitalId}/reactivate/`,
-                {},
-                "Reactivate this hospital subscription?",
-              )
+              openActionModal("reactivate")
             }
           />
 
           <ActionButton
             label="Change Plan"
-            loading={
-              actionLoading === "change-plan"
+            loading={actionLoading === "change-plan"}
+            onClick={() =>
+              openActionModal("change_plan")
             }
-            onClick={changePlan}
           />
 
           <ActionButton
             label="Waive Service Fee"
             loading={
-              actionLoading ===
-              "waive-service-fee"
+              actionLoading === "waive-service-fee"
             }
             onClick={() =>
-              runAction(
-                "waive-service-fee",
-                `/billing-center/hospitals/${hospitalId}/waive-service-fee/`,
-                {},
-                "Mark the service fee as waived or paid?",
-              )
+              openActionModal("waive_service_fee")
             }
           />
 
           <ActionButton
             label="Generate Invoice"
             loading={
-              actionLoading ===
-              "generate-invoice"
+              actionLoading === "generate-invoice"
             }
-            onClick={generateInvoice}
+            onClick={() =>
+              openActionModal("generate_invoice")
+            }
           />
         </div>
       </section>
@@ -1116,6 +1279,246 @@ export default function HospitalBillingDetailPage() {
           )}
         </div>
       </section>
+      <ActionModal
+        modal={actionModal}
+        loading={Boolean(actionLoading)}
+        onClose={closeActionModal}
+        onSubmit={submitActionModal}
+        onFieldChange={updateActionModalField}
+        currentPlanCode={
+          subscription?.plan?.code || ""
+        }
+      />
+
+    </div>
+  );
+}
+
+
+function ActionModal({
+  modal,
+  loading,
+  onClose,
+  onSubmit,
+  onFieldChange,
+  currentPlanCode,
+}) {
+  if (!modal.open) {
+    return null;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between border-b border-slate-200 p-6">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">
+              {modal.title}
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {modal.description}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
+            aria-label="Close modal"
+          >
+            <XCircle size={21} />
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit}>
+          <div className="space-y-5 p-6">
+            {modal.type === "extend_trial" && (
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Additional trial days
+                </label>
+
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={modal.fields.days || ""}
+                  onChange={(event) =>
+                    onFieldChange(
+                      "days",
+                      event.target.value,
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                  required
+                />
+              </div>
+            )}
+
+            {modal.type === "change_plan" && (
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  New subscription plan
+                </label>
+
+                <select
+                  value={
+                    modal.fields.plan_code || ""
+                  }
+                  onChange={(event) =>
+                    onFieldChange(
+                      "plan_code",
+                      event.target.value,
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                  required
+                >
+                  <option value="">
+                    Select plan
+                  </option>
+
+                  <option
+                    value="starter"
+                    disabled={
+                      currentPlanCode === "starter"
+                    }
+                  >
+                    Starter
+                  </option>
+
+                  <option
+                    value="pro"
+                    disabled={
+                      currentPlanCode === "pro"
+                    }
+                  >
+                    Professional
+                  </option>
+
+                  <option
+                    value="enterprise"
+                    disabled={
+                      currentPlanCode ===
+                      "enterprise"
+                    }
+                  >
+                    Enterprise
+                  </option>
+                </select>
+              </div>
+            )}
+
+            {modal.type === "generate_invoice" && (
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Invoice type
+                </label>
+
+                <select
+                  value={
+                    modal.fields.invoice_type ||
+                    "monthly"
+                  }
+                  onChange={(event) =>
+                    onFieldChange(
+                      "invoice_type",
+                      event.target.value,
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                >
+                  <option value="monthly">
+                    Monthly renewal invoice
+                  </option>
+
+                  <option value="initial">
+                    Initial subscription invoice
+                  </option>
+                </select>
+              </div>
+            )}
+
+            {["suspend", "waive_service_fee"].includes(
+              modal.type,
+            ) && (
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Reason or internal note
+                </label>
+
+                <textarea
+                  rows={4}
+                  value={modal.fields.reason || ""}
+                  onChange={(event) =>
+                    onFieldChange(
+                      "reason",
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Enter the reason for this action..."
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                />
+              </div>
+            )}
+
+            {["end_trial", "reactivate"].includes(
+              modal.type,
+            ) && (
+              <div
+                className={`rounded-xl border p-4 text-sm ${
+                  modal.danger
+                    ? "border-red-200 bg-red-50 text-red-700"
+                    : "border-green-200 bg-green-50 text-green-700"
+                }`}
+              >
+                Review the action carefully before confirming.
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 border-t border-slate-200 p-6">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className={`inline-flex items-center gap-2 rounded-xl px-5 py-3 font-semibold text-white disabled:opacity-60 ${
+                modal.danger
+                  ? "bg-red-600 hover:bg-red-700"
+                  : "bg-orange-500 hover:bg-orange-600"
+              }`}
+            >
+              {loading && (
+                <Loader2
+                  size={17}
+                  className="animate-spin"
+                />
+              )}
+
+              {loading
+                ? "Processing..."
+                : modal.confirmLabel}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
