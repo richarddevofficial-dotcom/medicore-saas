@@ -911,3 +911,16 @@ urlpatterns += [
         ),
     ),
 ]
+
+# MediCore Super Admin Billing Center
+from django.urls import include as billing_center_include
+from django.urls import path as billing_center_path
+
+urlpatterns += [
+    billing_center_path(
+        "api/v1/billing-center/",
+        billing_center_include(
+            "saas_billing.billing_center_urls"
+        ),
+    ),
+]
