@@ -232,6 +232,7 @@ def activate_plan_change(
         .select_related(
             "hospital",
             "plan",
+            "pending_plan",
         )
         .get(pk=subscription.pk)
     )
@@ -255,6 +256,57 @@ def activate_plan_change(
         target_plan,
     )
 
+    current_price = (
+        subscription.current_monthly_price
+        if subscription.current_monthly_price
+        is not None
+        else subscription.plan.monthly_price
+    )
+
+    target_price = target_plan.monthly_price
+
+    is_downgrade = target_price < current_price
+
+    if is_downgrade:
+        effective_date = (
+            subscription.next_billing_date
+            or timezone.localdate()
+        )
+
+        subscription.pending_plan = target_plan
+        subscription.pending_plan_effective_date = (
+            effective_date
+        )
+        subscription.pending_plan_requested_at = (
+            timezone.now()
+        )
+
+        subscription.save(
+            update_fields=[
+                "pending_plan",
+                "pending_plan_effective_date",
+                "pending_plan_requested_at",
+                "updated_at",
+            ]
+        )
+
+        invoice.metadata = {
+            **(invoice.metadata or {}),
+            "plan_change_status": "scheduled",
+            "effective_date": (
+                effective_date.isoformat()
+            ),
+        }
+
+        invoice.save(
+            update_fields=[
+                "metadata",
+                "updated_at",
+            ]
+        )
+
+        return subscription
+
     subscription.plan = target_plan
     subscription.current_monthly_price = (
         target_plan.monthly_price
@@ -267,6 +319,10 @@ def activate_plan_change(
         HospitalSubscription.STATUS_ACTIVE
     )
 
+    subscription.pending_plan = None
+    subscription.pending_plan_effective_date = None
+    subscription.pending_plan_requested_at = None
+
     subscription.save(
         update_fields=[
             "plan",
@@ -274,6 +330,9 @@ def activate_plan_change(
             "current_service_fee",
             "currency",
             "status",
+            "pending_plan",
+            "pending_plan_effective_date",
+            "pending_plan_requested_at",
             "updated_at",
         ]
     )
@@ -286,12 +345,29 @@ def activate_plan_change(
     hospital.max_patients = (
         target_plan.max_patients or 0
     )
+    hospital.subscription_status = "active"
+    hospital.is_active = True
 
     hospital.save(
         update_fields=[
             "subscription_plan",
             "max_staff",
             "max_patients",
+            "subscription_status",
+            "is_active",
+            "updated_at",
+        ]
+    )
+
+    invoice.metadata = {
+        **(invoice.metadata or {}),
+        "plan_change_status": "activated",
+        "activated_at": timezone.now().isoformat(),
+    }
+
+    invoice.save(
+        update_fields=[
+            "metadata",
             "updated_at",
         ]
     )

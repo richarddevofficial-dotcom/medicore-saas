@@ -209,6 +209,26 @@ class HospitalSubscription(models.Model):
         auto_now=True,
     )
 
+
+    pending_plan = models.ForeignKey(
+        "SubscriptionPlan",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pending_hospital_subscriptions",
+    )
+
+    pending_plan_effective_date = models.DateField(
+        null=True,
+        blank=True,
+    )
+
+    pending_plan_requested_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+
     class Meta:
         ordering = ["-created_at"]
         verbose_name = "Hospital Subscription"
