@@ -423,3 +423,42 @@ class PlanFeatureAdmin(admin.ModelAdmin):
         "feature_code",
         "plan__name",
     )
+
+
+from .models import BillingReminderLog
+
+
+@admin.register(BillingReminderLog)
+class BillingReminderLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "hospital",
+        "reminder_type",
+        "recipient_email",
+        "billing_date",
+        "sent_at",
+    )
+
+    list_filter = (
+        "reminder_type",
+        "billing_date",
+    )
+
+    search_fields = (
+        "hospital__name",
+        "hospital__slug",
+        "recipient_email",
+        "subject",
+    )
+
+    readonly_fields = (
+        "hospital",
+        "subscription",
+        "invoice",
+        "reminder_type",
+        "recipient_email",
+        "subject",
+        "sent_at",
+        "billing_date",
+        "metadata",
+        "created_at",
+    )

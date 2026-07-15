@@ -579,3 +579,129 @@ class PlanFeature(models.Model):
 
     def __str__(self):
         return f"{self.plan.name}: {self.feature_name}"
+
+
+class BillingReminderLog(models.Model):
+    REMINDER_TRIAL_7_DAYS = "trial_7_days"
+    REMINDER_TRIAL_3_DAYS = "trial_3_days"
+    REMINDER_TRIAL_TODAY = "trial_today"
+    REMINDER_INVOICE_7_DAYS = "invoice_7_days"
+    REMINDER_INVOICE_3_DAYS = "invoice_3_days"
+    REMINDER_INVOICE_TODAY = "invoice_today"
+    REMINDER_OVERDUE_3_DAYS = "overdue_3_days"
+    REMINDER_OVERDUE_7_DAYS = "overdue_7_days"
+
+    REMINDER_TYPE_CHOICES = [
+        (
+            REMINDER_TRIAL_7_DAYS,
+            "Trial Ends in 7 Days",
+        ),
+        (
+            REMINDER_TRIAL_3_DAYS,
+            "Trial Ends in 3 Days",
+        ),
+        (
+            REMINDER_TRIAL_TODAY,
+            "Trial Ends Today",
+        ),
+        (
+            REMINDER_INVOICE_7_DAYS,
+            "Invoice Due in 7 Days",
+        ),
+        (
+            REMINDER_INVOICE_3_DAYS,
+            "Invoice Due in 3 Days",
+        ),
+        (
+            REMINDER_INVOICE_TODAY,
+            "Invoice Due Today",
+        ),
+        (
+            REMINDER_OVERDUE_3_DAYS,
+            "Invoice Overdue by 3 Days",
+        ),
+        (
+            REMINDER_OVERDUE_7_DAYS,
+            "Invoice Overdue by 7 Days",
+        ),
+    ]
+
+    hospital = models.ForeignKey(
+        Hospital,
+        on_delete=models.CASCADE,
+        related_name="billing_reminder_logs",
+    )
+
+    subscription = models.ForeignKey(
+        HospitalSubscription,
+        on_delete=models.CASCADE,
+        related_name="reminder_logs",
+        null=True,
+        blank=True,
+    )
+
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="reminder_logs",
+        null=True,
+        blank=True,
+    )
+
+    reminder_type = models.CharField(
+        max_length=40,
+        choices=REMINDER_TYPE_CHOICES,
+        db_index=True,
+    )
+
+    recipient_email = models.EmailField()
+
+    subject = models.CharField(
+        max_length=255,
+    )
+
+    sent_at = models.DateTimeField(
+        default=timezone.now,
+    )
+
+    billing_date = models.DateField(
+        db_index=True,
+    )
+
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["-sent_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "hospital",
+                    "invoice",
+                    "reminder_type",
+                    "billing_date",
+                ],
+                name="unique_invoice_reminder_per_date",
+            ),
+            models.UniqueConstraint(
+                fields=[
+                    "hospital",
+                    "subscription",
+                    "reminder_type",
+                    "billing_date",
+                ],
+                name="unique_subscription_reminder_per_date",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.hospital.name} - "
+            f"{self.get_reminder_type_display()}"
+        )

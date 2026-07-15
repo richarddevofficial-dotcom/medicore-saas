@@ -3,6 +3,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from saas_billing.models import (
+    BillingReminderLog,
     HospitalSubscription,
     Invoice,
     Payment,
@@ -10,6 +11,11 @@ from saas_billing.models import (
 from saas_billing.renewal_services import (
     create_monthly_renewal_invoice,
     process_expired_trial,
+)
+from saas_billing.reminder_services import (
+    build_invoice_message,
+    build_trial_message,
+    send_billing_reminder,
 )
 
 
@@ -59,6 +65,10 @@ class Command(BaseCommand):
             "expired_subscriptions": 0,
             "suspended_subscriptions": 0,
             "pending_payments": 0,
+            "trial_reminders_sent": 0,
+            "invoice_reminders_sent": 0,
+            "reminders_skipped": 0,
+            "reminder_errors": 0,
         }
 
         self.stdout.write("")
@@ -88,6 +98,95 @@ class Command(BaseCommand):
                     == HospitalSubscription.STATUS_TRIAL
                 ):
                     summary["active_trials"] += 1
+
+                    if subscription.trial_ends_at:
+                        trial_end_date = timezone.localtime(
+                            subscription.trial_ends_at
+                        ).date()
+
+                        days_remaining = (
+                            trial_end_date - today
+                        ).days
+
+                        trial_reminder_types = {
+                            7: BillingReminderLog.REMINDER_TRIAL_7_DAYS,
+                            3: BillingReminderLog.REMINDER_TRIAL_3_DAYS,
+                            0: BillingReminderLog.REMINDER_TRIAL_TODAY,
+                        }
+
+                        reminder_type = (
+                            trial_reminder_types.get(
+                                days_remaining
+                            )
+                        )
+
+                        if reminder_type:
+                            subject, message = (
+                                build_trial_message(
+                                    subscription,
+                                    days_remaining,
+                                )
+                            )
+
+                            try:
+                                result = (
+                                    send_billing_reminder(
+                                        hospital=(
+                                            subscription.hospital
+                                        ),
+                                        subscription=subscription,
+                                        reminder_type=reminder_type,
+                                        subject=subject,
+                                        message=message,
+                                        billing_date=(
+                                            trial_end_date
+                                        ),
+                                        dry_run=dry_run,
+                                        metadata={
+                                            "days_remaining": (
+                                                days_remaining
+                                            ),
+                                            "trial_ends_at": (
+                                                subscription
+                                                .trial_ends_at
+                                                .isoformat()
+                                            ),
+                                        },
+                                    )
+                                )
+
+                                if result.get("sent"):
+                                    summary[
+                                        "trial_reminders_sent"
+                                    ] += 1
+                                elif result.get("skipped"):
+                                    summary[
+                                        "reminders_skipped"
+                                    ] += 1
+
+                                self.print_item(
+                                    verbose_items,
+                                    (
+                                        f"Trial reminder "
+                                        f"{reminder_type}: "
+                                        f"{subscription.hospital.name} "
+                                        f"— {result}"
+                                    ),
+                                )
+
+                            except Exception as error:
+                                summary[
+                                    "reminder_errors"
+                                ] += 1
+
+                                self.stderr.write(
+                                    self.style.ERROR(
+                                        f"Trial reminder failed "
+                                        f"for "
+                                        f"{subscription.hospital.name}: "
+                                        f"{error}"
+                                    )
+                                )
 
                     if (
                         subscription.trial_ends_at
@@ -202,6 +301,96 @@ class Command(BaseCommand):
             )
 
             for invoice in pending_invoices:
+                days_until_due = (
+                    invoice.due_date - today
+                ).days
+
+                invoice_reminder_types = {
+                    7: BillingReminderLog.REMINDER_INVOICE_7_DAYS,
+                    3: BillingReminderLog.REMINDER_INVOICE_3_DAYS,
+                    0: BillingReminderLog.REMINDER_INVOICE_TODAY,
+                    -3: BillingReminderLog.REMINDER_OVERDUE_3_DAYS,
+                    -7: BillingReminderLog.REMINDER_OVERDUE_7_DAYS,
+                }
+
+                reminder_type = (
+                    invoice_reminder_types.get(
+                        days_until_due
+                    )
+                )
+
+                if reminder_type:
+                    overdue = days_until_due < 0
+                    reminder_days = abs(
+                        days_until_due
+                    )
+
+                    subject, message = (
+                        build_invoice_message(
+                            invoice,
+                            reminder_days,
+                            overdue=overdue,
+                        )
+                    )
+
+                    try:
+                        result = send_billing_reminder(
+                            hospital=invoice.hospital,
+                            subscription=(
+                                invoice.subscription
+                            ),
+                            invoice=invoice,
+                            reminder_type=reminder_type,
+                            subject=subject,
+                            message=message,
+                            billing_date=invoice.due_date,
+                            dry_run=dry_run,
+                            metadata={
+                                "days_until_due": (
+                                    days_until_due
+                                ),
+                                "invoice_number": (
+                                    invoice.invoice_number
+                                ),
+                                "balance_due": str(
+                                    invoice.balance_due
+                                ),
+                            },
+                        )
+
+                        if result.get("sent"):
+                            summary[
+                                "invoice_reminders_sent"
+                            ] += 1
+                        elif result.get("skipped"):
+                            summary[
+                                "reminders_skipped"
+                            ] += 1
+
+                        self.print_item(
+                            verbose_items,
+                            (
+                                f"Invoice reminder "
+                                f"{reminder_type}: "
+                                f"{invoice.invoice_number} "
+                                f"— {result}"
+                            ),
+                        )
+
+                    except Exception as error:
+                        summary[
+                            "reminder_errors"
+                        ] += 1
+
+                        self.stderr.write(
+                            self.style.ERROR(
+                                f"Invoice reminder failed "
+                                f"for "
+                                f"{invoice.invoice_number}: "
+                                f"{error}"
+                            )
+                        )
+
                 if invoice.due_date < today:
                     invoice.status = Invoice.STATUS_OVERDUE
                     invoice.save(
@@ -318,6 +507,22 @@ class Command(BaseCommand):
             (
                 "Payments awaiting approval",
                 summary["pending_payments"],
+            ),
+            (
+                "Trial reminders sent",
+                summary["trial_reminders_sent"],
+            ),
+            (
+                "Invoice reminders sent",
+                summary["invoice_reminders_sent"],
+            ),
+            (
+                "Reminders skipped",
+                summary["reminders_skipped"],
+            ),
+            (
+                "Reminder errors",
+                summary["reminder_errors"],
             ),
         ]
 
