@@ -196,6 +196,69 @@ export default function BillingPage() {
         </div>
       )}
 
+      {subscription.pending_plan && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <div className="flex items-start gap-3">
+            <AlertCircle
+              size={22}
+              className="mt-0.5 shrink-0 text-amber-600"
+            />
+
+            <div className="flex-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
+                Scheduled Plan Change
+              </p>
+
+              <h2 className="mt-2 text-xl font-bold text-amber-950">
+                {subscription.plan?.name ||
+                  subscription.plan_name ||
+                  "Current plan"}
+                {" → "}
+                {subscription.pending_plan.name}
+              </h2>
+
+              <p className="mt-2 text-sm leading-6 text-amber-800">
+                Your current plan remains active until{" "}
+                <span className="font-semibold">
+                  {dateValue(
+                    subscription.pending_plan_effective_date,
+                  )}
+                </span>
+                . The{" "}
+                <span className="font-semibold">
+                  {subscription.pending_plan.name}
+                </span>{" "}
+                plan will become active automatically on that date.
+              </p>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-white/70 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                    Scheduled plan
+                  </p>
+
+                  <p className="mt-1 font-bold text-slate-900">
+                    {subscription.pending_plan.name}
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-white/70 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                    Effective date
+                  </p>
+
+                  <p className="mt-1 font-bold text-slate-900">
+                    {dateValue(
+                      subscription.pending_plan_effective_date,
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {subscription.status === "trial" && (
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
           <div className="flex items-start gap-3">
