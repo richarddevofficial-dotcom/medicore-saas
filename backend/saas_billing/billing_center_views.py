@@ -407,3 +407,466 @@ def billing_center_dashboard(request):
             ),
         }
     )
+
+
+# ============================================================
+# Super Admin Hospital Billing Management
+# ============================================================
+
+from django.core.paginator import EmptyPage, Paginator
+
+
+def parse_boolean_query(value):
+    if value is None or value == "":
+        return None
+
+    normalized = str(value).strip().lower()
+
+    if normalized in {"true", "1", "yes"}:
+        return True
+
+    if normalized in {"false", "0", "no"}:
+        return False
+
+    return None
+
+
+def hospital_billing_row(
+    hospital,
+    subscription,
+    invoice_summary,
+    payment_summary,
+):
+    outstanding_balance = (
+        invoice_summary.get("total_amount", Decimal("0.00"))
+        - invoice_summary.get("amount_paid", Decimal("0.00"))
+    )
+
+    if outstanding_balance < Decimal("0.00"):
+        outstanding_balance = Decimal("0.00")
+
+    return {
+        "id": hospital.id,
+        "name": hospital.name,
+        "slug": hospital.slug,
+        "hospital_type": hospital.hospital_type,
+        "email": hospital.email,
+        "phone": hospital.phone,
+        "city": hospital.city,
+        "state": hospital.state,
+        "country": hospital.country,
+        "is_active": hospital.is_active,
+        "is_verified": hospital.is_verified,
+        "created_at": (
+            hospital.created_at.isoformat()
+            if hospital.created_at
+            else None
+        ),
+        "subscription": (
+            {
+                "id": subscription.id,
+                "plan": {
+                    "id": subscription.plan.id,
+                    "code": subscription.plan.code,
+                    "name": subscription.plan.name,
+                },
+                "status": subscription.status,
+                "currency": subscription.currency,
+                "monthly_price": decimal_value(
+                    subscription.current_monthly_price
+                ),
+                "service_fee": decimal_value(
+                    subscription.current_service_fee
+                ),
+                "service_fee_paid": (
+                    subscription.service_fee_paid
+                ),
+                "trial_ends_at": (
+                    subscription.trial_ends_at.isoformat()
+                    if subscription.trial_ends_at
+                    else None
+                ),
+                "grace_period_ends_at": (
+                    subscription
+                    .grace_period_ends_at
+                    .isoformat()
+                    if subscription.grace_period_ends_at
+                    else None
+                ),
+                "next_billing_date": (
+                    subscription
+                    .next_billing_date
+                    .isoformat()
+                    if subscription.next_billing_date
+                    else None
+                ),
+            }
+            if subscription
+            else None
+        ),
+        "billing": {
+            "outstanding_balance": decimal_value(
+                outstanding_balance
+            ),
+            "pending_invoices": invoice_summary.get(
+                "pending_invoices",
+                0,
+            ),
+            "overdue_invoices": invoice_summary.get(
+                "overdue_invoices",
+                0,
+            ),
+            "pending_payments": payment_summary.get(
+                "pending_payments",
+                0,
+            ),
+            "successful_payments": payment_summary.get(
+                "successful_payments",
+                0,
+            ),
+            "total_paid": decimal_value(
+                payment_summary.get(
+                    "total_paid",
+                    Decimal("0.00"),
+                )
+            ),
+        },
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def billing_center_hospitals(request):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can access hospital billing management."
+                )
+            },
+            status=403,
+        )
+
+    queryset = Hospital.objects.all()
+
+    search = str(
+        request.query_params.get("search", "")
+    ).strip()
+
+    status_filter = str(
+        request.query_params.get("status", "")
+    ).strip().lower()
+
+    plan_filter = str(
+        request.query_params.get("plan", "")
+    ).strip().lower()
+
+    country_filter = str(
+        request.query_params.get("country", "")
+    ).strip()
+
+    active_filter = parse_boolean_query(
+        request.query_params.get("is_active")
+    )
+
+    verified_filter = parse_boolean_query(
+        request.query_params.get("is_verified")
+    )
+
+    if search:
+        queryset = queryset.filter(
+            Q(name__icontains=search)
+            | Q(slug__icontains=search)
+            | Q(email__icontains=search)
+            | Q(phone__icontains=search)
+            | Q(city__icontains=search)
+            | Q(registration_number__icontains=search)
+        )
+
+    if country_filter:
+        queryset = queryset.filter(
+            country__iexact=country_filter
+        )
+
+    if active_filter is not None:
+        queryset = queryset.filter(
+            is_active=active_filter
+        )
+
+    if verified_filter is not None:
+        queryset = queryset.filter(
+            is_verified=verified_filter
+        )
+
+    if status_filter:
+        queryset = queryset.filter(
+            saas_subscription__status=status_filter
+        )
+
+    if plan_filter:
+        queryset = queryset.filter(
+            saas_subscription__plan__code=plan_filter
+        )
+
+    allowed_ordering = {
+        "name": "name",
+        "-name": "-name",
+        "created_at": "created_at",
+        "-created_at": "-created_at",
+        "country": "country",
+        "-country": "-country",
+        "trial_ends_at": (
+            "saas_subscription__trial_ends_at"
+        ),
+        "-trial_ends_at": (
+            "-saas_subscription__trial_ends_at"
+        ),
+        "next_billing_date": (
+            "saas_subscription__next_billing_date"
+        ),
+        "-next_billing_date": (
+            "-saas_subscription__next_billing_date"
+        ),
+    }
+
+    ordering_request = str(
+        request.query_params.get(
+            "ordering",
+            "-created_at",
+        )
+    ).strip()
+
+    ordering = allowed_ordering.get(
+        ordering_request,
+        "-created_at",
+    )
+
+    queryset = queryset.order_by(
+        ordering,
+        "id",
+    ).distinct()
+
+    try:
+        page_size = int(
+            request.query_params.get(
+                "page_size",
+                20,
+            )
+        )
+    except (TypeError, ValueError):
+        page_size = 20
+
+    page_size = max(1, min(page_size, 100))
+
+    try:
+        page_number = int(
+            request.query_params.get(
+                "page",
+                1,
+            )
+        )
+    except (TypeError, ValueError):
+        page_number = 1
+
+    page_number = max(page_number, 1)
+
+    paginator = Paginator(
+        queryset,
+        page_size,
+    )
+
+    try:
+        page = paginator.page(page_number)
+    except EmptyPage:
+        page = paginator.page(
+            paginator.num_pages
+            if paginator.num_pages
+            else 1
+        )
+
+    hospitals = list(page.object_list)
+    hospital_ids = [
+        hospital.id
+        for hospital in hospitals
+    ]
+
+    subscriptions = (
+        HospitalSubscription.objects
+        .filter(hospital_id__in=hospital_ids)
+        .select_related("plan", "hospital")
+    )
+
+    subscription_by_hospital = {
+        subscription.hospital_id: subscription
+        for subscription in subscriptions
+    }
+
+    invoice_rows = (
+        Invoice.objects
+        .filter(
+            hospital_id__in=hospital_ids,
+            status__in=[
+                Invoice.STATUS_PENDING,
+                Invoice.STATUS_OVERDUE,
+            ],
+        )
+        .values("hospital_id")
+        .annotate(
+            total_amount=Sum("total_amount"),
+            amount_paid=Sum("amount_paid"),
+            pending_invoices=Count(
+                "id",
+                filter=Q(
+                    status=Invoice.STATUS_PENDING
+                ),
+            ),
+            overdue_invoices=Count(
+                "id",
+                filter=Q(
+                    status=Invoice.STATUS_OVERDUE
+                ),
+            ),
+        )
+    )
+
+    invoice_by_hospital = {
+        item["hospital_id"]: {
+            "total_amount": (
+                item["total_amount"]
+                or Decimal("0.00")
+            ),
+            "amount_paid": (
+                item["amount_paid"]
+                or Decimal("0.00")
+            ),
+            "pending_invoices": (
+                item["pending_invoices"]
+            ),
+            "overdue_invoices": (
+                item["overdue_invoices"]
+            ),
+        }
+        for item in invoice_rows
+    }
+
+    payment_rows = (
+        Payment.objects
+        .filter(hospital_id__in=hospital_ids)
+        .values("hospital_id")
+        .annotate(
+            pending_payments=Count(
+                "id",
+                filter=Q(
+                    status=Payment.STATUS_PENDING
+                ),
+            ),
+            successful_payments=Count(
+                "id",
+                filter=Q(
+                    status=Payment.STATUS_SUCCESS
+                ),
+            ),
+            total_paid=Sum(
+                "amount",
+                filter=Q(
+                    status=Payment.STATUS_SUCCESS
+                ),
+            ),
+        )
+    )
+
+    payment_by_hospital = {
+        item["hospital_id"]: {
+            "pending_payments": (
+                item["pending_payments"]
+            ),
+            "successful_payments": (
+                item["successful_payments"]
+            ),
+            "total_paid": (
+                item["total_paid"]
+                or Decimal("0.00")
+            ),
+        }
+        for item in payment_rows
+    }
+
+    results = [
+        hospital_billing_row(
+            hospital=hospital,
+            subscription=(
+                subscription_by_hospital.get(
+                    hospital.id
+                )
+            ),
+            invoice_summary=(
+                invoice_by_hospital.get(
+                    hospital.id,
+                    {},
+                )
+            ),
+            payment_summary=(
+                payment_by_hospital.get(
+                    hospital.id,
+                    {},
+                )
+            ),
+        )
+        for hospital in hospitals
+    ]
+
+    all_subscriptions = (
+        HospitalSubscription.objects.all()
+    )
+
+    summary = {
+        "total_hospitals": Hospital.objects.count(),
+        "matching_hospitals": paginator.count,
+        "active": all_subscriptions.filter(
+            status=HospitalSubscription.STATUS_ACTIVE
+        ).count(),
+        "trial": all_subscriptions.filter(
+            status=HospitalSubscription.STATUS_TRIAL
+        ).count(),
+        "grace": all_subscriptions.filter(
+            status=HospitalSubscription.STATUS_GRACE
+        ).count(),
+        "expired": all_subscriptions.filter(
+            status=HospitalSubscription.STATUS_EXPIRED
+        ).count(),
+        "suspended": all_subscriptions.filter(
+            status=(
+                HospitalSubscription.STATUS_SUSPENDED
+            )
+        ).count(),
+        "unconfigured": (
+            Hospital.objects.filter(
+                saas_subscription__isnull=True
+            ).count()
+        ),
+    }
+
+    return Response(
+        {
+            "summary": summary,
+            "filters": {
+                "search": search,
+                "status": status_filter or None,
+                "plan": plan_filter or None,
+                "country": country_filter or None,
+                "is_active": active_filter,
+                "is_verified": verified_filter,
+                "ordering": ordering_request,
+            },
+            "pagination": {
+                "page": page.number,
+                "page_size": page_size,
+                "total_pages": paginator.num_pages,
+                "total_items": paginator.count,
+                "has_next": page.has_next(),
+                "has_previous": page.has_previous(),
+            },
+            "results": results,
+        }
+    )
