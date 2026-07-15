@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
@@ -9,12 +7,16 @@ from saas_billing.models import (
     Invoice,
     Payment,
 )
+from saas_billing.renewal_services import (
+    create_monthly_renewal_invoice,
+    process_expired_trial,
+)
 
 
 class Command(BaseCommand):
     help = (
-        "Inspect MediCore subscriptions, trials, renewals, "
-        "invoices and payments requiring daily billing action."
+        "Process MediCore trial expiry, renewal invoices, "
+        "overdue invoices and daily billing checks."
     )
 
     def add_arguments(self, parser):
@@ -22,15 +24,15 @@ class Command(BaseCommand):
             "--dry-run",
             action="store_true",
             help=(
-                "Inspect and report billing actions without "
-                "changing database records."
+                "Show billing actions without committing "
+                "database changes."
             ),
         )
 
         parser.add_argument(
             "--verbose-items",
             action="store_true",
-            help="Print individual hospitals and invoices.",
+            help="Print individual subscription and invoice actions.",
         )
 
     def handle(self, *args, **options):
@@ -40,221 +42,191 @@ class Command(BaseCommand):
         now = timezone.now()
         today = timezone.localdate()
 
+        summary = {
+            "active_trials": 0,
+            "expired_trials_found": 0,
+            "trials_moved_to_grace": 0,
+            "initial_invoices_created": 0,
+            "initial_invoices_skipped": 0,
+            "active_subscriptions": 0,
+            "renewals_due": 0,
+            "renewal_invoices_created": 0,
+            "renewal_invoices_skipped": 0,
+            "pending_invoices": 0,
+            "invoices_marked_overdue": 0,
+            "already_overdue": 0,
+            "grace_subscriptions": 0,
+            "expired_subscriptions": 0,
+            "suspended_subscriptions": 0,
+            "pending_payments": 0,
+        }
+
         self.stdout.write("")
         self.stdout.write(
             self.style.MIGRATE_HEADING(
                 "MediCore Daily Billing Processor"
             )
         )
-        self.stdout.write(
-            f"Run time: {now.isoformat()}"
-        )
+        self.stdout.write(f"Run time: {now.isoformat()}")
         self.stdout.write(
             f"Mode: {'DRY RUN' if dry_run else 'LIVE'}"
         )
         self.stdout.write("")
 
-        summary = {
-            "trial_active": 0,
-            "trial_ending_7_days": 0,
-            "trial_ending_3_days": 0,
-            "trial_ending_today": 0,
-            "trial_expired": 0,
-            "renewals_due": 0,
-            "renewals_due_7_days": 0,
-            "grace_period": 0,
-            "expired_subscriptions": 0,
-            "suspended_subscriptions": 0,
-            "pending_invoices": 0,
-            "overdue_invoices": 0,
-            "pending_payments": 0,
-        }
-
         with transaction.atomic():
             subscriptions = (
                 HospitalSubscription.objects
-                .select_related(
-                    "hospital",
-                    "plan",
-                )
+                .select_related("hospital", "plan")
                 .order_by("hospital__name")
             )
 
             for subscription in subscriptions:
                 hospital_name = subscription.hospital.name
-                trial_end = subscription.trial_ends_at
-                next_billing = subscription.next_billing_date
 
                 if (
                     subscription.status
                     == HospitalSubscription.STATUS_TRIAL
                 ):
-                    summary["trial_active"] += 1
+                    summary["active_trials"] += 1
 
-                    if trial_end:
-                        trial_end_date = timezone.localtime(
-                            trial_end
-                        ).date()
+                    if (
+                        subscription.trial_ends_at
+                        and subscription.trial_ends_at <= now
+                    ):
+                        summary["expired_trials_found"] += 1
 
-                        days_until_trial_end = (
-                            trial_end_date - today
-                        ).days
+                        updated_subscription, invoice, created = (
+                            process_expired_trial(subscription)
+                        )
 
-                        if days_until_trial_end == 7:
-                            summary[
-                                "trial_ending_7_days"
-                            ] += 1
+                        if (
+                            updated_subscription.status
+                            == HospitalSubscription.STATUS_GRACE
+                        ):
+                            summary["trials_moved_to_grace"] += 1
 
-                            self.print_item(
-                                verbose_items,
-                                (
-                                    f"Trial ends in 7 days: "
-                                    f"{hospital_name}"
-                                ),
-                            )
-
-                        elif days_until_trial_end == 3:
-                            summary[
-                                "trial_ending_3_days"
-                            ] += 1
+                        if created:
+                            summary["initial_invoices_created"] += 1
 
                             self.print_item(
                                 verbose_items,
                                 (
-                                    f"Trial ends in 3 days: "
-                                    f"{hospital_name}"
+                                    f"Created initial invoice "
+                                    f"{invoice.invoice_number} for "
+                                    f"{hospital_name} — "
+                                    f"{invoice.currency} "
+                                    f"{invoice.total_amount}"
                                 ),
                             )
+                        else:
+                            summary["initial_invoices_skipped"] += 1
 
-                        elif days_until_trial_end == 0:
-                            summary[
-                                "trial_ending_today"
-                            ] += 1
-
-                            self.print_item(
-                                verbose_items,
-                                (
-                                    f"Trial ends today: "
-                                    f"{hospital_name}"
-                                ),
-                            )
-
-                        elif days_until_trial_end < 0:
-                            summary["trial_expired"] += 1
-
-                            self.print_item(
-                                verbose_items,
-                                (
-                                    f"Expired trial: "
-                                    f"{hospital_name} "
-                                    f"({abs(days_until_trial_end)} "
-                                    f"day(s) ago)"
-                                ),
-                            )
+                            if invoice:
+                                self.print_item(
+                                    verbose_items,
+                                    (
+                                        f"Initial invoice already exists "
+                                        f"for {hospital_name}: "
+                                        f"{invoice.invoice_number}"
+                                    ),
+                                )
 
                 elif (
                     subscription.status
                     == HospitalSubscription.STATUS_ACTIVE
                 ):
-                    if next_billing:
-                        days_until_billing = (
-                            next_billing - today
-                        ).days
+                    summary["active_subscriptions"] += 1
 
-                        if days_until_billing == 7:
-                            summary[
-                                "renewals_due_7_days"
-                            ] += 1
+                    if (
+                        subscription.next_billing_date
+                        and subscription.next_billing_date <= today
+                    ):
+                        summary["renewals_due"] += 1
+
+                        invoice, created = (
+                            create_monthly_renewal_invoice(
+                                subscription
+                            )
+                        )
+
+                        if created:
+                            summary["renewal_invoices_created"] += 1
 
                             self.print_item(
                                 verbose_items,
                                 (
-                                    f"Renewal due in 7 days: "
-                                    f"{hospital_name}"
+                                    f"Created renewal invoice "
+                                    f"{invoice.invoice_number} for "
+                                    f"{hospital_name} — "
+                                    f"{invoice.currency} "
+                                    f"{invoice.total_amount}"
                                 ),
                             )
+                        else:
+                            summary["renewal_invoices_skipped"] += 1
 
-                        if days_until_billing <= 0:
-                            summary["renewals_due"] += 1
-
-                            self.print_item(
-                                verbose_items,
-                                (
-                                    f"Renewal due: "
-                                    f"{hospital_name} "
-                                    f"({next_billing})"
-                                ),
-                            )
+                            if invoice:
+                                self.print_item(
+                                    verbose_items,
+                                    (
+                                        f"Renewal invoice already exists "
+                                        f"for {hospital_name}: "
+                                        f"{invoice.invoice_number}"
+                                    ),
+                                )
 
                 elif (
                     subscription.status
                     == HospitalSubscription.STATUS_GRACE
                 ):
-                    summary["grace_period"] += 1
-
-                    self.print_item(
-                        verbose_items,
-                        (
-                            f"Grace period: "
-                            f"{hospital_name}"
-                        ),
-                    )
+                    summary["grace_subscriptions"] += 1
 
                 elif (
                     subscription.status
                     == HospitalSubscription.STATUS_EXPIRED
                 ):
-                    summary[
-                        "expired_subscriptions"
-                    ] += 1
-
-                    self.print_item(
-                        verbose_items,
-                        (
-                            f"Expired subscription: "
-                            f"{hospital_name}"
-                        ),
-                    )
+                    summary["expired_subscriptions"] += 1
 
                 elif (
                     subscription.status
                     == HospitalSubscription.STATUS_SUSPENDED
                 ):
-                    summary[
-                        "suspended_subscriptions"
-                    ] += 1
-
-                    self.print_item(
-                        verbose_items,
-                        (
-                            f"Suspended subscription: "
-                            f"{hospital_name}"
-                        ),
-                    )
+                    summary["suspended_subscriptions"] += 1
 
             pending_invoices = Invoice.objects.filter(
                 status=Invoice.STATUS_PENDING
-            )
+            ).select_related("hospital")
 
             summary["pending_invoices"] = (
                 pending_invoices.count()
             )
 
-            for invoice in pending_invoices.select_related(
-                "hospital"
-            ):
+            for invoice in pending_invoices:
                 if invoice.due_date < today:
-                    summary["overdue_invoices"] += 1
+                    invoice.status = Invoice.STATUS_OVERDUE
+                    invoice.save(
+                        update_fields=[
+                            "status",
+                            "updated_at",
+                        ]
+                    )
+
+                    summary["invoices_marked_overdue"] += 1
 
                     self.print_item(
                         verbose_items,
                         (
-                            f"Past-due invoice: "
+                            f"Marked invoice overdue: "
                             f"{invoice.invoice_number} — "
-                            f"{invoice.hospital.name} — "
-                            f"due {invoice.due_date}"
+                            f"{invoice.hospital.name}"
                         ),
                     )
+
+            summary["already_overdue"] = (
+                Invoice.objects.filter(
+                    status=Invoice.STATUS_OVERDUE
+                ).count()
+            )
 
             summary["pending_payments"] = (
                 Payment.objects.filter(
@@ -271,68 +243,69 @@ class Command(BaseCommand):
             self.stdout.write("")
             self.stdout.write(
                 self.style.WARNING(
-                    "Dry run completed. No database "
-                    "records were changed."
+                    "Dry run completed. All database "
+                    "changes were rolled back."
                 )
             )
         else:
             self.stdout.write("")
             self.stdout.write(
                 self.style.SUCCESS(
-                    "Daily billing inspection completed."
+                    "Daily billing processing completed."
                 )
             )
-
-        self.stdout.write(
-            "Automatic invoice creation, reminders and "
-            "suspension will be added in the next "
-            "Phase 9.4 milestones."
-        )
 
     def print_item(self, enabled, message):
         if enabled:
             self.stdout.write(f"  - {message}")
 
     def print_summary(self, summary):
-        self.stdout.write("")
-        self.stdout.write(
-            self.style.MIGRATE_LABEL(
-                "Billing summary"
-            )
-        )
-
         rows = [
+            ("Active trials", summary["active_trials"]),
             (
-                "Active trials",
-                summary["trial_active"],
+                "Expired trials found",
+                summary["expired_trials_found"],
             ),
             (
-                "Trials ending in 7 days",
-                summary["trial_ending_7_days"],
+                "Trials moved to grace",
+                summary["trials_moved_to_grace"],
             ),
             (
-                "Trials ending in 3 days",
-                summary["trial_ending_3_days"],
+                "Initial invoices created",
+                summary["initial_invoices_created"],
             ),
             (
-                "Trials ending today",
-                summary["trial_ending_today"],
+                "Initial invoices skipped",
+                summary["initial_invoices_skipped"],
             ),
             (
-                "Expired trials requiring action",
-                summary["trial_expired"],
+                "Active subscriptions",
+                summary["active_subscriptions"],
+            ),
+            ("Renewals due", summary["renewals_due"]),
+            (
+                "Renewal invoices created",
+                summary["renewal_invoices_created"],
             ),
             (
-                "Renewals due in 7 days",
-                summary["renewals_due_7_days"],
+                "Renewal invoices skipped",
+                summary["renewal_invoices_skipped"],
             ),
             (
-                "Renewals due now",
-                summary["renewals_due"],
+                "Pending invoices inspected",
+                summary["pending_invoices"],
+            ),
+            (
+                "Invoices marked overdue",
+                summary["invoices_marked_overdue"],
+            ),
+            (
+                "Total overdue invoices",
+                summary["already_overdue"],
             ),
             (
                 "Subscriptions in grace",
-                summary["grace_period"],
+                summary["grace_subscriptions"],
             ),
             (
                 "Expired subscriptions",
@@ -343,22 +316,18 @@ class Command(BaseCommand):
                 summary["suspended_subscriptions"],
             ),
             (
-                "Pending invoices",
-                summary["pending_invoices"],
-            ),
-            (
-                "Past-due pending invoices",
-                summary["overdue_invoices"],
-            ),
-            (
                 "Payments awaiting approval",
                 summary["pending_payments"],
             ),
         ]
 
-        width = max(
-            len(label)
-            for label, _value in rows
+        width = max(len(label) for label, _value in rows)
+
+        self.stdout.write("")
+        self.stdout.write(
+            self.style.MIGRATE_LABEL(
+                "Billing summary"
+            )
         )
 
         for label, value in rows:
