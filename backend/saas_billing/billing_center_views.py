@@ -870,3 +870,572 @@ def billing_center_hospitals(request):
             "results": results,
         }
     )
+
+
+def serialize_billing_invoice(invoice):
+    return {
+        "id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "invoice_type": invoice.invoice_type,
+        "status": invoice.status,
+        "currency": invoice.currency,
+        "service_fee_amount": decimal_value(
+            invoice.service_fee_amount
+        ),
+        "subscription_amount": decimal_value(
+            invoice.subscription_amount
+        ),
+        "adjustment_amount": decimal_value(
+            invoice.adjustment_amount
+        ),
+        "subtotal": decimal_value(invoice.subtotal),
+        "tax_amount": decimal_value(invoice.tax_amount),
+        "total_amount": decimal_value(
+            invoice.total_amount
+        ),
+        "amount_paid": decimal_value(
+            invoice.amount_paid
+        ),
+        "balance_due": decimal_value(
+            invoice.balance_due
+        ),
+        "issued_at": (
+            invoice.issued_at.isoformat()
+            if invoice.issued_at
+            else None
+        ),
+        "due_date": (
+            invoice.due_date.isoformat()
+            if invoice.due_date
+            else None
+        ),
+        "paid_at": (
+            invoice.paid_at.isoformat()
+            if invoice.paid_at
+            else None
+        ),
+        "description": invoice.description,
+        "metadata": invoice.metadata or {},
+        "created_at": invoice.created_at.isoformat(),
+    }
+
+
+def serialize_billing_payment(payment):
+    return {
+        "id": payment.id,
+        "payment_reference": payment.payment_reference,
+        "transaction_id": payment.transaction_id,
+        "invoice_id": payment.invoice_id,
+        "invoice_number": payment.invoice.invoice_number,
+        "payment_type": payment.payment_type,
+        "amount": decimal_value(payment.amount),
+        "currency": payment.currency,
+        "gateway": payment.gateway,
+        "payment_method": payment.payment_method,
+        "status": payment.status,
+        "paid_at": (
+            payment.paid_at.isoformat()
+            if payment.paid_at
+            else None
+        ),
+        "notes": payment.notes,
+        "created_at": payment.created_at.isoformat(),
+        "gateway_response": payment.gateway_response or {},
+    }
+
+
+def serialize_billing_reminder(reminder):
+    return {
+        "id": reminder.id,
+        "reminder_type": reminder.reminder_type,
+        "reminder_label": (
+            reminder.get_reminder_type_display()
+        ),
+        "recipient_email": reminder.recipient_email,
+        "subject": reminder.subject,
+        "billing_date": (
+            reminder.billing_date.isoformat()
+            if reminder.billing_date
+            else None
+        ),
+        "sent_at": (
+            reminder.sent_at.isoformat()
+            if reminder.sent_at
+            else None
+        ),
+        "invoice_id": reminder.invoice_id,
+        "subscription_id": reminder.subscription_id,
+        "metadata": reminder.metadata or {},
+    }
+
+
+def build_billing_timeline(
+    hospital,
+    subscription,
+    invoices,
+    payments,
+    reminders,
+):
+    events = []
+
+    events.append(
+        {
+            "type": "hospital_created",
+            "title": "Hospital registered",
+            "description": (
+                f"{hospital.name} was registered "
+                "on MediCore."
+            ),
+            "timestamp": (
+                hospital.created_at.isoformat()
+                if hospital.created_at
+                else None
+            ),
+        }
+    )
+
+    if subscription:
+        if subscription.trial_started_at:
+            events.append(
+                {
+                    "type": "trial_started",
+                    "title": "Trial started",
+                    "description": (
+                        f"{subscription.plan.name} "
+                        "trial started."
+                    ),
+                    "timestamp": (
+                        subscription
+                        .trial_started_at
+                        .isoformat()
+                    ),
+                }
+            )
+
+        if subscription.activated_at:
+            events.append(
+                {
+                    "type": "subscription_activated",
+                    "title": "Subscription activated",
+                    "description": (
+                        f"{subscription.plan.name} "
+                        "subscription activated."
+                    ),
+                    "timestamp": (
+                        subscription
+                        .activated_at
+                        .isoformat()
+                    ),
+                }
+            )
+
+    for invoice in invoices:
+        events.append(
+            {
+                "type": "invoice_created",
+                "title": "Invoice generated",
+                "description": (
+                    f"{invoice.invoice_number} — "
+                    f"{invoice.currency} "
+                    f"{invoice.total_amount}"
+                ),
+                "timestamp": invoice.created_at.isoformat(),
+                "invoice_id": invoice.id,
+            }
+        )
+
+        if invoice.paid_at:
+            events.append(
+                {
+                    "type": "invoice_paid",
+                    "title": "Invoice paid",
+                    "description": (
+                        f"{invoice.invoice_number} "
+                        "was marked paid."
+                    ),
+                    "timestamp": invoice.paid_at.isoformat(),
+                    "invoice_id": invoice.id,
+                }
+            )
+
+    for payment in payments:
+        events.append(
+            {
+                "type": "payment_submitted",
+                "title": "Payment submitted",
+                "description": (
+                    f"{payment.payment_reference} — "
+                    f"{payment.currency} "
+                    f"{payment.amount} — "
+                    f"{payment.status}"
+                ),
+                "timestamp": payment.created_at.isoformat(),
+                "payment_id": payment.id,
+            }
+        )
+
+        if payment.paid_at:
+            events.append(
+                {
+                    "type": "payment_approved",
+                    "title": "Payment approved",
+                    "description": (
+                        f"{payment.payment_reference} "
+                        "was approved."
+                    ),
+                    "timestamp": payment.paid_at.isoformat(),
+                    "payment_id": payment.id,
+                }
+            )
+
+    for reminder in reminders:
+        events.append(
+            {
+                "type": "reminder_sent",
+                "title": reminder.get_reminder_type_display(),
+                "description": (
+                    f"Reminder sent to "
+                    f"{reminder.recipient_email}."
+                ),
+                "timestamp": reminder.sent_at.isoformat(),
+                "reminder_id": reminder.id,
+            }
+        )
+
+    events = [
+        event
+        for event in events
+        if event.get("timestamp")
+    ]
+
+    events.sort(
+        key=lambda event: event["timestamp"],
+        reverse=True,
+    )
+
+    return events[:50]
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def billing_center_hospital_detail(
+    request,
+    hospital_id,
+):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {
+                "error": (
+                    "Only a platform super administrator "
+                    "can access hospital billing details."
+                )
+            },
+            status=403,
+        )
+
+    hospital = Hospital.objects.filter(
+        id=hospital_id
+    ).first()
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital not found."},
+            status=404,
+        )
+
+    subscription = (
+        HospitalSubscription.objects
+        .filter(hospital=hospital)
+        .select_related("plan", "hospital")
+        .first()
+    )
+
+    invoices = list(
+        Invoice.objects
+        .filter(hospital=hospital)
+        .select_related(
+            "hospital",
+            "subscription",
+        )
+        .order_by("-created_at")[:100]
+    )
+
+    payments = list(
+        Payment.objects
+        .filter(hospital=hospital)
+        .select_related(
+            "hospital",
+            "invoice",
+            "subscription",
+            "subscription__plan",
+        )
+        .order_by("-created_at")[:100]
+    )
+
+    reminders = list(
+        BillingReminderLog.objects
+        .filter(hospital=hospital)
+        .select_related(
+            "subscription",
+            "invoice",
+        )
+        .order_by("-sent_at")[:100]
+    )
+
+    open_invoice_totals = (
+        Invoice.objects
+        .filter(
+            hospital=hospital,
+            status__in=[
+                Invoice.STATUS_PENDING,
+                Invoice.STATUS_OVERDUE,
+            ],
+        )
+        .aggregate(
+            total_amount=Sum("total_amount"),
+            amount_paid=Sum("amount_paid"),
+        )
+    )
+
+    outstanding_balance = (
+        (
+            open_invoice_totals["total_amount"]
+            or Decimal("0.00")
+        )
+        - (
+            open_invoice_totals["amount_paid"]
+            or Decimal("0.00")
+        )
+    )
+
+    if outstanding_balance < Decimal("0.00"):
+        outstanding_balance = Decimal("0.00")
+
+    successful_payment_total = (
+        Payment.objects
+        .filter(
+            hospital=hospital,
+            status=Payment.STATUS_SUCCESS,
+        )
+        .aggregate(total=Sum("amount"))["total"]
+        or Decimal("0.00")
+    )
+
+    pending_invoice_count = (
+        Invoice.objects
+        .filter(
+            hospital=hospital,
+            status=Invoice.STATUS_PENDING,
+        )
+        .count()
+    )
+
+    overdue_invoice_count = (
+        Invoice.objects
+        .filter(
+            hospital=hospital,
+            status=Invoice.STATUS_OVERDUE,
+        )
+        .count()
+    )
+
+    pending_payment_count = (
+        Payment.objects
+        .filter(
+            hospital=hospital,
+            status=Payment.STATUS_PENDING,
+        )
+        .count()
+    )
+
+    staff_count = 0
+    patient_count = 0
+
+    try:
+        from staff.models import StaffProfile
+
+        staff_count = StaffProfile.objects.filter(
+            hospital=hospital,
+            is_active=True,
+        ).count()
+    except Exception:
+        staff_count = 0
+
+    try:
+        from patients.models import Patient
+
+        patient_count = Patient.objects.filter(
+            hospital=hospital
+        ).count()
+    except Exception:
+        patient_count = 0
+
+    subscription_data = None
+
+    if subscription:
+        subscription_data = {
+            "id": subscription.id,
+            "status": subscription.status,
+            "plan": {
+                "id": subscription.plan.id,
+                "code": subscription.plan.code,
+                "name": subscription.plan.name,
+                "description": (
+                    subscription.plan.description
+                ),
+                "max_staff": (
+                    subscription.plan.max_staff
+                ),
+                "max_patients": (
+                    subscription.plan.max_patients
+                ),
+                "storage_gb": (
+                    subscription.plan.storage_gb
+                ),
+            },
+            "currency": subscription.currency,
+            "monthly_price": decimal_value(
+                subscription.current_monthly_price
+            ),
+            "service_fee": decimal_value(
+                subscription.current_service_fee
+            ),
+            "service_fee_paid": (
+                subscription.service_fee_paid
+            ),
+            "service_fee_paid_at": (
+                subscription
+                .service_fee_paid_at
+                .isoformat()
+                if subscription.service_fee_paid_at
+                else None
+            ),
+            "trial_started_at": (
+                subscription
+                .trial_started_at
+                .isoformat()
+                if subscription.trial_started_at
+                else None
+            ),
+            "trial_ends_at": (
+                subscription
+                .trial_ends_at
+                .isoformat()
+                if subscription.trial_ends_at
+                else None
+            ),
+            "activated_at": (
+                subscription
+                .activated_at
+                .isoformat()
+                if subscription.activated_at
+                else None
+            ),
+            "next_billing_date": (
+                subscription
+                .next_billing_date
+                .isoformat()
+                if subscription.next_billing_date
+                else None
+            ),
+            "grace_period_ends_at": (
+                subscription
+                .grace_period_ends_at
+                .isoformat()
+                if subscription.grace_period_ends_at
+                else None
+            ),
+            "auto_renew": subscription.auto_renew,
+        }
+
+    timeline = build_billing_timeline(
+        hospital=hospital,
+        subscription=subscription,
+        invoices=invoices,
+        payments=payments,
+        reminders=reminders,
+    )
+
+    return Response(
+        {
+            "hospital": {
+                "id": hospital.id,
+                "name": hospital.name,
+                "slug": hospital.slug,
+                "hospital_type": hospital.hospital_type,
+                "registration_number": (
+                    hospital.registration_number
+                ),
+                "email": hospital.email,
+                "phone": hospital.phone,
+                "website": hospital.website,
+                "address": hospital.address,
+                "city": hospital.city,
+                "state": hospital.state,
+                "country": hospital.country,
+                "timezone": hospital.timezone,
+                "currency": hospital.currency,
+                "is_active": hospital.is_active,
+                "is_verified": hospital.is_verified,
+                "custom_domain": hospital.custom_domain,
+                "domain_status": hospital.domain_status,
+                "created_at": (
+                    hospital.created_at.isoformat()
+                    if hospital.created_at
+                    else None
+                ),
+            },
+            "subscription": subscription_data,
+            "usage": {
+                "staff": {
+                    "used": staff_count,
+                    "limit": (
+                        subscription.plan.max_staff
+                        if subscription
+                        else hospital.max_staff
+                    ),
+                },
+                "patients": {
+                    "used": patient_count,
+                    "limit": (
+                        subscription.plan.max_patients
+                        if subscription
+                        else hospital.max_patients
+                    ),
+                },
+            },
+            "summary": {
+                "outstanding_balance": decimal_value(
+                    outstanding_balance
+                ),
+                "total_paid": decimal_value(
+                    successful_payment_total
+                ),
+                "pending_invoices": (
+                    pending_invoice_count
+                ),
+                "overdue_invoices": (
+                    overdue_invoice_count
+                ),
+                "pending_payments": (
+                    pending_payment_count
+                ),
+                "total_invoices": len(invoices),
+                "total_payments": len(payments),
+                "total_reminders": len(reminders),
+            },
+            "invoices": [
+                serialize_billing_invoice(invoice)
+                for invoice in invoices
+            ],
+            "payments": [
+                serialize_billing_payment(payment)
+                for payment in payments
+            ],
+            "reminders": [
+                serialize_billing_reminder(reminder)
+                for reminder in reminders
+            ],
+            "timeline": timeline,
+        }
+    )
