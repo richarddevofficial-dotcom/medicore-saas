@@ -108,7 +108,14 @@ export default function LoginPage() {
         toast.success("OTP sent successfully");
       }
     } catch (err) {
-      setError(err.response?.data?.error || "Unable to start OTP login");
+      const responseData = err.response?.data;
+
+      setError(
+        responseData?.error ||
+          responseData?.detail ||
+          err.message ||
+          "Unable to start OTP login",
+      );
     } finally {
       setIsLoading(false);
     }

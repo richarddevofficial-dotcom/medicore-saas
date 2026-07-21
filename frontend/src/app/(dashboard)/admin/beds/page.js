@@ -36,6 +36,7 @@ export default function BedManagementPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState("all");
   const [assignmentFilter, setAssignmentFilter] = useState("all");
+  const [activeTab, setActiveTab] = useState("beds");
   const [showModal, setShowModal] = useState(false);
   const [modalError, setModalError] = useState("");
   const [modalType, setModalType] = useState("bed");

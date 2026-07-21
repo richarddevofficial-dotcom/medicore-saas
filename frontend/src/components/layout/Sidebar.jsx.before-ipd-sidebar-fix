@@ -58,6 +58,8 @@ const navigationByRole = {
       ],
     },
     {
+      section: "REPORTS",
+    {
       section: "INPATIENT CARE",
       items: [
         {
@@ -77,8 +79,6 @@ const navigationByRole = {
         },
       ],
     },
-    {
-      section: "REPORTS",
       items: [
         { name: "Reports", href: "/admin/reports", icon: FileText },
         { name: "Audit Logs", href: "/admin/logs", icon: Database },
@@ -161,6 +161,8 @@ const navigationByRole = {
       ],
     },
     {
+      section: "REPORTS",
+    {
       section: "INPATIENT CARE",
       items: [
         {
@@ -180,8 +182,6 @@ const navigationByRole = {
         },
       ],
     },
-    {
-      section: "REPORTS",
       items: [
         { name: "Reports", href: "/admin/reports", icon: FileText },
         { name: "Audit Logs", href: "/admin/logs", icon: Database },
@@ -224,6 +224,8 @@ const navigationByRole = {
       ],
     },
     {
+      section: "PATIENT FLOW",
+    {
       section: "INPATIENT CARE",
       items: [
         {
@@ -238,8 +240,6 @@ const navigationByRole = {
         },
       ],
     },
-    {
-      section: "PATIENT FLOW",
       items: [
         { name: "All Patients", href: "/patients", icon: Users },
         { name: "Doctors", href: "/doctors", icon: Stethoscope },

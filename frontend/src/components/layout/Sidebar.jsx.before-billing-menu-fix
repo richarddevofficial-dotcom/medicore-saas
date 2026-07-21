@@ -58,26 +58,6 @@ const navigationByRole = {
       ],
     },
     {
-      section: "INPATIENT CARE",
-      items: [
-        {
-          name: "IPD Dashboard",
-          href: "/ipd",
-          icon: Building2,
-        },
-        {
-          name: "Admissions",
-          href: "/ipd/admissions",
-          icon: Users,
-        },
-        {
-          name: "Current Inpatients",
-          href: "/ipd/admissions?status=admitted",
-          icon: Bed,
-        },
-      ],
-    },
-    {
       section: "REPORTS",
       items: [
         { name: "Reports", href: "/admin/reports", icon: FileText },
@@ -161,26 +141,6 @@ const navigationByRole = {
       ],
     },
     {
-      section: "INPATIENT CARE",
-      items: [
-        {
-          name: "IPD Dashboard",
-          href: "/ipd",
-          icon: Building2,
-        },
-        {
-          name: "Admissions",
-          href: "/ipd/admissions",
-          icon: Users,
-        },
-        {
-          name: "Current Inpatients",
-          href: "/ipd/admissions?status=admitted",
-          icon: Bed,
-        },
-      ],
-    },
-    {
       section: "REPORTS",
       items: [
         { name: "Reports", href: "/admin/reports", icon: FileText },
@@ -193,8 +153,8 @@ const navigationByRole = {
         { name: "Subscription", href: "/admin/subscription", icon: Crown },
         { name: "Payments", href: "/admin/payment", icon: CreditCard },
         {
-          name: "Billing Center",
-          href: "/platform/billing",
+          name: "Billing & Subscription",
+          href: "/settings/billing",
           icon: CreditCard,
         },
         { name: "Super Admin", href: "/super-admin", icon: Shield },
@@ -221,21 +181,6 @@ const navigationByRole = {
         { name: "Register Patient", href: "/patients/add", icon: UserCog },
         { name: "Appointments", href: "/appointments", icon: Calendar },
         { name: "Billing & Payments", href: "/billing", icon: DollarSign },
-      ],
-    },
-    {
-      section: "INPATIENT CARE",
-      items: [
-        {
-          name: "Admissions",
-          href: "/ipd/admissions",
-          icon: Users,
-        },
-        {
-          name: "Current Inpatients",
-          href: "/ipd/admissions?status=admitted",
-          icon: Bed,
-        },
       ],
     },
     {
