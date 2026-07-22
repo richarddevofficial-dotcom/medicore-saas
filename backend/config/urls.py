@@ -912,6 +912,7 @@ urlpatterns = [
     path('api/v1/hr/', include('human_resources.urls')),
     path('api/v1/finance/', include('finance.urls')),
     path('api/v1/expenses/', include('expenses.urls')),
+    path('api/v1/budgets/', include('budgets.urls')),
     path(
         "api/v1/ipd/",
         include("ipd.urls"),
