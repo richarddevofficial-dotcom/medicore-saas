@@ -6,49 +6,80 @@ const unwrapList = (data) => {
   return [];
 };
 
+const list = async (url, params = {}) => {
+  const response = await apiClient.get(url, { params });
+  return unwrapList(response.data);
+};
+
 export const hrApi = {
-  async getDepartments(params = {}) {
-    const response = await apiClient.get("/hr/departments/", { params });
-    return unwrapList(response.data);
+  getEmployees(params = {}) {
+    return list("/hr/employees/", params);
   },
 
-  async createDepartment(payload) {
-    const response = await apiClient.post("/hr/departments/", payload);
-    return response.data;
+  getDepartments(params = {}) {
+    return list("/hr/departments/", params);
   },
 
-  async updateDepartment(id, payload) {
-    const response = await apiClient.patch(
-      `/hr/departments/${id}/`,
-      payload,
-    );
-    return response.data;
+  createDepartment(payload) {
+    return apiClient
+      .post("/hr/departments/", payload)
+      .then((response) => response.data);
   },
 
-  async deleteDepartment(id) {
-    await apiClient.delete(`/hr/departments/${id}/`);
+  updateDepartment(id, payload) {
+    return apiClient
+      .patch(`/hr/departments/${id}/`, payload)
+      .then((response) => response.data);
   },
 
-  async getPositions(params = {}) {
-    const response = await apiClient.get("/hr/positions/", { params });
-    return unwrapList(response.data);
+  deleteDepartment(id) {
+    return apiClient.delete(`/hr/departments/${id}/`);
   },
 
-  async createPosition(payload) {
-    const response = await apiClient.post("/hr/positions/", payload);
-    return response.data;
+  getPositions(params = {}) {
+    return list("/hr/positions/", params);
   },
 
-  async updatePosition(id, payload) {
-    const response = await apiClient.patch(
-      `/hr/positions/${id}/`,
-      payload,
-    );
-    return response.data;
+  createPosition(payload) {
+    return apiClient
+      .post("/hr/positions/", payload)
+      .then((response) => response.data);
   },
 
-  async deletePosition(id) {
-    await apiClient.delete(`/hr/positions/${id}/`);
+  updatePosition(id, payload) {
+    return apiClient
+      .patch(`/hr/positions/${id}/`, payload)
+      .then((response) => response.data);
+  },
+
+  deletePosition(id) {
+    return apiClient.delete(`/hr/positions/${id}/`);
+  },
+
+  getContracts(params = {}) {
+    return list("/hr/contracts/", params);
+  },
+
+  getContract(id) {
+    return apiClient
+      .get(`/hr/contracts/${id}/`)
+      .then((response) => response.data);
+  },
+
+  createContract(payload) {
+    return apiClient
+      .post("/hr/contracts/", payload)
+      .then((response) => response.data);
+  },
+
+  updateContract(id, payload) {
+    return apiClient
+      .patch(`/hr/contracts/${id}/`, payload)
+      .then((response) => response.data);
+  },
+
+  deleteContract(id) {
+    return apiClient.delete(`/hr/contracts/${id}/`);
   },
 };
 
@@ -63,14 +94,17 @@ export const getApiError = (
   if (data?.error) return data.error;
 
   if (data && typeof data === "object") {
-    const firstValue = Object.values(data)[0];
+    const firstEntry = Object.entries(data)[0];
 
-    if (Array.isArray(firstValue)) {
-      return firstValue[0];
-    }
+    if (firstEntry) {
+      const [field, value] = firstEntry;
+      const message = Array.isArray(value)
+        ? value[0]
+        : value;
 
-    if (typeof firstValue === "string") {
-      return firstValue;
+      if (typeof message === "string") {
+        return `${field}: ${message}`;
+      }
     }
   }
 
