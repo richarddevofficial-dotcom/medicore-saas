@@ -1,0 +1,253 @@
+==================================================
+MEDICORE HR BACKEND AUDIT
+Generated: Tue Jul 21 23:13:01 CAT 2026
+==================================================
+
+1. HR FILE STRUCTURE
+--------------------------------------------------
+
+2. HR APP CONFIGURATION
+--------------------------------------------------
+
+3. HR MODELS
+--------------------------------------------------
+
+4. HR SERIALIZERS
+--------------------------------------------------
+
+5. HR VIEWS
+--------------------------------------------------
+
+6. HR URLS
+--------------------------------------------------
+
+7. HR PERMISSIONS
+--------------------------------------------------
+
+8. HR ADMIN
+--------------------------------------------------
+
+9. HR SERVICES
+--------------------------------------------------
+
+10. HR TESTS
+--------------------------------------------------
+
+11. HR MIGRATIONS
+--------------------------------------------------
+
+12. PROJECT URL REGISTRATION
+--------------------------------------------------
+backend/human_resources/urls.py:55:    path("dashboard/", hr_dashboard, name="hr-dashboard"),
+backend/config/urls.py:912:    path('api/v1/hr/', include('human_resources.urls')),
+backend/config/urls.py:914:        "api/v1/ipd/",
+backend/config/urls.py:920:    path('api/v1/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+backend/config/urls.py:921:    path('api/v1/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+backend/config/urls.py:924:    path('api/v1/hospitals/login/', login_view, name='login'),
+backend/config/urls.py:925:    path('api/v1/auth/login/initiate/', login_initiate, name='login-initiate'),
+backend/config/urls.py:926:    path('api/v1/auth/login/verify/', login_verify, name='login-verify'),
+backend/config/urls.py:927:    path('api/v1/auth/password/setup-request/', password_setup_request, name='password-setup-request'),
+backend/config/urls.py:928:    path('api/v1/auth/password/setup-confirm/', password_setup_confirm, name='password-setup-confirm'),
+backend/config/urls.py:929:    path('api/v1/auth/password/change/', password_change, name='password-change'),
+backend/config/urls.py:930:    path('api/v1/auth/trusted-devices/', trusted_device_list, name='trusted-device-list'),
+backend/config/urls.py:931:    path('api/v1/auth/trusted-device/revoke/', trusted_device_revoke, name='trusted-device-revoke'),
+backend/config/urls.py:932:    path('api/v1/auth/trusted-device/revoke-all/', trusted_device_revoke_all, name='trusted-device-revoke-all'),
+backend/config/urls.py:933:    path('api/v1/hospitals/settings/', hospital_settings, name='hospital-settings'),
+backend/config/urls.py:936:    path('api/v1/super-admin/stats/', super_admin_stats, name='super-admin-stats'),
+backend/config/urls.py:937:    path('api/v1/super-admin/toggle-hospital/', toggle_hospital_status, name='toggle-hospital'),
+backend/config/urls.py:938:    path('api/v1/super-admin/update-plan/', update_hospital_plan, name='update-plan'),
+backend/config/urls.py:939:    path('api/v1/super-admin/switch-hospital/', switch_hospital, name='switch-hospital'),
+backend/config/urls.py:940:    path('api/v1/super-admin/switch-back/', switch_back_to_superadmin, name='switch-back'),
+backend/config/urls.py:941:    path('api/v1/super-admin/platform-admins/', list_platform_super_admins, name='platform-admin-list'),
+backend/config/urls.py:942:    path('api/v1/super-admin/platform-admins/create/', create_platform_super_admin, name='platform-admin-create'),
+backend/config/urls.py:943:    path('api/v1/super-admin/platform-admins/toggle-status/', toggle_platform_super_admin_status, name='platform-admin-toggle-status'),
+backend/config/urls.py:944:    path('api/v1/super-admin/notifications/failures/', list_notification_failures, name='super-admin-notification-failures'),
+backend/config/urls.py:945:    path('api/v1/super-admin/notifications/retry-receipts/', retry_failed_receipt_jobs, name='super-admin-retry-failed-receipt-jobs'),
+backend/config/urls.py:948:    path('api/v1/reports/dashboard/', dashboard_report, name='dashboard-report'),
+backend/config/urls.py:949:    path('api/v1/reports/detailed/', detailed_report, name='detailed-report'),
+backend/config/urls.py:950:    path('api/v1/reports/staff/', staff_report, name='staff-report'),
+backend/config/urls.py:951:    path('api/v1/reports/reception/', reception_report, name='reception-report'),
+backend/config/urls.py:952:    path('api/v1/reports/cashier/', cashier_report, name='cashier-report'),
+backend/config/urls.py:953:    path('api/v1/reports/pharmacy/', pharmacy_report, name='pharmacy-report'),
+backend/config/urls.py:954:    path('api/v1/reports/lab/', lab_report, name='lab-report'),
+backend/config/urls.py:955:    path('api/v1/reports/reconciliation/', reconciliation_report, name='reconciliation-report'),
+backend/config/urls.py:956:    path('api/v1/reports/dashboard-charts/', dashboard_charts, name='dashboard-charts'),
+backend/config/urls.py:959:    path('api/v1/', include(router.urls)),
+backend/config/urls.py:967:        'api/v1/public/',
+backend/config/urls.py:978:        'api/v1/saas-billing/',
+backend/config/urls.py:989:        'api/v1/saas-admin/',
+backend/config/urls.py:1002:        "api/v1/billing-center/",
+
+13. INSTALLED APPS
+--------------------------------------------------
+backend/config/settings.py:69:INSTALLED_APPS = [
+backend/config/settings.py:226:if 'publicapi' not in INSTALLED_APPS:
+backend/config/settings.py:227:    INSTALLED_APPS.append('publicapi')
+backend/config/settings.py:244:if 'saas_billing' not in INSTALLED_APPS:
+backend/config/settings.py:245:    INSTALLED_APPS.append('saas_billing')
+
+14. EXISTING RELATED MODELS
+--------------------------------------------------
+
+15. USER AND ROLE MODELS
+--------------------------------------------------
+
+16. TENANT MODELS AND MIDDLEWARE
+--------------------------------------------------
+backend/config/plan_permissions.py:4:class RequiresHospitalPlan(BasePermission):
+backend/config/plan_permissions.py:21:class RequiresProPlan(RequiresHospitalPlan):
+backend/config/plan_permissions.py:25:class RequiresEnterprisePlan(RequiresHospitalPlan):
+backend/config/middleware.py:78:class TenantDomainMiddleware:
+backend/config/middleware.py:94:        request.tenant_hospital = tenant
+backend/config/middleware.py:106:class DynamicTenantCorsGuardMiddleware:
+backend/config/superadmin_views.py:271:        Patient.objects.values_list('hospital_id').annotate(total=Count('id'))
+backend/config/superadmin_views.py:274:        StaffProfile.objects.values_list('hospital_id').annotate(total=Count('id'))
+backend/config/superadmin_views.py:277:        row['hospital_id']: float(row['total'] or 0)
+backend/config/superadmin_views.py:278:        for row in Bill.objects.filter(status='paid').values('hospital_id').annotate(total=Sum('total_amount'))
+backend/config/superadmin_views.py:328:    hospital_id = request.data.get('hospital_id')
+backend/config/superadmin_views.py:330:        hospital = Hospital.objects.get(id=hospital_id)
+backend/config/superadmin_views.py:360:    hospital_id = request.data.get('hospital_id')
+backend/config/superadmin_views.py:363:        hospital = Hospital.objects.get(id=hospital_id)
+backend/config/superadmin_views.py:385:    hospital_id = request.data.get('hospital_id')
+backend/config/superadmin_views.py:387:        hospital = Hospital.objects.get(id=hospital_id)
+backend/config/urls.py:829:        hospital_id = request.query_params.get('hospital_id') or request.data.get('hospital_id')
+backend/config/urls.py:830:        if hospital_id:
+backend/config/urls.py:831:            hospital = Hospital.objects.filter(id=hospital_id).first()
+
+17. REST FRAMEWORK SETTINGS
+--------------------------------------------------
+backend/insurance/views.py:1:from rest_framework import viewsets, filters
+backend/insurance/views.py:2:from rest_framework.decorators import action
+backend/insurance/views.py:3:from rest_framework.response import Response
+backend/insurance/views.py:4:from rest_framework.exceptions import ValidationError
+backend/insurance/views.py:5:from rest_framework.permissions import IsAuthenticated
+backend/insurance/tests.py:3:from rest_framework.test import APIClient
+backend/insurance/serializers.py:1:from rest_framework import serializers
+backend/ipd/views.py:4:from rest_framework.decorators import (
+backend/ipd/views.py:8:from rest_framework.permissions import (
+backend/ipd/views.py:11:from rest_framework.response import Response
+backend/ipd/serializers.py:2:from rest_framework import serializers
+backend/patients/views.py:3:from rest_framework import viewsets, filters, status
+backend/patients/views.py:4:from rest_framework.decorators import action
+backend/patients/views.py:5:from rest_framework.response import Response
+backend/patients/views.py:6:from rest_framework.permissions import IsAuthenticated, AllowAny
+backend/patients/views.py:7:from django_filters.rest_framework import DjangoFilterBackend
+backend/patients/views.py:103:            from rest_framework.exceptions import ValidationError
+backend/patients/views.py:106:        from rest_framework.exceptions import ValidationError
+backend/patients/serializers.py:1:from rest_framework import serializers
+backend/laboratory/views.py:1:from rest_framework import viewsets, filters
+backend/laboratory/views.py:2:from rest_framework.exceptions import ValidationError
+backend/laboratory/serializers.py:1:from rest_framework import serializers
+backend/staff/views.py:1:from rest_framework import viewsets, permissions, status
+backend/staff/views.py:2:from rest_framework.response import Response
+backend/staff/views.py:3:from rest_framework.decorators import action
+backend/staff/views.py:98:                from rest_framework.exceptions import ValidationError
+backend/staff/views.py:101:            from rest_framework.exceptions import ValidationError
+backend/staff/views.py:123:                from rest_framework.exceptions import ValidationError
+backend/staff/views.py:140:                from rest_framework.exceptions import ValidationError
+backend/staff/tests.py:3:from rest_framework.test import APIClient
+backend/staff/serializers.py:1:from rest_framework import serializers
+backend/appointments/views.py:1:from rest_framework import viewsets, filters
+backend/appointments/views.py:2:from rest_framework.decorators import action
+backend/appointments/views.py:3:from rest_framework.response import Response
+backend/appointments/serializers.py:1:from rest_framework import serializers
+backend/human_resources/views.py:4:from rest_framework import filters, status, viewsets
+backend/human_resources/views.py:5:from rest_framework.decorators import action, api_view, permission_classes
+backend/human_resources/views.py:6:from rest_framework.permissions import IsAuthenticated
+backend/human_resources/views.py:7:from rest_framework.response import Response
+backend/human_resources/urls.py:2:from rest_framework.routers import DefaultRouter
+backend/human_resources/serializers.py:1:from rest_framework import serializers
+backend/human_resources/permissions.py:1:from rest_framework.permissions import BasePermission
+backend/publicapi/views.py:8:from rest_framework.decorators import api_view, permission_classes
+backend/publicapi/views.py:9:from rest_framework.permissions import AllowAny
+backend/publicapi/views.py:10:from rest_framework.response import Response
+backend/reports/views.py:1:from rest_framework.decorators import api_view, permission_classes
+backend/reports/views.py:2:from rest_framework.permissions import IsAuthenticated
+backend/reports/views.py:3:from rest_framework.response import Response
+backend/reports/tests.py:3:from rest_framework.test import APIClient
+backend/imaging/views.py:1:from rest_framework import viewsets, filters
+backend/imaging/views.py:2:from rest_framework.decorators import action
+backend/imaging/views.py:3:from rest_framework.response import Response
+backend/imaging/views.py:4:from rest_framework.permissions import IsAuthenticated
+backend/imaging/views.py:5:from rest_framework.exceptions import ValidationError
+backend/imaging/serializers.py:1:from rest_framework import serializers
+backend/saas_billing/views.py:1:from rest_framework.decorators import (
+backend/saas_billing/views.py:5:from rest_framework.permissions import AllowAny, IsAuthenticated
+backend/saas_billing/views.py:6:from rest_framework.response import Response
+backend/saas_billing/billing_center_views.py:7:from rest_framework.decorators import (
+backend/saas_billing/billing_center_views.py:11:from rest_framework.permissions import IsAuthenticated
+backend/saas_billing/billing_center_views.py:12:from rest_framework.response import Response
+backend/saas_billing/serializers.py:1:from rest_framework import serializers
+backend/saas_billing/admin_views.py:7:from rest_framework.decorators import api_view, permission_classes
+backend/saas_billing/admin_views.py:8:from rest_framework.permissions import IsAuthenticated
+backend/saas_billing/admin_views.py:9:from rest_framework.response import Response
+backend/pharmacy/views.py:1:from rest_framework import viewsets, filters, status
+backend/pharmacy/views.py:2:from rest_framework.decorators import action
+backend/pharmacy/views.py:3:from rest_framework.response import Response
+backend/pharmacy/views.py:4:from rest_framework.permissions import IsAuthenticated
+backend/pharmacy/views.py:325:            from rest_framework.exceptions import PermissionDenied
+backend/pharmacy/views.py:329:            from rest_framework.exceptions import PermissionDenied
+backend/pharmacy/tests.py:3:from rest_framework.test import APIClient
+backend/pharmacy/serializers.py:1:from rest_framework import serializers
+backend/hospitals/views.py:1:from rest_framework import viewsets, status
+backend/hospitals/views.py:2:from rest_framework.decorators import action, api_view, permission_classes
+backend/hospitals/views.py:3:from rest_framework.response import Response
+backend/hospitals/views.py:4:from rest_framework.permissions import AllowAny
+backend/hospitals/views.py:6:from rest_framework_simplejwt.tokens import RefreshToken
+backend/hospitals/tests.py:3:from rest_framework.test import APIClient
+backend/hospitals/serializers.py:1:from rest_framework import serializers
+backend/auditlog/views.py:1:from rest_framework import viewsets, filters
+backend/auditlog/serializers.py:1:from rest_framework import serializers
+backend/rooms/views.py:1:from rest_framework import viewsets, filters
+backend/rooms/views.py:2:from rest_framework import status
+backend/rooms/views.py:3:from rest_framework.decorators import action
+backend/rooms/views.py:4:from rest_framework.exceptions import ValidationError
+backend/rooms/views.py:5:from rest_framework.permissions import IsAuthenticated
+backend/rooms/views.py:6:from rest_framework.response import Response
+backend/rooms/tests.py:3:from rest_framework.test import APIClient
+backend/rooms/serializers.py:1:from rest_framework import serializers
+backend/billing/views.py:1:from rest_framework import viewsets, filters, status
+backend/billing/views.py:2:from rest_framework.decorators import action
+backend/billing/views.py:3:from rest_framework.response import Response
+backend/billing/views.py:4:from rest_framework.permissions import IsAuthenticated
+backend/billing/views.py:309:                from rest_framework.exceptions import ValidationError
+backend/billing/views.py:315:                from rest_framework.exceptions import ValidationError
+backend/billing/views.py:320:            from rest_framework.exceptions import ValidationError
+backend/billing/views.py:437:                from rest_framework.exceptions import ValidationError
+backend/billing/views.py:443:                from rest_framework.exceptions import ValidationError
+backend/billing/views.py:448:            from rest_framework.exceptions import ValidationError
+backend/billing/views.py:657:                from rest_framework.exceptions import ValidationError
+backend/billing/views.py:663:                from rest_framework.exceptions import ValidationError
+backend/billing/views.py:669:        from rest_framework.exceptions import ValidationError
+backend/billing/tests.py:14:from rest_framework.test import APIClient
+backend/billing/serializers.py:1:from rest_framework import serializers
+backend/departments/views.py:1:from rest_framework import viewsets, filters
+backend/departments/views.py:2:from rest_framework.response import Response
+backend/departments/views.py:42:            from rest_framework.exceptions import ValidationError
+backend/departments/serializers.py:1:from rest_framework import serializers
+backend/config/plan_permissions.py:1:from rest_framework.permissions import BasePermission
+backend/config/settings.py:77:    'rest_framework',
+backend/config/settings.py:193:REST_FRAMEWORK = {
+backend/config/settings.py:194:    'DEFAULT_AUTHENTICATION_CLASSES': [
+backend/config/settings.py:195:        'rest_framework_simplejwt.authentication.JWTAuthentication',
+backend/config/settings.py:197:    'DEFAULT_PERMISSION_CLASSES': [
+backend/config/settings.py:198:        'rest_framework.permissions.IsAuthenticated',
+backend/config/settings.py:200:    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+backend/config/superadmin_views.py:1:from rest_framework.decorators import api_view, permission_classes
+backend/config/superadmin_views.py:2:from rest_framework.permissions import IsAdminUser
+backend/config/superadmin_views.py:3:from rest_framework.response import Response
+backend/config/superadmin_views.py:16:from rest_framework_simplejwt.tokens import RefreshToken
+backend/config/urls.py:6:from rest_framework.routers import DefaultRouter
+backend/config/urls.py:7:from rest_framework.decorators import api_view, permission_classes
+backend/config/urls.py:8:from rest_framework.permissions import AllowAny, IsAuthenticated
+backend/config/urls.py:9:from rest_framework.response import Response
+backend/config/urls.py:22:from rest_framework_simplejwt.tokens import RefreshToken
+backend/config/urls.py:23:from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+18. HR ENDPOINT RESOLUTION
+--------------------------------------------------
+/tmp/audit_hr_backend.sh: line 139: python: command not found
+
+19. DJANGO SYSTEM CHECK
+--------------------------------------------------
+/tmp/audit_hr_backend.sh: line 162: python: command not found

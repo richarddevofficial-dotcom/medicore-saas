@@ -1,9 +1,7 @@
-from decimal import Decimal
 from datetime import timedelta
-from django.db import transaction
-from django.db.models import Count, F, Q
+from django.db.models import Count, Q
 from django.utils import timezone
-from rest_framework import filters, serializers, status, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -14,7 +12,6 @@ from .models import (
     EmployeeDocument,
     EmploymentContract,
     JobPosition,
-    LeaveBalance,
     LeaveRequest,
     LeaveType,
     Shift,
@@ -27,7 +24,6 @@ from .serializers import (
     EmployeeSerializer,
     EmploymentContractSerializer,
     JobPositionSerializer,
-    LeaveBalanceSerializer,
     LeaveRequestSerializer,
     LeaveTypeSerializer,
     ShiftAssignmentSerializer,
@@ -371,178 +367,6 @@ class LeaveTypeViewSet(HospitalScopedViewSet):
     ordering_fields = ["name", "days_allowed"]
 
 
-
-
-class LeaveBalanceViewSet(HospitalScopedViewSet):
-    queryset = LeaveBalance.objects.select_related(
-        "employee",
-        "employee__hospital",
-        "employee__department",
-        "leave_type",
-    )
-    serializer_class = LeaveBalanceSerializer
-    hospital_lookup = "employee__hospital_id"
-
-    filter_backends = [
-        filters.SearchFilter,
-        filters.OrderingFilter,
-    ]
-    search_fields = [
-        "employee__employee_number",
-        "employee__first_name",
-        "employee__middle_name",
-        "employee__last_name",
-        "leave_type__name",
-        "leave_type__code",
-    ]
-    ordering_fields = [
-        "year",
-        "allocated_days",
-        "used_days",
-        "pending_days",
-        "created_at",
-    ]
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-
-        employee = self.request.query_params.get("employee")
-        leave_type = self.request.query_params.get("leave_type")
-        year = self.request.query_params.get("year")
-        active = self.request.query_params.get("is_active")
-
-        if employee:
-            queryset = queryset.filter(employee_id=employee)
-
-        if leave_type:
-            queryset = queryset.filter(
-                leave_type_id=leave_type,
-            )
-
-        if year:
-            queryset = queryset.filter(year=year)
-
-        if active in {"true", "false"}:
-            queryset = queryset.filter(
-                is_active=active == "true",
-            )
-
-        return queryset
-
-    def get_permissions(self):
-        if self.action in {
-            "create",
-            "update",
-            "partial_update",
-            "destroy",
-            "allocate",
-        }:
-            return [
-                IsAuthenticated(),
-                IsHRManager(),
-            ]
-
-        return super().get_permissions()
-
-    def perform_create(self, serializer):
-        serializer.save()
-
-    @action(
-        detail=False,
-        methods=["post"],
-        permission_classes=[
-            IsAuthenticated,
-            IsHRManager,
-        ],
-    )
-    def allocate(self, request):
-        employee_id = request.data.get("employee")
-        year = request.data.get(
-            "year",
-            timezone.localdate().year,
-        )
-
-        if not employee_id:
-            return Response(
-                {"employee": "Employee is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        employee = Employee.objects.filter(
-            id=employee_id,
-            is_active=True,
-        ).first()
-
-        if not employee:
-            return Response(
-                {"employee": "Active employee not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        if not request.user.is_superuser:
-            hospital_id = get_user_hospital_id(
-                request.user,
-            )
-
-            if employee.hospital_id != hospital_id:
-                return Response(
-                    {
-                        "error": (
-                            "Employee belongs to another "
-                            "hospital."
-                        )
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-
-        leave_types = LeaveType.objects.filter(
-            hospital_id=employee.hospital_id,
-            is_active=True,
-        )
-
-        created = 0
-        updated = 0
-
-        with transaction.atomic():
-            for leave_type in leave_types:
-                balance, was_created = (
-                    LeaveBalance.objects.get_or_create(
-                        employee=employee,
-                        leave_type=leave_type,
-                        year=year,
-                        defaults={
-                            "allocated_days":
-                                leave_type.days_allowed,
-                        },
-                    )
-                )
-
-                if was_created:
-                    created += 1
-                else:
-                    balance.allocated_days = (
-                        leave_type.days_allowed
-                    )
-                    balance.is_active = True
-                    balance.save(
-                        update_fields=[
-                            "allocated_days",
-                            "is_active",
-                            "updated_at",
-                        ]
-                    )
-                    updated += 1
-
-        return Response(
-            {
-                "success": True,
-                "created": created,
-                "updated": updated,
-                "message": (
-                    "Leave balances allocated successfully."
-                ),
-            }
-        )
 class LeaveRequestViewSet(HospitalScopedViewSet):
     queryset = LeaveRequest.objects.select_related(
         "employee",

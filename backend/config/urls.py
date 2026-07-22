@@ -17,6 +17,7 @@ from django.core.mail import send_mail
 from django.core.cache import cache
 from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
 from django.conf import settings
+from config.services.brevo_email import BrevoEmailError, send_brevo_email
 from django.contrib.auth.hashers import make_password, check_password
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -530,44 +531,119 @@ def login_initiate(request):
     )
 
     subject = 'Your MediCore Login OTP'
+
     message = (
         f"Hello {user.get_full_name() or user.username},\n\n"
         f"Your one-time login code is: {otp_code}\n"
         "This code will expire in 5 minutes.\n\n"
         "If you did not request this, please ignore this email."
     )
-    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@medicore.local')
-    max_attempts = 3
-    attempts = 0
-    otp_send_error = ''
-    for _idx in range(max_attempts):
-        attempts += 1
-        try:
-            send_mail(subject, message, from_email, [user.email], fail_silently=False)
-            _record_notification_event(
-                notification_type='otp',
-                recipient=user.email,
-                subject=subject,
-                status='sent',
-                attempts=attempts,
-                reference=f'otp_session:{otp.session_id}',
-            )
-            otp_send_error = ''
-            break
-        except Exception as exc:
-            otp_send_error = str(exc)
 
-    if otp_send_error:
+    html_message = f"""
+    <html>
+      <body style="font-family:Arial,sans-serif;color:#1e293b;">
+        <div style="max-width:560px;margin:0 auto;padding:24px;">
+          <h2 style="color:#0f172a;">MediCore Login Verification</h2>
+
+          <p>
+            Hello {user.get_full_name() or user.username},
+          </p>
+
+          <p>
+            Use the following one-time code to complete your login:
+          </p>
+
+          <div style="
+            margin:24px 0;
+            padding:18px;
+            text-align:center;
+            background:#fff7ed;
+            border:1px solid #fed7aa;
+            border-radius:12px;
+            font-size:32px;
+            font-weight:700;
+            letter-spacing:8px;
+            color:#ea580c;
+          ">
+            {otp_code}
+          </div>
+
+          <p>
+            This code expires in 5 minutes.
+          </p>
+
+          <p style="font-size:13px;color:#64748b;">
+            If you did not request this login, you can ignore this email.
+          </p>
+        </div>
+      </body>
+    </html>
+    """
+
+    attempts = 1
+
+    try:
+        brevo_response = send_brevo_email(
+            subject=subject,
+            text_content=message,
+            html_content=html_message,
+            recipients=[
+                {
+                    'email': user.email,
+                    'name': (
+                        user.get_full_name()
+                        or user.username
+                    ),
+                }
+            ],
+            tags=[
+                'medicore',
+                'login-otp',
+            ],
+        )
+
+        _record_notification_event(
+            notification_type='otp',
+            recipient=user.email,
+            subject=subject,
+            status='sent',
+            attempts=attempts,
+            reference=(
+                f"otp_session:{otp.session_id};"
+                f"message_id:{brevo_response.get('messageId', '')}"
+            ),
+        )
+
+    except BrevoEmailError as exc:
+        error_message = str(exc)
+
         _record_notification_event(
             notification_type='otp',
             recipient=user.email,
             subject=subject,
             status='failed',
             attempts=attempts,
-            error_message=otp_send_error,
+            error_message=error_message,
             reference=f'otp_session:{otp.session_id}',
         )
-        return Response({'error': f'Failed to send OTP: {otp_send_error}'}, status=500)
+
+        otp.is_used = True
+        otp.save(
+            update_fields=[
+                'is_used',
+            ]
+        )
+
+        return Response(
+            {
+                'error': (
+                    'Unable to send the login code. '
+                    'Please try again shortly.'
+                ),
+                'email_error': error_message,
+            },
+            status=502,
+        )
 
     response_data = {
         'mfa_required': True,
@@ -833,6 +909,11 @@ router.register(r'imaging-tests', ImagingTestViewSet, basename='imaging-test')
 router.register(r'subscription-payments', SubscriptionPaymentViewSet, basename='subscription-payment')
 
 urlpatterns = [
+    path('api/v1/hr/', include('human_resources.urls')),
+    path(
+        "api/v1/ipd/",
+        include("ipd.urls"),
+    ),
     path('admin/', admin.site.urls),
     
     # JWT Token Endpoints (Add these for proper JWT support)

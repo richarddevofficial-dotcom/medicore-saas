@@ -348,7 +348,48 @@ export default function Sidebar({
     setExpandedSections(sections);
   }, [pathname]);
 
-  const navigation = navigationByRole[role] || navigationByRole.admin;
+  const baseNavigation =
+    navigationByRole[role] || navigationByRole.admin;
+
+  const hrAllowedRoles = [
+    "admin",
+    "super_admin",
+    "superadmin",
+    "hr",
+    "hr_manager",
+    "human_resources",
+  ];
+
+  const hasHRMenu = baseNavigation.some((section) =>
+    section.items.some((item) => item.href === "/hr")
+  );
+
+  const navigation =
+    hrAllowedRoles.includes(role) && !hasHRMenu
+      ? [
+          ...baseNavigation,
+          {
+            section: "HUMAN RESOURCES",
+            items: [
+              {
+                name: "HR Dashboard",
+                href: "/hr",
+                icon: Users,
+              },
+              {
+                name: "Employees",
+                href: "/hr/employees",
+                icon: Users,
+              },
+              {
+                name: "Add Employee",
+                href: "/hr/employees/new",
+                icon: UserCog,
+              },
+            ],
+          },
+        ]
+      : baseNavigation;
 
   return (
     <aside
@@ -410,7 +451,12 @@ export default function Sidebar({
             {(collapsed || expandedSections[section.section]) && (
               <ul className="space-y-1">
                 {section.items.map((item) => {
-                  const isActive = pathname === item.href;
+                  const itemPath = item.href.split("?")[0];
+
+                  const isActive =
+                    pathname === itemPath ||
+                    (itemPath !== "/dashboard" &&
+                      pathname.startsWith(`${itemPath}/`));
                   const Icon = item.icon;
                   return (
                     <li key={item.name}>

@@ -67,6 +67,7 @@ DEBUG = _env_bool('DEBUG', True)
 ALLOWED_HOSTS = _env_list('ALLOWED_HOSTS', '127.0.0.1,localhost')
 
 INSTALLED_APPS = [
+    'human_resources',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -89,6 +90,7 @@ INSTALLED_APPS = [
     'reports',
     'auditlog',
     'imaging',
+    'ipd',
     'import_export',
  ]
 
@@ -225,13 +227,17 @@ if 'publicapi' not in INSTALLED_APPS:
     INSTALLED_APPS.append('publicapi')
 
 # Allow secure MediCore tenant subdomains.
+CORS_ALLOW_CREDENTIALS = True
+
 CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://([a-z0-9-]+\.)?medicorecloud\.com$",
+    r"^https://([a-zA-Z0-9-]+\.)?medicorecloud\.com$",
 ]
 
-# Allow secure MediCore tenant subdomains.
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https://([a-z0-9-]+\.)?medicorecloud\.com$",
+CSRF_TRUSTED_ORIGINS = [
+    "https://medicorecloud.com",
+    "https://www.medicorecloud.com",
+    "https://api.medicorecloud.com",
+    "https://*.medicorecloud.com",
 ]
 
 # MediCore SaaS subscription and commercial billing
@@ -252,3 +258,6 @@ if _subscription_middleware not in MIDDLEWARE:
         auth_index + 1,
         _subscription_middleware,
     )
+
+
+CORS_ALLOW_CREDENTIALS = True
