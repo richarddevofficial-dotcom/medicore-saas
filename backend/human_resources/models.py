@@ -409,6 +409,10 @@ class LeaveType(TimestampedModel):
 
 
 
+def _default_leave_year():
+    return timezone.localdate().year
+
+
 class LeaveBalance(TimestampedModel):
     employee = models.ForeignKey(
         Employee,
@@ -421,7 +425,7 @@ class LeaveBalance(TimestampedModel):
         related_name="employee_balances",
     )
     year = models.PositiveIntegerField(
-        default=timezone.localdate().year,
+        default=_default_leave_year,
     )
 
     allocated_days = models.DecimalField(

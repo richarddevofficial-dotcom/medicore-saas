@@ -251,6 +251,21 @@ class AttendanceSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["created_at", "updated_at"]
 
+    def validate(self, attrs):
+        clock_in = attrs.get(
+            "clock_in",
+            getattr(self.instance, "clock_in", None),
+        )
+        clock_out = attrs.get(
+            "clock_out",
+            getattr(self.instance, "clock_out", None),
+        )
+        if clock_in and clock_out and clock_out <= clock_in:
+            raise serializers.ValidationError(
+                {"clock_out": "Clock-out time must be after clock-in time."}
+            )
+        return attrs
+
 
 class LeaveTypeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -389,5 +404,32 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
                         "A supporting document is required for this leave type."
                 }
             )
+
+        # Check available balance on new requests only
+        employee = attrs.get(
+            "employee",
+            getattr(self.instance, "employee", None),
+        )
+        total_days = attrs.get(
+            "total_days",
+            getattr(self.instance, "total_days", None),
+        )
+        if employee and leave_type and total_days and not self.instance:
+            year = start_date.year if start_date else timezone.localdate().year
+            balance = LeaveBalance.objects.filter(
+                employee=employee,
+                leave_type=leave_type,
+                year=year,
+                is_active=True,
+            ).first()
+            if balance is not None and balance.available_days < total_days:
+                raise serializers.ValidationError(
+                    {
+                        "total_days": (
+                            f"Insufficient leave balance. "
+                            f"Available: {balance.available_days} day(s)."
+                        )
+                    }
+                )
 
         return attrs

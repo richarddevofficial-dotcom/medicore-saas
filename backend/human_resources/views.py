@@ -580,7 +580,17 @@ class LeaveRequestViewSet(HospitalScopedViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        serializer.save()
+        with transaction.atomic():
+            leave_request = serializer.save()
+            year = leave_request.start_date.year
+            LeaveBalance.objects.filter(
+                employee=leave_request.employee,
+                leave_type=leave_request.leave_type,
+                year=year,
+                is_active=True,
+            ).update(
+                pending_days=F("pending_days") + leave_request.total_days
+            )
 
     @action(
         detail=True,
@@ -596,19 +606,30 @@ class LeaveRequestViewSet(HospitalScopedViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        leave_request.status = "APPROVED"
-        leave_request.reviewed_by = request.user
-        leave_request.reviewed_at = timezone.now()
-        leave_request.review_notes = request.data.get("review_notes", "")
-        leave_request.save(
-            update_fields=[
-                "status",
-                "reviewed_by",
-                "reviewed_at",
-                "review_notes",
-                "updated_at",
-            ]
-        )
+        with transaction.atomic():
+            leave_request.status = "APPROVED"
+            leave_request.reviewed_by = request.user
+            leave_request.reviewed_at = timezone.now()
+            leave_request.review_notes = request.data.get("review_notes", "")
+            leave_request.save(
+                update_fields=[
+                    "status",
+                    "reviewed_by",
+                    "reviewed_at",
+                    "review_notes",
+                    "updated_at",
+                ]
+            )
+            year = leave_request.start_date.year
+            LeaveBalance.objects.filter(
+                employee=leave_request.employee,
+                leave_type=leave_request.leave_type,
+                year=year,
+                is_active=True,
+            ).update(
+                pending_days=F("pending_days") - leave_request.total_days,
+                used_days=F("used_days") + leave_request.total_days,
+            )
 
         return Response(
             {
@@ -631,24 +652,67 @@ class LeaveRequestViewSet(HospitalScopedViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        leave_request.status = "REJECTED"
-        leave_request.reviewed_by = request.user
-        leave_request.reviewed_at = timezone.now()
-        leave_request.review_notes = request.data.get("review_notes", "")
-        leave_request.save(
-            update_fields=[
-                "status",
-                "reviewed_by",
-                "reviewed_at",
-                "review_notes",
-                "updated_at",
-            ]
-        )
+        with transaction.atomic():
+            leave_request.status = "REJECTED"
+            leave_request.reviewed_by = request.user
+            leave_request.reviewed_at = timezone.now()
+            leave_request.review_notes = request.data.get("review_notes", "")
+            leave_request.save(
+                update_fields=[
+                    "status",
+                    "reviewed_by",
+                    "reviewed_at",
+                    "review_notes",
+                    "updated_at",
+                ]
+            )
+            year = leave_request.start_date.year
+            LeaveBalance.objects.filter(
+                employee=leave_request.employee,
+                leave_type=leave_request.leave_type,
+                year=year,
+                is_active=True,
+            ).update(
+                pending_days=F("pending_days") - leave_request.total_days,
+            )
 
         return Response(
             {
                 "success": True,
                 "message": "Leave request rejected.",
+            }
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+    )
+    def cancel(self, request, pk=None):
+        leave_request = self.get_object()
+
+        if leave_request.status != "PENDING":
+            return Response(
+                {"error": "Only pending leave requests can be cancelled."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            leave_request.status = "CANCELLED"
+            leave_request.save(update_fields=["status", "updated_at"])
+            year = leave_request.start_date.year
+            LeaveBalance.objects.filter(
+                employee=leave_request.employee,
+                leave_type=leave_request.leave_type,
+                year=year,
+                is_active=True,
+            ).update(
+                pending_days=F("pending_days") - leave_request.total_days,
+            )
+
+        return Response(
+            {
+                "success": True,
+                "message": "Leave request cancelled.",
             }
         )
 
