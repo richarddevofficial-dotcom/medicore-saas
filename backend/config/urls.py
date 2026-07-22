@@ -910,6 +910,7 @@ router.register(r'subscription-payments', SubscriptionPaymentViewSet, basename='
 
 urlpatterns = [
     path('api/v1/hr/', include('human_resources.urls')),
+    path('api/v1/finance/', include('finance.urls')),
     path(
         "api/v1/ipd/",
         include("ipd.urls"),

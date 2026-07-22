@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     'staff',
     'appointments',
     'departments',
+    'finance',
     'rooms',
     'pharmacy',
     'laboratory',
