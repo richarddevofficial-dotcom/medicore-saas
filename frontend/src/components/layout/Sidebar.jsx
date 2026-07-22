@@ -304,6 +304,45 @@ const navigationByRole = {
       ],
     },
   ],
+  hr_manager: [
+    {
+      section: "HUMAN RESOURCES",
+      items: [
+        { name: "HR Dashboard", href: "/hr", icon: LayoutDashboard },
+        { name: "Employees", href: "/hr/employees", icon: Users },
+        { name: "Add Employee", href: "/hr/employees/new", icon: UserCog },
+        { name: "Positions", href: "/hr/positions", icon: FileText },
+        { name: "Contracts", href: "/hr/contracts", icon: FileText },
+        { name: "Attendance", href: "/hr/attendance", icon: Activity },
+        { name: "Leave Requests", href: "/hr/leave-requests", icon: Calendar },
+        { name: "Shifts", href: "/hr/shifts", icon: Activity },
+        { name: "Departments", href: "/admin/departments", icon: Building2 },
+      ],
+    },
+  ],
+  hr_officer: [
+    {
+      section: "HUMAN RESOURCES",
+      items: [
+        { name: "HR Dashboard", href: "/hr", icon: LayoutDashboard },
+        { name: "Employees", href: "/hr/employees", icon: Users },
+        { name: "Attendance", href: "/hr/attendance", icon: Activity },
+        { name: "Leave Requests", href: "/hr/leave-requests", icon: Calendar },
+        { name: "Shifts", href: "/hr/shifts", icon: Activity },
+      ],
+    },
+  ],
+  hr: [
+    {
+      section: "HUMAN RESOURCES",
+      items: [
+        { name: "HR Dashboard", href: "/hr", icon: LayoutDashboard },
+        { name: "Employees", href: "/hr/employees", icon: Users },
+        { name: "Attendance", href: "/hr/attendance", icon: Activity },
+        { name: "Leave Requests", href: "/hr/leave-requests", icon: Calendar },
+      ],
+    },
+  ],
 };
 
 export default function Sidebar({
@@ -348,44 +387,37 @@ export default function Sidebar({
     setExpandedSections(sections);
   }, [pathname]);
 
-  const baseNavigation =
-    navigationByRole[role] || navigationByRole.admin;
+  const baseNavigation = navigationByRole[role] || navigationByRole.admin;
 
-  const hrAllowedRoles = [
-    "admin",
-    "super_admin",
-    "superadmin",
-    "hr",
-    "hr_manager",
-    "human_resources",
-  ];
+  const adminHRAllowedRoles = ["admin", "super_admin", "superadmin"];
 
   const hasHRMenu = baseNavigation.some((section) =>
-    section.items.some((item) => item.href === "/hr")
+    section.items.some((item) => item.href === "/hr"),
   );
 
   const navigation =
-    hrAllowedRoles.includes(role) && !hasHRMenu
+    adminHRAllowedRoles.includes(role) && !hasHRMenu
       ? [
           ...baseNavigation,
           {
             section: "HUMAN RESOURCES",
             items: [
-              {
-                name: "HR Dashboard",
-                href: "/hr",
-                icon: Users,
-              },
-              {
-                name: "Employees",
-                href: "/hr/employees",
-                icon: Users,
-              },
+              { name: "HR Dashboard", href: "/hr", icon: LayoutDashboard },
+              { name: "Employees", href: "/hr/employees", icon: Users },
               {
                 name: "Add Employee",
                 href: "/hr/employees/new",
                 icon: UserCog,
               },
+              { name: "Positions", href: "/hr/positions", icon: FileText },
+              { name: "Contracts", href: "/hr/contracts", icon: FileText },
+              { name: "Attendance", href: "/hr/attendance", icon: Activity },
+              {
+                name: "Leave Requests",
+                href: "/hr/leave-requests",
+                icon: Calendar,
+              },
+              { name: "Shifts", href: "/hr/shifts", icon: Activity },
             ],
           },
         ]

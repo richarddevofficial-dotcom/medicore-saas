@@ -38,6 +38,10 @@ const roleAccess = {
   lab_technician: ["/dashboard", "/admin/lab", "/patients"],
   accountant: ["/dashboard", "/billing", "/admin/insurance", "/admin/reports"],
   radiographer: ["/dashboard", "/admin/imaging", "/patients"],
+  // HR roles
+  hr_manager: ["/dashboard", "/hr", "/admin/departments"],
+  hr_officer: ["/dashboard", "/hr"],
+  hr: ["/dashboard", "/hr"],
 };
 
 export default function RoleGuard({ children }) {
