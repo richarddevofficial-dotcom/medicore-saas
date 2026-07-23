@@ -67,7 +67,6 @@ DEBUG = _env_bool('DEBUG', True)
 ALLOWED_HOSTS = _env_list('ALLOWED_HOSTS', '127.0.0.1,localhost')
 
 INSTALLED_APPS = [
-    'human_resources',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -77,6 +76,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'django_filters',
+    'import_export',
+    'human_resources',
     'hospitals',
     'patients',
     'staff',
@@ -94,7 +95,6 @@ INSTALLED_APPS = [
     'auditlog',
     'imaging',
     'ipd',
-    'import_export',
  ]
 
 MIDDLEWARE = [
