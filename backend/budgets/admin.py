@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from decimal import Decimal
 from budgets.models import (
     BudgetYear, BudgetTemplate, BudgetAllocation,
     BudgetVariance, BudgetRevision, BudgetForecast,
@@ -7,9 +8,16 @@ from budgets.models import (
 )
 
 
+def format_currency(amount):
+    """Format amount as SSP currency"""
+    if amount is None or amount == 0:
+        return 'SSP 0.00'
+    return f"SSP {amount:,.2f}"
+
+
 @admin.register(BudgetYear)
 class BudgetYearAdmin(admin.ModelAdmin):
-    list_display = ('year', 'hospital', 'start_date', 'end_date', 'total_budget', 'is_active', 'is_locked')
+    list_display = ('year', 'hospital', 'start_date', 'end_date', 'formatted_total_budget', 'is_active', 'is_locked')
     list_filter = ('is_active', 'is_locked', 'year')
     search_fields = ('hospital__name', 'year')
     date_hierarchy = 'start_date'
@@ -24,6 +32,10 @@ class BudgetYearAdmin(admin.ModelAdmin):
             'fields': ('is_active', 'is_locked')
         }),
     )
+    
+    def formatted_total_budget(self, obj):
+        return format_currency(obj.total_budget)
+    formatted_total_budget.short_description = 'Total Budget'
 
 
 @admin.register(BudgetTemplate)
@@ -40,7 +52,7 @@ class BudgetTemplateAdmin(admin.ModelAdmin):
 
 @admin.register(BudgetAllocation)
 class BudgetAllocationAdmin(admin.ModelAdmin):
-    list_display = ('budget_year', 'department', 'allocated_amount', 'status', 'status_badge', 'period_start')
+    list_display = ('budget_year', 'department', 'formatted_allocated_amount', 'status', 'status_badge', 'period_start')
     list_filter = ('status', 'period_type', 'budget_year')
     search_fields = ('department__name', 'budget_year__year')
     date_hierarchy = 'period_start'
@@ -61,6 +73,10 @@ class BudgetAllocationAdmin(admin.ModelAdmin):
         }),
     )
     
+    def formatted_allocated_amount(self, obj):
+        return format_currency(obj.allocated_amount)
+    formatted_allocated_amount.short_description = 'Allocated Amount'
+    
     def status_badge(self, obj):
         colors = {
             'draft': '#808080',
@@ -79,7 +95,7 @@ class BudgetAllocationAdmin(admin.ModelAdmin):
 
 @admin.register(BudgetVariance)
 class BudgetVarianceAdmin(admin.ModelAdmin):
-    list_display = ('allocation', 'actual_amount', 'variance_amount', 'variance_percentage')
+    list_display = ('allocation', 'formatted_actual_amount', 'formatted_variance_amount', 'variance_percentage')
     list_filter = ('created_at', 'allocation__budget_year')
     search_fields = ('allocation__department__name', 'analysis')
     date_hierarchy = 'created_at'
@@ -96,11 +112,19 @@ class BudgetVarianceAdmin(admin.ModelAdmin):
             'fields': ('created_at',)
         }),
     )
+    
+    def formatted_actual_amount(self, obj):
+        return format_currency(obj.actual_amount)
+    formatted_actual_amount.short_description = 'Actual Amount'
+    
+    def formatted_variance_amount(self, obj):
+        return format_currency(obj.variance_amount)
+    formatted_variance_amount.short_description = 'Variance Amount'
 
 
 @admin.register(BudgetRevision)
 class BudgetRevisionAdmin(admin.ModelAdmin):
-    list_display = ('allocation', 'original_amount', 'revised_amount', 'status', 'requested_date')
+    list_display = ('allocation', 'formatted_original_amount', 'formatted_revised_amount', 'status', 'requested_date')
     list_filter = ('status', 'requested_date')
     search_fields = ('allocation__department__name', 'reason')
     date_hierarchy = 'requested_date'
@@ -117,11 +141,19 @@ class BudgetRevisionAdmin(admin.ModelAdmin):
             'fields': ('status', 'approved_by', 'approved_date', 'approval_notes')
         }),
     )
+    
+    def formatted_original_amount(self, obj):
+        return format_currency(obj.original_amount)
+    formatted_original_amount.short_description = 'Original Amount'
+    
+    def formatted_revised_amount(self, obj):
+        return format_currency(obj.revised_amount)
+    formatted_revised_amount.short_description = 'Revised Amount'
 
 
 @admin.register(BudgetForecast)
 class BudgetForecastAdmin(admin.ModelAdmin):
-    list_display = ('budget_year', 'department', 'month', 'forecasted_amount', 'confidence_level')
+    list_display = ('budget_year', 'department', 'month', 'formatted_forecasted_amount', 'confidence_level')
     list_filter = ('confidence_level', 'budget_year', 'month')
     search_fields = ('department__name', 'basis')
     date_hierarchy = 'month'
@@ -138,6 +170,10 @@ class BudgetForecastAdmin(admin.ModelAdmin):
             'fields': ('created_by',)
         }),
     )
+    
+    def formatted_forecasted_amount(self, obj):
+        return format_currency(obj.forecasted_amount)
+    formatted_forecasted_amount.short_description = 'Forecasted Amount'
 
 
 @admin.register(BudgetAlert)

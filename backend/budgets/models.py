@@ -136,7 +136,7 @@ class BudgetAllocation(TimestampedModel):
     
     def __str__(self):
         period = f"{self.period_start} to {self.period_end}"
-        return f"{self.department.name} - ₹{self.allocated_amount} ({period})"
+        return f"{self.department.name} - SSP {self.allocated_amount:,.2f} ({period})"
 
 
 class BudgetVariance(TimestampedModel):
