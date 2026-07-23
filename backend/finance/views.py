@@ -8,14 +8,30 @@ from django.utils import timezone
 
 from human_resources.permissions import IsHRUser, IsHRManager
 from human_resources.views import HospitalScopedViewSet
+from django.db.models import Count, Sum
 from finance.models import (
-    PayrollYear, AllowanceType, DeductionType,
-    SalaryStructure, EmployeeSalary, SalarySlip, SalaryPayment
+    PayrollYear,
+    AllowanceType,
+    DeductionType,
+    SalaryStructure,
+    EmployeeSalary,
+    SalarySlip,
+    SalaryPayment,
+    AccountCategory,
+    ChartOfAccount,
 )
 from finance.serializers import (
-    PayrollYearSerializer, AllowanceTypeSerializer, DeductionTypeSerializer,
-    SalaryStructureSerializer, EmployeeSalarySerializer,
-    SalarySlipSerializer, SalarySlipDetailSerializer, SalaryPaymentSerializer
+    PayrollYearSerializer,
+    AllowanceTypeSerializer,
+    DeductionTypeSerializer,
+    SalaryStructureSerializer,
+    EmployeeSalarySerializer,
+    SalarySlipSerializer,
+    SalarySlipDetailSerializer,
+    SalaryPaymentSerializer,
+    AccountCategorySerializer,
+    ChartOfAccountSerializer,
+    ChartOfAccountListSerializer,
 )
 
 
@@ -290,3 +306,592 @@ class SalaryPaymentViewSet(HospitalScopedViewSet):
         payment.salary_slip.save()
         
         return Response(SalaryPaymentSerializer(payment).data)
+
+# ============================================================
+# ACCOUNTING VIEWSETS
+# ============================================================
+
+
+class AccountCategoryViewSet(HospitalScopedViewSet):
+    """
+    Manage hospital-specific account categories.
+    """
+
+    queryset = AccountCategory.objects.all()
+    serializer_class = AccountCategorySerializer
+    permission_classes = [IsAuthenticated]
+
+    filterset_fields = [
+        "account_type",
+        "normal_balance",
+        "is_active",
+    ]
+
+    search_fields = [
+        "code",
+        "name",
+        "description",
+    ]
+
+    ordering_fields = [
+        "code",
+        "name",
+        "account_type",
+        "created_at",
+    ]
+
+    ordering = ["account_type", "code"]
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .annotate(account_count=Count("accounts"))
+        )
+
+    @action(detail=True, methods=["post"])
+    def activate(self, request, pk=None):
+        category = self.get_object()
+        category.is_active = True
+        category.save(update_fields=["is_active", "updated_at"])
+
+        return Response(
+            self.get_serializer(category).data,
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"])
+    def deactivate(self, request, pk=None):
+        category = self.get_object()
+
+        if category.accounts.filter(is_active=True).exists():
+            return Response(
+                {
+                    "error": (
+                        "This category contains active accounts. "
+                        "Deactivate those accounts first."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        category.is_active = False
+        category.save(update_fields=["is_active", "updated_at"])
+
+        return Response(
+            self.get_serializer(category).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class ChartOfAccountViewSet(HospitalScopedViewSet):
+    """
+    Manage the hospital Chart of Accounts.
+    """
+
+    queryset = ChartOfAccount.objects.select_related(
+        "hospital",
+        "category",
+        "parent",
+        "parent__category",
+    )
+
+    permission_classes = [IsAuthenticated]
+
+    filterset_fields = [
+        "category",
+        "category__account_type",
+        "parent",
+        "is_active",
+        "is_control_account",
+        "allow_manual_posting",
+    ]
+
+    search_fields = [
+        "code",
+        "name",
+        "description",
+        "category__name",
+    ]
+
+    ordering_fields = [
+        "code",
+        "name",
+        "opening_balance",
+        "current_balance",
+        "created_at",
+    ]
+
+    ordering = ["code"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return ChartOfAccountListSerializer
+
+        return ChartOfAccountSerializer
+
+    @action(detail=True, methods=["post"])
+    def activate(self, request, pk=None):
+        account = self.get_object()
+
+        if not account.category.is_active:
+            return Response(
+                {
+                    "error": (
+                        "The account category is inactive. "
+                        "Activate the category first."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        account.is_active = True
+        account.save(update_fields=["is_active", "updated_at"])
+
+        return Response(
+            ChartOfAccountSerializer(
+                account,
+                context={"request": request},
+            ).data
+        )
+
+    @action(detail=True, methods=["post"])
+    def deactivate(self, request, pk=None):
+        account = self.get_object()
+
+        if account.child_accounts.filter(is_active=True).exists():
+            return Response(
+                {
+                    "error": (
+                        "This account has active child accounts. "
+                        "Deactivate the child accounts first."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        account.is_active = False
+        account.save(update_fields=["is_active", "updated_at"])
+
+        return Response(
+            ChartOfAccountSerializer(
+                account,
+                context={"request": request},
+            ).data
+        )
+
+    @action(detail=False, methods=["get"])
+    def summary(self, request):
+        queryset = self.get_queryset()
+
+        account_type_summary = (
+            queryset.values(
+                "category__account_type"
+            )
+            .annotate(
+                account_count=Count("id"),
+                total_balance=Sum("current_balance"),
+            )
+            .order_by("category__account_type")
+        )
+
+        return Response(
+            {
+                "total_accounts": queryset.count(),
+                "active_accounts": queryset.filter(
+                    is_active=True
+                ).count(),
+                "inactive_accounts": queryset.filter(
+                    is_active=False
+                ).count(),
+                "control_accounts": queryset.filter(
+                    is_control_account=True
+                ).count(),
+                "account_types": list(account_type_summary),
+            }
+        )
+
+
+# ============================================================
+# JOURNAL ENTRY API
+# ============================================================
+
+from decimal import Decimal
+
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import DecimalField, Q, Sum, Value
+from django.db.models.functions import Coalesce
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
+from .models import (
+    ChartOfAccount,
+    JournalEntry,
+    JournalEntryLine,
+)
+from .serializers import (
+    JournalEntryListSerializer,
+    JournalEntrySerializer,
+    VoidJournalSerializer,
+)
+
+
+class JournalEntryViewSet(viewsets.ModelViewSet):
+    queryset = (
+        JournalEntry.objects
+        .select_related(
+            "hospital",
+            "created_by",
+            "posted_by",
+            "voided_by",
+        )
+        .prefetch_related("lines__account")
+        .all()
+    )
+
+    serializer_class = JournalEntrySerializer
+
+    filterset_fields = [
+        "hospital",
+        "status",
+        "entry_type",
+        "entry_date",
+        "source_module",
+    ]
+
+    search_fields = [
+        "journal_number",
+        "reference",
+        "description",
+        "source_id",
+    ]
+
+    ordering_fields = [
+        "entry_date",
+        "created_at",
+        "journal_number",
+    ]
+
+    ordering = ["-entry_date", "-created_at"]
+
+    def get_serializer_class(self):
+        if self.action == "list":
+            return JournalEntryListSerializer
+
+        if self.action == "void":
+            return VoidJournalSerializer
+
+        return JournalEntrySerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        hospital_id = self.request.query_params.get("hospital_id")
+        date_from = self.request.query_params.get("date_from")
+        date_to = self.request.query_params.get("date_to")
+
+        if hospital_id:
+            queryset = queryset.filter(
+                hospital_id=hospital_id
+            )
+
+        if date_from:
+            queryset = queryset.filter(
+                entry_date__gte=date_from
+            )
+
+        if date_to:
+            queryset = queryset.filter(
+                entry_date__lte=date_to
+            )
+
+        return queryset
+
+    def perform_destroy(self, instance):
+        if instance.status != JournalEntry.Status.DRAFT:
+            raise DjangoValidationError(
+                "Only draft journals can be deleted."
+            )
+
+        instance.delete()
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="post",
+    )
+    def post_journal(self, request, pk=None):
+        journal = self.get_object()
+
+        try:
+            journal.post(user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {
+                    "detail": (
+                        exc.messages
+                        if hasattr(exc, "messages")
+                        else str(exc)
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        output = JournalEntrySerializer(
+            journal,
+            context={"request": request},
+        )
+
+        return Response(output.data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="void",
+    )
+    def void(self, request, pk=None):
+        journal = self.get_object()
+
+        serializer = VoidJournalSerializer(
+            data=request.data
+        )
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            journal.void(
+                user=request.user,
+                reason=serializer.validated_data["reason"],
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {
+                    "detail": (
+                        exc.messages
+                        if hasattr(exc, "messages")
+                        else str(exc)
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        output = JournalEntrySerializer(
+            journal,
+            context={"request": request},
+        )
+
+        return Response(output.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="general-ledger",
+    )
+    def general_ledger(self, request):
+        hospital_id = request.query_params.get("hospital_id")
+        account_id = request.query_params.get("account_id")
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+
+        if not hospital_id:
+            return Response(
+                {"detail": "hospital_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        lines = (
+            JournalEntryLine.objects
+            .select_related(
+                "journal_entry",
+                "account",
+            )
+            .filter(
+                journal_entry__hospital_id=hospital_id,
+                journal_entry__status=JournalEntry.Status.POSTED,
+            )
+        )
+
+        if account_id:
+            lines = lines.filter(account_id=account_id)
+
+        if date_from:
+            lines = lines.filter(
+                journal_entry__entry_date__gte=date_from
+            )
+
+        if date_to:
+            lines = lines.filter(
+                journal_entry__entry_date__lte=date_to
+            )
+
+        lines = lines.order_by(
+            "account__code",
+            "journal_entry__entry_date",
+            "journal_entry__journal_number",
+            "id",
+        )
+
+        running_balances = {}
+        results = []
+
+        for line in lines:
+            account_key = str(line.account_id)
+
+            previous_balance = running_balances.get(
+                account_key,
+                Decimal("0.00"),
+            )
+
+            running_balance = (
+                previous_balance
+                + line.debit
+                - line.credit
+            )
+
+            running_balances[account_key] = running_balance
+
+            results.append(
+                {
+                    "line_id": line.id,
+                    "journal_id": line.journal_entry_id,
+                    "journal_number": (
+                        line.journal_entry.journal_number
+                    ),
+                    "entry_date": line.journal_entry.entry_date,
+                    "reference": line.journal_entry.reference,
+                    "description": (
+                        line.description
+                        or line.journal_entry.description
+                    ),
+                    "account_id": line.account_id,
+                    "account_code": line.account.code,
+                    "account_name": line.account.name,
+                    "debit": line.debit,
+                    "credit": line.credit,
+                    "running_balance": running_balance,
+                }
+            )
+
+        return Response(
+            {
+                "hospital_id": int(hospital_id),
+                "count": len(results),
+                "results": results,
+            }
+        )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="trial-balance",
+    )
+    def trial_balance(self, request):
+        hospital_id = request.query_params.get("hospital_id")
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+
+        if not hospital_id:
+            return Response(
+                {"detail": "hospital_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        line_filter = Q(
+            journal_lines__journal_entry__status=(
+                JournalEntry.Status.POSTED
+            )
+        )
+
+        if date_from:
+            line_filter &= Q(
+                journal_lines__journal_entry__entry_date__gte=(
+                    date_from
+                )
+            )
+
+        if date_to:
+            line_filter &= Q(
+                journal_lines__journal_entry__entry_date__lte=(
+                    date_to
+                )
+            )
+
+        decimal_output = DecimalField(
+            max_digits=18,
+            decimal_places=2,
+        )
+
+        accounts = (
+            ChartOfAccount.objects
+            .filter(hospital_id=hospital_id)
+            .select_related("category")
+            .annotate(
+                total_debit=Coalesce(
+                    Sum(
+                        "journal_lines__debit",
+                        filter=line_filter,
+                    ),
+                    Value(
+                        Decimal("0.00"),
+                        output_field=decimal_output,
+                    ),
+                ),
+                total_credit=Coalesce(
+                    Sum(
+                        "journal_lines__credit",
+                        filter=line_filter,
+                    ),
+                    Value(
+                        Decimal("0.00"),
+                        output_field=decimal_output,
+                    ),
+                ),
+            )
+            .order_by("code")
+        )
+
+        results = []
+        grand_debit = Decimal("0.00")
+        grand_credit = Decimal("0.00")
+
+        for account in accounts:
+            net_balance = (
+                account.total_debit
+                - account.total_credit
+            )
+
+            if net_balance >= Decimal("0.00"):
+                debit_balance = net_balance
+                credit_balance = Decimal("0.00")
+            else:
+                debit_balance = Decimal("0.00")
+                credit_balance = abs(net_balance)
+
+            grand_debit += debit_balance
+            grand_credit += credit_balance
+
+            results.append(
+                {
+                    "account_id": account.id,
+                    "account_code": account.code,
+                    "account_name": account.name,
+                    "category": account.category.name,
+                    "account_type": account.category.account_type,
+                    "total_debit": account.total_debit,
+                    "total_credit": account.total_credit,
+                    "debit_balance": debit_balance,
+                    "credit_balance": credit_balance,
+                }
+            )
+
+        return Response(
+            {
+                "hospital_id": int(hospital_id),
+                "date_from": date_from,
+                "date_to": date_to,
+                "total_debit": grand_debit,
+                "total_credit": grand_credit,
+                "is_balanced": grand_debit == grand_credit,
+                "accounts": results,
+            }
+        )

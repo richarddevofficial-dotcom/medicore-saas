@@ -24,6 +24,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from human_resources.views import HospitalScopedViewSet
+from human_resources.permissions import get_user_hospital_id
 from finance.accounting_permissions import (
     IsFinanceManager,
     IsFinanceUser,
@@ -53,65 +55,6 @@ MONEY_FIELD = DecimalField(
 )
 
 
-def get_request_hospital(request):
-    """
-    Resolve the active hospital from common MediCore request/user patterns.
-    """
-
-    request_hospital = getattr(request, "hospital", None)
-
-    if request_hospital is not None:
-        return request_hospital
-
-    user = request.user
-
-    user_hospital = getattr(user, "hospital", None)
-
-    if user_hospital is not None:
-        return user_hospital
-
-    profile = getattr(user, "profile", None)
-
-    if profile is not None:
-        profile_hospital = getattr(profile, "hospital", None)
-
-        if profile_hospital is not None:
-            return profile_hospital
-
-    employee = getattr(user, "employee", None)
-
-    if employee is not None:
-        employee_hospital = getattr(employee, "hospital", None)
-
-        if employee_hospital is not None:
-            return employee_hospital
-
-    return None
-
-
-def apply_hospital_scope(queryset, request):
-    """
-    Restrict ordinary users to their assigned hospital.
-    Superusers may optionally filter using ?hospital=<uuid-or-id>.
-    """
-
-    hospital_param = request.query_params.get("hospital")
-    user = request.user
-
-    if user.is_superuser:
-        if hospital_param:
-            return queryset.filter(hospital_id=hospital_param)
-
-        return queryset
-
-    hospital = get_request_hospital(request)
-
-    if hospital is None:
-        return queryset.none()
-
-    return queryset.filter(hospital=hospital)
-
-
 def validate_requested_hospital(request, hospital):
     """
     Prevent users from submitting records for another hospital.
@@ -120,14 +63,14 @@ def validate_requested_hospital(request, hospital):
     if request.user.is_superuser:
         return
 
-    active_hospital = get_request_hospital(request)
+    active_hospital_id = get_user_hospital_id(request.user)
 
-    if active_hospital is None:
+    if active_hospital_id is None:
         raise PermissionDenied(
             "Your account is not assigned to a hospital."
         )
 
-    if active_hospital.pk != hospital.pk:
+    if active_hospital_id != hospital.pk:
         raise PermissionDenied(
             "You cannot create finance records for another hospital."
         )
@@ -207,19 +150,16 @@ def save_with_optional_user(instance, user, action_name):
     return False
 
 
-class HospitalScopedAccountingViewSet(viewsets.ModelViewSet):
+class FinanceScopedViewSet(HospitalScopedViewSet):
     """
-    Base ViewSet for hospital-owned accounting records.
+    Finance-specific ViewSet with hospital scoping and finance permissions.
+    Extends HospitalScopedViewSet from HR module.
     """
 
     permission_classes = (
         IsAuthenticated,
         IsFinanceUser,
     )
-
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        return apply_hospital_scope(queryset, self.request)
 
     def perform_create(self, serializer):
         hospital = serializer.validated_data.get("hospital")
@@ -230,7 +170,7 @@ class HospitalScopedAccountingViewSet(viewsets.ModelViewSet):
                 hospital,
             )
 
-        serializer.save()
+        super().perform_create(serializer)
 
     def perform_update(self, serializer):
         hospital = serializer.validated_data.get(
@@ -248,7 +188,7 @@ class HospitalScopedAccountingViewSet(viewsets.ModelViewSet):
 
 
 class AccountCategoryViewSet(
-    HospitalScopedAccountingViewSet
+    FinanceScopedViewSet
 ):
     serializer_class = AccountCategorySerializer
     queryset = AccountCategory.objects.all().order_by(
@@ -275,7 +215,7 @@ class AccountCategoryViewSet(
 
 
 class ChartOfAccountViewSet(
-    HospitalScopedAccountingViewSet
+    FinanceScopedViewSet
 ):
     serializer_class = ChartOfAccountSerializer
     queryset = (
@@ -407,7 +347,7 @@ class ChartOfAccountViewSet(
 
 
 class JournalEntryViewSet(
-    HospitalScopedAccountingViewSet
+    FinanceScopedViewSet
 ):
     queryset = (
         JournalEntry.objects

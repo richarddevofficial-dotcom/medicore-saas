@@ -32,11 +32,6 @@ router.register(
     JournalEntryViewSet,
     basename="journal-entry",
 )
-path(
-    "accounting/",
-    include("finance.accounting_urls"),
-),
-
 
 urlpatterns = [
     path("", include(router.urls)),

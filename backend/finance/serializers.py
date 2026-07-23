@@ -1,10 +1,19 @@
 from rest_framework import serializers
 from django.db import transaction
 from finance.models import (
-    PayrollYear, AllowanceType, DeductionType,
-    SalaryStructure, SalaryStructureAllowance, SalaryStructureDeduction,
-    EmployeeSalary, SalarySlip, SalarySlipEarning, SalarySlipDeduction,
-    SalaryPayment
+    PayrollYear,
+    AllowanceType,
+    DeductionType,
+    SalaryStructure,
+    SalaryStructureAllowance,
+    SalaryStructureDeduction,
+    EmployeeSalary,
+    SalarySlip,
+    SalarySlipEarning,
+    SalarySlipDeduction,
+    SalaryPayment,
+    AccountCategory,
+    ChartOfAccount,
 )
 
 
@@ -236,3 +245,524 @@ class SalarySlipSerializer(serializers.ModelSerializer):
         salary_slip.save()
         
         return salary_slip
+
+# ============================================================
+# ACCOUNTING SERIALIZERS
+# ============================================================
+
+
+class AccountCategorySerializer(serializers.ModelSerializer):
+    accounts_count = serializers.IntegerField(
+        source="accounts.count",
+        read_only=True,
+    )
+
+    class Meta:
+        model = AccountCategory
+        fields = [
+            "id",
+            "code",
+            "name",
+            "account_type",
+            "normal_balance",
+            "description",
+            "is_active",
+            "accounts_count",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+            "accounts_count",
+        ]
+
+    def validate(self, attrs):
+        account_type = attrs.get(
+            "account_type",
+            getattr(self.instance, "account_type", None),
+        )
+
+        normal_balance = attrs.get(
+            "normal_balance",
+            getattr(self.instance, "normal_balance", None),
+        )
+
+        expected_balance = {
+            "asset": "debit",
+            "expense": "debit",
+            "liability": "credit",
+            "equity": "credit",
+            "revenue": "credit",
+        }
+
+        if (
+            account_type
+            and normal_balance
+            and expected_balance.get(account_type) != normal_balance
+        ):
+            raise serializers.ValidationError(
+                {
+                    "normal_balance": (
+                        f"{account_type.title()} accounts normally have a "
+                        f"{expected_balance[account_type]} balance."
+                    )
+                }
+            )
+
+        return attrs
+
+
+class ChartOfAccountListSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(
+        source="category.name",
+        read_only=True,
+    )
+
+    category_code = serializers.CharField(
+        source="category.code",
+        read_only=True,
+    )
+
+    account_type = serializers.CharField(read_only=True)
+    normal_balance = serializers.CharField(read_only=True)
+
+    parent_name = serializers.CharField(
+        source="parent.name",
+        read_only=True,
+        allow_null=True,
+    )
+
+    class Meta:
+        model = ChartOfAccount
+        fields = [
+            "id",
+            "code",
+            "name",
+            "category",
+            "category_code",
+            "category_name",
+            "account_type",
+            "normal_balance",
+            "parent",
+            "parent_name",
+            "opening_balance",
+            "current_balance",
+            "allow_manual_posting",
+            "is_control_account",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class ChartOfAccountSerializer(serializers.ModelSerializer):
+    category_details = AccountCategorySerializer(
+        source="category",
+        read_only=True,
+    )
+
+    parent_details = ChartOfAccountListSerializer(
+        source="parent",
+        read_only=True,
+    )
+
+    account_type = serializers.CharField(read_only=True)
+    normal_balance = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = ChartOfAccount
+        fields = [
+            "id",
+            "code",
+            "name",
+            "description",
+            "category",
+            "category_details",
+            "parent",
+            "parent_details",
+            "account_type",
+            "normal_balance",
+            "opening_balance",
+            "current_balance",
+            "allow_manual_posting",
+            "is_control_account",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "current_balance",
+            "account_type",
+            "normal_balance",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        category = attrs.get(
+            "category",
+            getattr(self.instance, "category", None),
+        )
+
+        parent = attrs.get(
+            "parent",
+            getattr(self.instance, "parent", None),
+        )
+
+        hospital_id = None
+
+        if user and user.is_authenticated:
+            hospital = getattr(user, "hospital", None)
+
+            if hospital:
+                hospital_id = hospital.id
+            elif hasattr(user, "employee"):
+                hospital_id = getattr(
+                    user.employee,
+                    "hospital_id",
+                    None,
+                )
+
+        if category and hospital_id:
+            if category.hospital_id != hospital_id:
+                raise serializers.ValidationError(
+                    {
+                        "category": (
+                            "The selected category belongs to another hospital."
+                        )
+                    }
+                )
+
+        if parent and hospital_id:
+            if parent.hospital_id != hospital_id:
+                raise serializers.ValidationError(
+                    {
+                        "parent": (
+                            "The parent account belongs to another hospital."
+                        )
+                    }
+                )
+
+        if parent and category:
+            if parent.category.account_type != category.account_type:
+                raise serializers.ValidationError(
+                    {
+                        "parent": (
+                            "The parent account and child account must have "
+                            "the same account type."
+                        )
+                    }
+                )
+
+        return attrs
+
+
+# ============================================================
+# JOURNAL SERIALIZERS
+# ============================================================
+
+from decimal import Decimal
+
+from django.db import transaction
+from rest_framework import serializers
+
+from .models import (
+    ChartOfAccount,
+    JournalEntry,
+    JournalEntryLine,
+)
+
+
+class JournalEntryLineSerializer(serializers.ModelSerializer):
+    account_code = serializers.CharField(
+        source="account.code",
+        read_only=True,
+    )
+    account_name = serializers.CharField(
+        source="account.name",
+        read_only=True,
+    )
+
+    class Meta:
+        model = JournalEntryLine
+        fields = [
+            "id",
+            "account",
+            "account_code",
+            "account_name",
+            "description",
+            "debit",
+            "credit",
+        ]
+
+    def validate(self, attrs):
+        debit = attrs.get(
+            "debit",
+            getattr(self.instance, "debit", Decimal("0.00")),
+        )
+        credit = attrs.get(
+            "credit",
+            getattr(self.instance, "credit", Decimal("0.00")),
+        )
+
+        if debit < Decimal("0.00"):
+            raise serializers.ValidationError(
+                {"debit": "Debit cannot be negative."}
+            )
+
+        if credit < Decimal("0.00"):
+            raise serializers.ValidationError(
+                {"credit": "Credit cannot be negative."}
+            )
+
+        if debit == Decimal("0.00") and credit == Decimal("0.00"):
+            raise serializers.ValidationError(
+                "Each line must have a debit or credit."
+            )
+
+        if debit > Decimal("0.00") and credit > Decimal("0.00"):
+            raise serializers.ValidationError(
+                "A line cannot have both debit and credit."
+            )
+
+        return attrs
+
+
+class JournalEntryListSerializer(serializers.ModelSerializer):
+    total_debit = serializers.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        read_only=True,
+    )
+    total_credit = serializers.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        read_only=True,
+    )
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JournalEntry
+        fields = [
+            "id",
+            "journal_number",
+            "entry_date",
+            "entry_type",
+            "reference",
+            "description",
+            "status",
+            "source_module",
+            "source_id",
+            "total_debit",
+            "total_credit",
+            "created_by_name",
+            "posted_at",
+            "created_at",
+        ]
+
+    def get_created_by_name(self, obj):
+        if not obj.created_by:
+            return None
+
+        full_name = obj.created_by.get_full_name()
+        return full_name or obj.created_by.get_username()
+
+
+class JournalEntrySerializer(serializers.ModelSerializer):
+    lines = JournalEntryLineSerializer(many=True)
+
+    total_debit = serializers.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        read_only=True,
+    )
+    total_credit = serializers.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        read_only=True,
+    )
+    is_balanced = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = JournalEntry
+        fields = [
+            "id",
+            "hospital",
+            "journal_number",
+            "entry_date",
+            "entry_type",
+            "reference",
+            "description",
+            "status",
+            "source_module",
+            "source_id",
+            "created_by",
+            "posted_by",
+            "posted_at",
+            "voided_by",
+            "voided_at",
+            "void_reason",
+            "total_debit",
+            "total_credit",
+            "is_balanced",
+            "lines",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "journal_number",
+            "status",
+            "created_by",
+            "posted_by",
+            "posted_at",
+            "voided_by",
+            "voided_at",
+            "void_reason",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate(self, attrs):
+        lines = attrs.get("lines")
+
+        if (
+            self.instance
+            and self.instance.status != JournalEntry.Status.DRAFT
+        ):
+            raise serializers.ValidationError(
+                "Only draft journals can be edited."
+            )
+
+        if self.instance is None and not lines:
+            raise serializers.ValidationError(
+                {"lines": "At least two lines are required."}
+            )
+
+        if lines is not None:
+            if len(lines) < 2:
+                raise serializers.ValidationError(
+                    {"lines": "At least two lines are required."}
+                )
+
+            total_debit = sum(
+                (
+                    line.get("debit", Decimal("0.00"))
+                    for line in lines
+                ),
+                Decimal("0.00"),
+            )
+
+            total_credit = sum(
+                (
+                    line.get("credit", Decimal("0.00"))
+                    for line in lines
+                ),
+                Decimal("0.00"),
+            )
+
+            if total_debit <= Decimal("0.00"):
+                raise serializers.ValidationError(
+                    {"lines": "Journal amount must be greater than zero."}
+                )
+
+            if total_debit != total_credit:
+                raise serializers.ValidationError(
+                    {
+                        "lines": (
+                            f"Journal is not balanced. "
+                            f"Debit: {total_debit}, "
+                            f"Credit: {total_credit}."
+                        )
+                    }
+                )
+
+        return attrs
+
+    def validate_account_hospitals(self, hospital, lines):
+        account_ids = [line["account"].id for line in lines]
+
+        invalid_accounts = (
+            ChartOfAccount.objects
+            .filter(id__in=account_ids)
+            .exclude(hospital=hospital)
+        )
+
+        if invalid_accounts.exists():
+            raise serializers.ValidationError(
+                {
+                    "lines": (
+                        "All accounts must belong to the same hospital."
+                    )
+                }
+            )
+
+    @transaction.atomic
+    def create(self, validated_data):
+        lines_data = validated_data.pop("lines")
+        request = self.context.get("request")
+
+        validated_data["created_by"] = (
+            request.user
+            if request and request.user.is_authenticated
+            else None
+        )
+
+        hospital = validated_data["hospital"]
+
+        self.validate_account_hospitals(
+            hospital,
+            lines_data,
+        )
+
+        journal = JournalEntry.objects.create(
+            **validated_data
+        )
+
+        for line_data in lines_data:
+            JournalEntryLine.objects.create(
+                journal_entry=journal,
+                **line_data,
+            )
+
+        return journal
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        if instance.status != JournalEntry.Status.DRAFT:
+            raise serializers.ValidationError(
+                "Only draft journals can be edited."
+            )
+
+        lines_data = validated_data.pop("lines", None)
+
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        if lines_data is not None:
+            self.validate_account_hospitals(
+                instance.hospital,
+                lines_data,
+            )
+
+            instance.lines.all().delete()
+
+            for line_data in lines_data:
+                JournalEntryLine.objects.create(
+                    journal_entry=instance,
+                    **line_data,
+                )
+
+        instance.save()
+        return instance
+
+
+class VoidJournalSerializer(serializers.Serializer):
+    reason = serializers.CharField(
+        min_length=3,
+        max_length=1000,
+    )

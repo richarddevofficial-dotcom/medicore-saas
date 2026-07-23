@@ -90,6 +90,20 @@ const navigationByRole = {
       ],
     },
     {
+      section: "HUMAN RESOURCES",
+      items: [
+        { name: "HR Dashboard", href: "/hr", icon: LayoutDashboard },
+        { name: "Employees", href: "/hr/employees", icon: Users },
+        { name: "Add Employee", href: "/hr/employees/new", icon: UserCog },
+        { name: "Positions", href: "/hr/positions", icon: FileText },
+        { name: "Contracts", href: "/hr/contracts", icon: FileText },
+        { name: "Attendance", href: "/hr/attendance", icon: Activity },
+        { name: "Leave Requests", href: "/hr/leave-requests", icon: Calendar },
+        { name: "Shifts", href: "/hr/shifts", icon: Activity },
+        { name: "Departments", href: "/admin/departments", icon: Building2 },
+      ],
+    },
+    {
       section: "REPORTS",
       items: [
         { name: "Reports", href: "/admin/reports", icon: FileText },
@@ -336,6 +350,15 @@ const navigationByRole = {
   ],
   hr_manager: [
     {
+      section: "FINANCE",
+      items: [
+        { name: "Finance Dashboard", href: "/finance", icon: BarChart3 },
+        { name: "Payroll", href: "/finance/payroll", icon: Wallet },
+        { name: "Budgets", href: "/finance/budgets", icon: TrendingUp },
+        { name: "Expenses", href: "/finance/expenses", icon: Receipt },
+      ],
+    },
+    {
       section: "HUMAN RESOURCES",
       items: [
         { name: "HR Dashboard", href: "/hr", icon: LayoutDashboard },
@@ -347,15 +370,6 @@ const navigationByRole = {
         { name: "Leave Requests", href: "/hr/leave-requests", icon: Calendar },
         { name: "Shifts", href: "/hr/shifts", icon: Activity },
         { name: "Departments", href: "/admin/departments", icon: Building2 },
-      ],
-    },
-    {
-      section: "FINANCE",
-      items: [
-        { name: "Finance Dashboard", href: "/finance", icon: BarChart3 },
-        { name: "Payroll", href: "/finance/payroll", icon: Wallet },
-        { name: "Budgets", href: "/finance/budgets", icon: TrendingUp },
-        { name: "Expenses", href: "/finance/expenses", icon: Receipt },
       ],
     },
   ],
@@ -434,33 +448,7 @@ export default function Sidebar({
     section.items.some((item) => item.href === "/hr"),
   );
 
-  const navigation =
-    adminHRAllowedRoles.includes(role) && !hasHRMenu
-      ? [
-          ...baseNavigation,
-          {
-            section: "HUMAN RESOURCES",
-            items: [
-              { name: "HR Dashboard", href: "/hr", icon: LayoutDashboard },
-              { name: "Employees", href: "/hr/employees", icon: Users },
-              {
-                name: "Add Employee",
-                href: "/hr/employees/new",
-                icon: UserCog,
-              },
-              { name: "Positions", href: "/hr/positions", icon: FileText },
-              { name: "Contracts", href: "/hr/contracts", icon: FileText },
-              { name: "Attendance", href: "/hr/attendance", icon: Activity },
-              {
-                name: "Leave Requests",
-                href: "/hr/leave-requests",
-                icon: Calendar,
-              },
-              { name: "Shifts", href: "/hr/shifts", icon: Activity },
-            ],
-          },
-        ]
-      : baseNavigation;
+  const navigation = baseNavigation;
 
   return (
     <aside
@@ -524,10 +512,8 @@ export default function Sidebar({
                 {section.items.map((item) => {
                   const itemPath = item.href.split("?")[0];
 
-                  const isActive =
-                    pathname === itemPath ||
-                    (itemPath !== "/dashboard" &&
-                      pathname.startsWith(`${itemPath}/`));
+                  // Only highlight exact match or exact child routes
+                  const isActive = pathname === itemPath;
                   const Icon = item.icon;
                   return (
                     <li key={item.name}>
