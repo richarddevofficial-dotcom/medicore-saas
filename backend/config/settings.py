@@ -23,6 +23,7 @@ def _load_env_file(env_path):
 
 
 _load_env_file(BASE_DIR / '.env')
+_load_env_file(BASE_DIR / '.env.local')  # Load .env.local for development overrides
 
 
 def _env_bool(key, default=False):

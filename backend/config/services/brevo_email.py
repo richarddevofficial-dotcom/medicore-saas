@@ -16,10 +16,18 @@ def send_brevo_email(
     html_content=None,
     tags=None,
 ):
+    # In development mode with dummy API key, use mock backend
+    debug_mode = os.getenv("DEBUG", "False").lower() in ["true", "1", "yes"]
     api_key = os.getenv(
         "BREVO_API_KEY",
         "",
     ).strip()
+
+    # Use mock backend if: in debug mode AND (no API key OR dummy key)
+    is_dummy_key = api_key and "dummy" in api_key.lower()
+    if debug_mode and (not api_key or is_dummy_key):
+        # Return mock response in development
+        return {"messageId": "dev-mock-id-12345", "status_code": 200}
 
     api_url = os.getenv(
         "BREVO_API_URL",
