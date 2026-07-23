@@ -26,6 +26,9 @@ import {
   Package,
   Crown,
   CreditCard,
+  TrendingUp,
+  BarChart3,
+  Wallet,
 } from "lucide-react";
 
 const navigationByRole = {
@@ -75,6 +78,15 @@ const navigationByRole = {
           href: "/ipd/admissions?status=admitted",
           icon: Bed,
         },
+      ],
+    },
+    {
+      section: "FINANCE",
+      items: [
+        { name: "Finance Dashboard", href: "/finance", icon: BarChart3 },
+        { name: "Budgets", href: "/finance/budgets", icon: TrendingUp },
+        { name: "Expenses", href: "/finance/expenses", icon: Receipt },
+        { name: "Payroll", href: "/finance/payroll", icon: Wallet },
       ],
     },
     {
@@ -178,6 +190,15 @@ const navigationByRole = {
           href: "/ipd/admissions?status=admitted",
           icon: Bed,
         },
+      ],
+    },
+    {
+      section: "FINANCE",
+      items: [
+        { name: "Finance Dashboard", href: "/finance", icon: BarChart3 },
+        { name: "Budgets", href: "/finance/budgets", icon: TrendingUp },
+        { name: "Expenses", href: "/finance/expenses", icon: Receipt },
+        { name: "Payroll", href: "/finance/payroll", icon: Wallet },
       ],
     },
     {
@@ -295,6 +316,15 @@ const navigationByRole = {
   ],
   accountant: [
     {
+      section: "FINANCE",
+      items: [
+        { name: "Finance Dashboard", href: "/finance", icon: BarChart3 },
+        { name: "Budgets", href: "/finance/budgets", icon: TrendingUp },
+        { name: "Expenses", href: "/finance/expenses", icon: Receipt },
+        { name: "Payroll", href: "/finance/payroll", icon: Wallet },
+      ],
+    },
+    {
       section: "MAIN",
       items: [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -317,6 +347,15 @@ const navigationByRole = {
         { name: "Leave Requests", href: "/hr/leave-requests", icon: Calendar },
         { name: "Shifts", href: "/hr/shifts", icon: Activity },
         { name: "Departments", href: "/admin/departments", icon: Building2 },
+      ],
+    },
+    {
+      section: "FINANCE",
+      items: [
+        { name: "Finance Dashboard", href: "/finance", icon: BarChart3 },
+        { name: "Payroll", href: "/finance/payroll", icon: Wallet },
+        { name: "Budgets", href: "/finance/budgets", icon: TrendingUp },
+        { name: "Expenses", href: "/finance/expenses", icon: Receipt },
       ],
     },
   ],
