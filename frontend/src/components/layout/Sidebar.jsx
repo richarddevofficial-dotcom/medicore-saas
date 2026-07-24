@@ -216,6 +216,28 @@ const navigationByRole = {
       ],
     },
     {
+      section: "HUMAN RESOURCES",
+      items: [
+        { name: "HR Dashboard", href: "/hr", icon: LayoutDashboard },
+        { name: "Employees", href: "/hr/employees", icon: Users },
+        { name: "Add Employee", href: "/hr/employees/new", icon: UserCog },
+        { name: "Positions", href: "/hr/positions", icon: FileText },
+        { name: "Contracts", href: "/hr/contracts", icon: FileText },
+        { name: "Attendance", href: "/hr/attendance", icon: Activity },
+        {
+          name: "Leave Requests",
+          href: "/hr/leave-requests",
+          icon: Calendar,
+        },
+        { name: "Shifts", href: "/hr/shifts", icon: Activity },
+        {
+          name: "Departments",
+          href: "/admin/departments",
+          icon: Building2,
+        },
+      ],
+    },
+    {
       section: "REPORTS",
       items: [
         { name: "Reports", href: "/admin/reports", icon: FileText },
