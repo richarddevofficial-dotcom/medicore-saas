@@ -29,6 +29,9 @@ import {
   TrendingUp,
   BarChart3,
   Wallet,
+  BookOpen,
+  PieChart,
+  Sliders,
 } from "lucide-react";
 
 const navigationByRole = {
@@ -87,6 +90,22 @@ const navigationByRole = {
         { name: "Budgets", href: "/finance/budgets", icon: TrendingUp },
         { name: "Expenses", href: "/finance/expenses", icon: Receipt },
         { name: "Payroll", href: "/finance/payroll", icon: Wallet },
+        {
+          name: "Payroll Config",
+          href: "/finance/payroll-config",
+          icon: Sliders,
+        },
+        {
+          name: "Chart of Accounts",
+          href: "/finance/accounting",
+          icon: BookOpen,
+        },
+        {
+          name: "Journal Entries",
+          href: "/finance/accounting/journals",
+          icon: FileText,
+        },
+        { name: "Financial Reports", href: "/finance/reports", icon: PieChart },
       ],
     },
     {
@@ -213,6 +232,22 @@ const navigationByRole = {
         { name: "Budgets", href: "/finance/budgets", icon: TrendingUp },
         { name: "Expenses", href: "/finance/expenses", icon: Receipt },
         { name: "Payroll", href: "/finance/payroll", icon: Wallet },
+        {
+          name: "Payroll Config",
+          href: "/finance/payroll-config",
+          icon: Sliders,
+        },
+        {
+          name: "Chart of Accounts",
+          href: "/finance/accounting",
+          icon: BookOpen,
+        },
+        {
+          name: "Journal Entries",
+          href: "/finance/accounting/journals",
+          icon: FileText,
+        },
+        { name: "Financial Reports", href: "/finance/reports", icon: PieChart },
       ],
     },
     {
@@ -358,6 +393,22 @@ const navigationByRole = {
         { name: "Budgets", href: "/finance/budgets", icon: TrendingUp },
         { name: "Expenses", href: "/finance/expenses", icon: Receipt },
         { name: "Payroll", href: "/finance/payroll", icon: Wallet },
+        {
+          name: "Payroll Config",
+          href: "/finance/payroll-config",
+          icon: Sliders,
+        },
+        {
+          name: "Chart of Accounts",
+          href: "/finance/accounting",
+          icon: BookOpen,
+        },
+        {
+          name: "Journal Entries",
+          href: "/finance/accounting/journals",
+          icon: FileText,
+        },
+        { name: "Financial Reports", href: "/finance/reports", icon: PieChart },
       ],
     },
     {
@@ -376,8 +427,14 @@ const navigationByRole = {
       items: [
         { name: "Finance Dashboard", href: "/finance", icon: BarChart3 },
         { name: "Payroll", href: "/finance/payroll", icon: Wallet },
+        {
+          name: "Payroll Config",
+          href: "/finance/payroll-config",
+          icon: Sliders,
+        },
         { name: "Budgets", href: "/finance/budgets", icon: TrendingUp },
         { name: "Expenses", href: "/finance/expenses", icon: Receipt },
+        { name: "Financial Reports", href: "/finance/reports", icon: PieChart },
       ],
     },
     {
