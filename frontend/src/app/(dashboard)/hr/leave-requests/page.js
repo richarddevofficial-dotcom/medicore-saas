@@ -230,16 +230,14 @@ export default function LeaveRequestsPage() {
 
     try {
       if (action === "approve") {
-        await hrApi.approveLeaveRequest(
-          request.id,
-          reviewNotes,
-        );
+        await hrApi.approveLeaveRequest(request.id, {
+          review_notes: reviewNotes,
+        });
         setSuccess("Leave request approved successfully.");
       } else {
-        await hrApi.rejectLeaveRequest(
-          request.id,
-          reviewNotes,
-        );
+        await hrApi.rejectLeaveRequest(request.id, {
+          review_notes: reviewNotes,
+        });
         setSuccess("Leave request rejected successfully.");
       }
 
