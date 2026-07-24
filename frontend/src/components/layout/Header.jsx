@@ -11,7 +11,7 @@ export default function Header({ branding, onMenuToggle }) {
   const [role, setRole] = useState("");
   const [logoIndex, setLogoIndex] = useState(0);
 
-  useEffect(() => {
+  const updateHeaderState = () => {
     let parsedHospital = null;
     let parsedUser = {};
 
@@ -35,6 +35,20 @@ export default function Header({ branding, onMenuToggle }) {
     }
     setUserData(parsedUser);
     setRole(storedRole);
+  };
+
+  useEffect(() => {
+    updateHeaderState();
+
+    // Listen for storage changes (when another tab/window changes localStorage)
+    const handleStorageChange = () => {
+      updateHeaderState();
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
   }, []);
 
   const primaryColor = branding?.primaryColor || "#F97316";

@@ -216,7 +216,16 @@ export default function DashboardPage() {
     sessionStorage.removeItem("impersonating_hospital_id");
 
     // IMPORTANT: Remove hospital data from localStorage
+    // Dispatch a custom event to notify Header component of the change
     localStorage.removeItem("hospital");
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "hospital",
+        newValue: null,
+        oldValue: localStorage.getItem("hospital") || null,
+        storageArea: localStorage,
+      }),
+    );
 
     toast.success("Back to Super Admin");
     router.push("/super-admin");
