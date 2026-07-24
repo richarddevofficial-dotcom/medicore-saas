@@ -2,11 +2,19 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, AlertCircle } from "lucide-react";
+import {
+  ArrowLeft,
+  AlertCircle,
+  Send,
+  Undo2,
+  Lock,
+  Loader2,
+} from "lucide-react";
 import {
   getJournalEntry,
   voidJournalEntry,
   reverseJournalEntry,
+  postJournalEntry,
 } from "@/lib/api/finance";
 import toast from "react-hot-toast";
 import { useParams, useRouter } from "next/navigation";
@@ -58,6 +66,28 @@ export default function JournalEntryDetailPage() {
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to void journal entry",
+      );
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  async function handlePost() {
+    if (
+      !confirm(
+        "Are you sure you want to post this journal entry? This cannot be undone.",
+      )
+    )
+      return;
+
+    try {
+      setUpdating(true);
+      await postJournalEntry(entryId);
+      toast.success("Journal entry posted successfully");
+      await loadEntry();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to post journal entry",
       );
     } finally {
       setUpdating(false);
@@ -240,26 +270,38 @@ export default function JournalEntryDetailPage() {
         {/* Actions */}
         <div className="flex gap-3 mt-6">
           {entry.status === "DRAFT" && (
-            <Link href={`/finance/accounting/journals/${entry.id}/edit`}>
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-                Edit Entry
+            <>
+              <Link href={`/finance/accounting/journals/${entry.id}/edit`}>
+                <button className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+                  Edit Entry
+                </button>
+              </Link>
+              <button
+                onClick={handlePost}
+                disabled={updating}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                <Send size={18} />
+                Post Entry
               </button>
-            </Link>
+            </>
           )}
           {entry.status === "POSTED" && (
             <>
               <button
                 onClick={handleReverse}
                 disabled={updating}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 disabled:opacity-50"
+                className="px-4 py-2 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
               >
+                <Undo2 size={18} />
                 Reverse Entry
               </button>
               <button
                 onClick={() => setShowVoidModal(true)}
                 disabled={updating}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-50"
+                className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
               >
+                <Lock size={18} />
                 Void Entry
               </button>
             </>
