@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Briefcase,
+  BriefcaseBusiness,
   Edit3,
   Plus,
   RefreshCw,
@@ -244,7 +244,7 @@ export default function PositionsPage() {
             </div>
 
             <div className="rounded-xl bg-orange-50 p-3">
-              <Briefcase className="h-6 w-6 text-orange-600" />
+              <BriefcaseBusiness className="h-6 w-6 text-orange-600" />
             </div>
           </div>
         </div>
@@ -288,7 +288,7 @@ export default function PositionsPage() {
             </div>
           ) : filteredPositions.length === 0 ? (
             <div className="p-12 text-center">
-              <Briefcase className="mx-auto h-10 w-10 text-slate-300" />
+              <BriefcaseBusiness className="mx-auto h-10 w-10 text-slate-300" />
               <p className="mt-3 font-medium text-slate-700">
                 No positions found
               </p>

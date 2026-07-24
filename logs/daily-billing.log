@@ -222,3 +222,95 @@ Billing summary
   Reminder errors               : 0
 
 Daily billing processing completed.
+
+MediCore Daily Billing Processor
+Run time: 2026-07-22T22:15:04.534724+00:00
+Mode: LIVE
+
+
+Billing summary
+  Active trials                 : 4
+  Expired trials found          : 0
+  Trials moved to grace         : 0
+  Initial invoices created      : 0
+  Initial invoices skipped      : 0
+  Active subscriptions          : 1
+  Renewals due                  : 0
+  Renewal invoices created      : 0
+  Renewal invoices skipped      : 0
+  Pending invoices inspected    : 0
+  Invoices marked overdue       : 0
+  Total overdue invoices        : 0
+  Subscriptions in grace        : 0
+  Expired subscriptions         : 0
+  Suspended subscriptions       : 0
+  Expired grace periods         : 0
+  Subscriptions suspended today : 0
+  Suspensions skipped           : 0
+  Payments awaiting approval    : 0
+  Trial reminders sent          : 0
+  Invoice reminders sent        : 0
+  Reminders skipped             : 0
+  Reminder errors               : 0
+
+Daily billing processing completed.
+
+MediCore Daily Billing Processor
+Run time: 2026-07-23T22:15:04.980851+00:00
+Mode: LIVE
+
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+Subject: MediCore trial reminder =?utf-8?b?4oCU?= Delbe
+From: no-reply@medicorecloud.com
+To: robitaluga@gmail.com
+Date: Thu, 23 Jul 2026 22:15:05 +0000
+Message-ID: <178484490517.58.12880502376861574730@55070f8ee14e>
+
+Hello Delbe Administrator,
+
+Your free trial ends in 7 day(s).
+
+Current plan: Starter
+Monthly subscription: USD 99.90
+One-time platform service fee: USD 300.00
+
+Please open your MediCore Billing page to review your subscription and genera=
+te an invoice.
+
+Billing page: https://delbe.medicorecloud.com/settings/billing
+
+Support: support@medicorecloud.com
+
+Regards,
+MediCore HMS Team
+
+-------------------------------------------------------------------------------
+
+Billing summary
+  Active trials                 : 4
+  Expired trials found          : 0
+  Trials moved to grace         : 0
+  Initial invoices created      : 0
+  Initial invoices skipped      : 0
+  Active subscriptions          : 1
+  Renewals due                  : 0
+  Renewal invoices created      : 0
+  Renewal invoices skipped      : 0
+  Pending invoices inspected    : 0
+  Invoices marked overdue       : 0
+  Total overdue invoices        : 0
+  Subscriptions in grace        : 0
+  Expired subscriptions         : 0
+  Suspended subscriptions       : 0
+  Expired grace periods         : 0
+  Subscriptions suspended today : 0
+  Suspensions skipped           : 0
+  Payments awaiting approval    : 0
+  Trial reminders sent          : 1
+  Invoice reminders sent        : 0
+  Reminders skipped             : 0
+  Reminder errors               : 0
+
+Daily billing processing completed.
