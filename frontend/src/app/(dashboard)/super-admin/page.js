@@ -171,10 +171,12 @@ export default function SuperAdminDashboard() {
   const filteredHospitals = data?.hospitals?.filter((hospital) => {
     const matchesSearch = hospital.name
       .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    const matchesPlan = filterPlan === "all" || hospital.plan === filterPlan;
+      .includes(billingSearchTerm.toLowerCase());
+    const matchesPlan =
+      billingPlanFilter === "all" || hospital.plan === billingPlanFilter;
     const matchesStatus =
-      filterStatus === "all" || hospital.status === filterStatus;
+      billingPaymentStatusFilter === "all" ||
+      hospital.status === billingPaymentStatusFilter;
     return matchesSearch && matchesPlan && matchesStatus;
   });
 
