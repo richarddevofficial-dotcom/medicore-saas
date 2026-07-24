@@ -26,6 +26,7 @@ export default function BudgetDetailPage() {
     description: "",
   });
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadBudget();
   }, [budgetId]);

@@ -31,6 +31,7 @@ export default function JournalEntryDetailPage() {
   const [showVoidModal, setShowVoidModal] = useState(false);
   const [voidReason, setVoidReason] = useState("");
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadEntry();
   }, [entryId]);

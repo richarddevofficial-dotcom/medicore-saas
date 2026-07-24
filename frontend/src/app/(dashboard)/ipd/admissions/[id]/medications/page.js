@@ -44,6 +44,7 @@ export default function MedicationsPage() {
   const [errors, setErrors] = useState({});
   const [administering, setAdministering] = useState(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadData();
   }, [admissionId]);

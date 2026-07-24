@@ -23,6 +23,7 @@ export default function EditPayrollYearPage() {
   const [errors, setErrors] = useState({});
   const [error, setError] = useState("");
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadPayrollYear();
   }, [yearId]);

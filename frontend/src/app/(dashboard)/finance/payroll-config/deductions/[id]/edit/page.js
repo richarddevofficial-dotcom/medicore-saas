@@ -32,6 +32,7 @@ export default function EditDeductionTypePage() {
   const [errors, setErrors] = useState({});
   const [error, setError] = useState("");
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadDeduction();
   }, [deductionId]);

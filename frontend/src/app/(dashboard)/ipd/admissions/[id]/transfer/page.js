@@ -32,6 +32,7 @@ export default function TransferPatientPage() {
   const [filteredRooms, setFilteredRooms] = useState([]);
   const [filteredBeds, setFilteredBeds] = useState([]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadData();
   }, [admissionId]);

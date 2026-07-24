@@ -35,6 +35,7 @@ export default function DischargePage() {
 
   const [errors, setErrors] = useState({});
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadData();
   }, [admissionId]);

@@ -28,6 +28,7 @@ export default function ExpenseDetailPage() {
     notes: "",
   });
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadExpense();
   }, [expenseId]);

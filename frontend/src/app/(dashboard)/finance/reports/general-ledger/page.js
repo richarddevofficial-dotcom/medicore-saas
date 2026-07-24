@@ -21,6 +21,7 @@ export default function GeneralLedgerPage() {
     loadAccounts();
   }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (selectedAccount) {
       loadLedger();

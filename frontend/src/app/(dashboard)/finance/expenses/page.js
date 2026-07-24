@@ -13,6 +13,7 @@ export default function ExpensesPage() {
   const [deleting, setDeleting] = useState(null);
   const [filter, setFilter] = useState("all");
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadExpenses();
   }, [filter]);

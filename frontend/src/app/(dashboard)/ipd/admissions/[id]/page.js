@@ -56,6 +56,7 @@ export default function AdmissionDetailPage() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadData();
   }, [admissionId]);

@@ -8,7 +8,7 @@ import {
   Plus,
   Trash2,
   Edit,
-  Toggle2,
+  ToggleLeft,
 } from "lucide-react";
 import {
   getChartOfAccounts,
@@ -262,7 +262,7 @@ export default function ChartOfAccountsPage() {
                         disabled={updating === account.id}
                         className="p-1.5 text-gray-600 hover:text-green-600 disabled:opacity-50"
                       >
-                        <Toggle2 size={18} />
+                        <ToggleLeft size={18} />
                       </button>
                       <button
                         onClick={() => handleDelete(account.id)}

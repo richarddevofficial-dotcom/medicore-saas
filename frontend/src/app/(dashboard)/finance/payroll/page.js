@@ -13,6 +13,7 @@ export default function PayrollPage() {
   const [processing, setProcessing] = useState(null);
   const [filter, setFilter] = useState("all");
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadPayroll();
   }, [filter]);

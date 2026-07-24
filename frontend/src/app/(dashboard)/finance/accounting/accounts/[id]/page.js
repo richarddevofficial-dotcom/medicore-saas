@@ -26,6 +26,7 @@ export default function AccountDetailPage() {
     is_active: true,
   });
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadAccount();
   }, [accountId]);

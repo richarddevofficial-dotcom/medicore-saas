@@ -20,14 +20,12 @@ import {
 
 import apiClient from "@/lib/api-client";
 
-
 function money(value, currency = "USD") {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
   }).format(Number(value || 0));
 }
-
 
 function dateValue(value) {
   if (!value) {
@@ -41,7 +39,6 @@ function dateValue(value) {
   }).format(new Date(value));
 }
 
-
 function monthLabel(value) {
   if (!value) {
     return "";
@@ -52,15 +49,8 @@ function monthLabel(value) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     year: "2-digit",
-  }).format(
-    new Date(
-      Number(year),
-      Number(month) - 1,
-      1,
-    ),
-  );
+  }).format(new Date(Number(year), Number(month) - 1, 1));
 }
-
 
 export default function BillingCenterDashboardPage() {
   const [dashboard, setDashboard] = useState(null);
@@ -80,34 +70,25 @@ export default function BillingCenterDashboardPage() {
       setError("");
 
       const results = await Promise.allSettled([
-        apiClient.get(
-          "/billing-center/dashboard/",
-        ),
-        apiClient.get(
-          "/billing-center/analytics/",
-        ),
+        apiClient.get("/billing-center/dashboard/"),
+        apiClient.get("/billing-center/analytics/"),
       ]);
 
       const dashboardResult = results[0];
       const analyticsResult = results[1];
 
       if (dashboardResult.status === "fulfilled") {
-        setDashboard(
-          dashboardResult.value.data,
-        );
+        setDashboard(dashboardResult.value.data);
       }
 
       if (analyticsResult.status === "fulfilled") {
-        setAnalytics(
-          analyticsResult.value.data,
-        );
+        setAnalytics(analyticsResult.value.data);
       }
 
       const failures = [];
 
       if (dashboardResult.status === "rejected") {
-        const dashboardError =
-          dashboardResult.reason;
+        const dashboardError = dashboardResult.reason;
 
         failures.push(
           `Dashboard: ${
@@ -120,8 +101,7 @@ export default function BillingCenterDashboardPage() {
       }
 
       if (analyticsResult.status === "rejected") {
-        const analyticsError =
-          analyticsResult.reason;
+        const analyticsError = analyticsResult.reason;
 
         failures.push(
           `Analytics: ${
@@ -149,6 +129,7 @@ export default function BillingCenterDashboardPage() {
     }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     loadData();
   }, []);
@@ -161,26 +142,19 @@ export default function BillingCenterDashboardPage() {
         responseType: "blob",
       });
 
-      const disposition =
-        response.headers["content-disposition"] ||
-        "";
+      const disposition = response.headers["content-disposition"] || "";
 
-      const filenameMatch =
-        disposition.match(/filename="?([^"]+)"?/);
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
 
-      const filename =
-        filenameMatch?.[1] ||
-        fallbackFilename;
+      const filename = filenameMatch?.[1] || fallbackFilename;
 
-      const blobUrl =
-        window.URL.createObjectURL(
-          new Blob([response.data], {
-            type: "text/csv",
-          }),
-        );
+      const blobUrl = window.URL.createObjectURL(
+        new Blob([response.data], {
+          type: "text/csv",
+        }),
+      );
 
-      const link =
-        document.createElement("a");
+      const link = document.createElement("a");
 
       link.href = blobUrl;
       link.download = filename;
@@ -192,16 +166,13 @@ export default function BillingCenterDashboardPage() {
       window.URL.revokeObjectURL(blobUrl);
     } catch (requestError) {
       setError(
-        requestError.response?.data?.error ||
-          "Unable to download the report.",
+        requestError.response?.data?.error || "Unable to download the report.",
       );
     }
   }
 
   const maximumRevenue = useMemo(() => {
-    const values = (
-      analytics?.revenue_by_month || []
-    ).map((item) =>
+    const values = (analytics?.revenue_by_month || []).map((item) =>
       Number(item.revenue || 0),
     );
 
@@ -212,10 +183,7 @@ export default function BillingCenterDashboardPage() {
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
         <div className="text-center">
-          <Loader2
-            className="mx-auto animate-spin text-orange-500"
-            size={42}
-          />
+          <Loader2 className="mx-auto animate-spin text-orange-500" size={42} />
 
           <p className="mt-4 text-sm text-slate-500">
             Loading billing center...
@@ -229,13 +197,9 @@ export default function BillingCenterDashboardPage() {
     return (
       <div className="p-6">
         <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
-          <p className="font-semibold">
-            Unable to open Billing Center
-          </p>
+          <p className="font-semibold">Unable to open Billing Center</p>
 
-          <p className="mt-2 text-sm">
-            {error}
-          </p>
+          <p className="mt-2 text-sm">{error}</p>
 
           <button
             type="button"
@@ -249,16 +213,11 @@ export default function BillingCenterDashboardPage() {
     );
   }
 
-  const summary =
-    dashboard?.summary || {};
+  const summary = dashboard?.summary || {};
 
-  const revenue =
-    analytics?.summary ||
-    dashboard?.revenue ||
-    {};
+  const revenue = analytics?.summary || dashboard?.revenue || {};
 
-  const currency =
-    revenue.currency || "USD";
+  const currency = revenue.currency || "USD";
 
   return (
     <div className="space-y-8 p-4 sm:p-6 lg:p-8">
@@ -273,8 +232,8 @@ export default function BillingCenterDashboardPage() {
           </h1>
 
           <p className="mt-2 max-w-3xl text-slate-600">
-            Manage hospitals, subscriptions,
-            invoices, payments and SaaS revenue.
+            Manage hospitals, subscriptions, invoices, payments and SaaS
+            revenue.
           </p>
         </div>
 
@@ -285,14 +244,7 @@ export default function BillingCenterDashboardPage() {
             disabled={refreshing}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
           >
-            <RefreshCw
-              size={18}
-              className={
-                refreshing
-                  ? "animate-spin"
-                  : ""
-              }
-            />
+            <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
             Refresh
           </button>
 
@@ -322,43 +274,31 @@ export default function BillingCenterDashboardPage() {
         <MetricCard
           icon={CheckCircle2}
           label="Active subscriptions"
-          value={
-            summary.active_subscriptions || 0
-          }
+          value={summary.active_subscriptions || 0}
         />
 
         <MetricCard
           icon={Clock3}
           label="Trial subscriptions"
-          value={
-            summary.trial_subscriptions || 0
-          }
+          value={summary.trial_subscriptions || 0}
         />
 
         <MetricCard
           icon={AlertTriangle}
           label="Suspended"
-          value={
-            summary.suspended_subscriptions || 0
-          }
+          value={summary.suspended_subscriptions || 0}
         />
 
         <MetricCard
           icon={Wallet}
           label="Revenue this month"
-          value={money(
-            revenue.revenue_this_month,
-            currency,
-          )}
+          value={money(revenue.revenue_this_month, currency)}
         />
 
         <MetricCard
           icon={TrendingUp}
           label="Estimated MRR"
-          value={money(
-            revenue.estimated_mrr,
-            currency,
-          )}
+          value={money(revenue.estimated_mrr, currency)}
         />
 
         <MetricCard
@@ -387,54 +327,38 @@ export default function BillingCenterDashboardPage() {
               </p>
             </div>
 
-            <BarChart3
-              className="text-orange-500"
-              size={26}
-            />
+            <BarChart3 className="text-orange-500" size={26} />
           </div>
 
           <div className="mt-8 flex min-h-72 items-end gap-3 overflow-x-auto border-b border-slate-200 pb-2">
             {analytics?.revenue_by_month?.length ? (
-              analytics.revenue_by_month.map(
-                (item) => {
-                  const amount = Number(
-                    item.revenue || 0,
-                  );
+              analytics.revenue_by_month.map((item) => {
+                const amount = Number(item.revenue || 0);
 
-                  const height = Math.max(
-                    8,
-                    (
-                      amount /
-                      maximumRevenue
-                    ) * 220,
-                  );
+                const height = Math.max(8, (amount / maximumRevenue) * 220);
 
-                  return (
+                return (
+                  <div
+                    key={item.month}
+                    className="flex min-w-20 flex-1 flex-col items-center justify-end"
+                  >
+                    <span className="mb-2 text-xs font-semibold text-slate-700">
+                      {money(amount, currency)}
+                    </span>
+
                     <div
-                      key={item.month}
-                      className="flex min-w-20 flex-1 flex-col items-center justify-end"
-                    >
-                      <span className="mb-2 text-xs font-semibold text-slate-700">
-                        {money(
-                          amount,
-                          currency,
-                        )}
-                      </span>
+                      className="w-full rounded-t-xl bg-orange-500"
+                      style={{
+                        height: `${height}px`,
+                      }}
+                    />
 
-                      <div
-                        className="w-full rounded-t-xl bg-orange-500"
-                        style={{
-                          height: `${height}px`,
-                        }}
-                      />
-
-                      <span className="mt-2 text-xs text-slate-500">
-                        {monthLabel(item.month)}
-                      </span>
-                    </div>
-                  );
-                },
-              )
+                    <span className="mt-2 text-xs text-slate-500">
+                      {monthLabel(item.month)}
+                    </span>
+                  </div>
+                );
+              })
             ) : (
               <div className="flex w-full items-center justify-center py-20 text-slate-500">
                 No revenue data available.
@@ -444,56 +368,37 @@ export default function BillingCenterDashboardPage() {
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-bold text-slate-900">
-            Revenue Summary
-          </h2>
+          <h2 className="text-xl font-bold text-slate-900">Revenue Summary</h2>
 
           <div className="mt-6 space-y-4">
             <SummaryRow
               label="Total revenue"
-              value={money(
-                revenue.total_revenue,
-                currency,
-              )}
+              value={money(revenue.total_revenue, currency)}
             />
 
             <SummaryRow
               label="Service fees"
-              value={money(
-                revenue.service_fee_revenue,
-                currency,
-              )}
+              value={money(revenue.service_fee_revenue, currency)}
             />
 
             <SummaryRow
               label="Subscription revenue"
-              value={money(
-                revenue.subscription_revenue,
-                currency,
-              )}
+              value={money(revenue.subscription_revenue, currency)}
             />
 
             <SummaryRow
               label="Estimated ARR"
-              value={money(
-                revenue.estimated_arr,
-                currency,
-              )}
+              value={money(revenue.estimated_arr, currency)}
             />
 
             <SummaryRow
               label="Outstanding balance"
-              value={money(
-                revenue.outstanding_balance,
-                currency,
-              )}
+              value={money(revenue.outstanding_balance, currency)}
             />
 
             <SummaryRow
               label="Payment success"
-              value={`${Number(
-                revenue.payment_success_rate || 0,
-              ).toFixed(1)}%`}
+              value={`${Number(revenue.payment_success_rate || 0).toFixed(1)}%`}
             />
           </div>
         </div>
@@ -502,9 +407,7 @@ export default function BillingCenterDashboardPage() {
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">
-              Export Reports
-            </h2>
+            <h2 className="text-xl font-bold text-slate-900">Export Reports</h2>
 
             <p className="mt-1 text-sm text-slate-500">
               Download billing information as CSV files.
@@ -568,37 +471,30 @@ export default function BillingCenterDashboardPage() {
 
           <div className="divide-y divide-slate-100">
             {dashboard?.recent_hospitals?.length ? (
-              dashboard.recent_hospitals.map(
-                (hospital) => (
-                  <div
-                    key={hospital.id}
-                    className="flex items-center justify-between gap-4 p-5"
-                  >
-                    <div>
-                      <p className="font-semibold text-slate-900">
-                        {hospital.name}
-                      </p>
+              dashboard.recent_hospitals.map((hospital) => (
+                <div
+                  key={hospital.id}
+                  className="flex items-center justify-between gap-4 p-5"
+                >
+                  <div>
+                    <p className="font-semibold text-slate-900">
+                      {hospital.name}
+                    </p>
 
-                      <p className="mt-1 text-xs text-slate-500">
-                        {hospital.slug}
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <StatusBadge
-                        value={
-                          hospital.subscription_status
-                        }
-                      />
-
-                      <p className="mt-2 text-xs text-slate-500">
-                        {hospital.subscription_plan ||
-                          "No plan"}
-                      </p>
-                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {hospital.slug}
+                    </p>
                   </div>
-                ),
-              )
+
+                  <div className="text-right">
+                    <StatusBadge value={hospital.subscription_status} />
+
+                    <p className="mt-2 text-xs text-slate-500">
+                      {hospital.subscription_plan || "No plan"}
+                    </p>
+                  </div>
+                </div>
+              ))
             ) : (
               <p className="p-6 text-sm text-slate-500">
                 No hospitals available.
@@ -629,43 +525,34 @@ export default function BillingCenterDashboardPage() {
 
           <div className="divide-y divide-slate-100">
             {dashboard?.pending_payments?.length ? (
-              dashboard.pending_payments.map(
-                (payment) => (
-                  <div
-                    key={payment.id}
-                    className="flex items-center justify-between gap-4 p-5"
-                  >
-                    <div>
-                      <p className="font-semibold text-slate-900">
-                        {payment.hospital.name}
-                      </p>
+              dashboard.pending_payments.map((payment) => (
+                <div
+                  key={payment.id}
+                  className="flex items-center justify-between gap-4 p-5"
+                >
+                  <div>
+                    <p className="font-semibold text-slate-900">
+                      {payment.hospital.name}
+                    </p>
 
-                      <p className="mt-1 text-xs text-slate-500">
-                        {payment.invoice.invoice_number}
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <p className="font-bold text-slate-900">
-                        {money(
-                          payment.amount,
-                          payment.currency,
-                        )}
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        {dateValue(
-                          payment.created_at,
-                        )}
-                      </p>
-                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {payment.invoice.invoice_number}
+                    </p>
                   </div>
-                ),
-              )
+
+                  <div className="text-right">
+                    <p className="font-bold text-slate-900">
+                      {money(payment.amount, payment.currency)}
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      {dateValue(payment.created_at)}
+                    </p>
+                  </div>
+                </div>
+              ))
             ) : (
-              <p className="p-6 text-sm text-slate-500">
-                No pending payments.
-              </p>
+              <p className="p-6 text-sm text-slate-500">No pending payments.</p>
             )}
           </div>
         </div>
@@ -700,44 +587,29 @@ export default function BillingCenterDashboardPage() {
   );
 }
 
-
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-}) {
+function MetricCard({ icon: Icon, label, value }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
         <Icon size={22} />
       </div>
 
-      <p className="mt-4 text-sm text-slate-500">
-        {label}
-      </p>
+      <p className="mt-4 text-sm text-slate-500">{label}</p>
 
-      <p className="mt-1 text-2xl font-bold text-slate-900">
-        {value}
-      </p>
+      <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
     </div>
   );
 }
-
 
 function SummaryRow({ label, value }) {
   return (
     <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
-      <span className="text-sm text-slate-600">
-        {label}
-      </span>
+      <span className="text-sm text-slate-600">{label}</span>
 
-      <span className="font-bold text-slate-900">
-        {value}
-      </span>
+      <span className="font-bold text-slate-900">{value}</span>
     </div>
   );
 }
-
 
 function ExportButton({ label, onClick }) {
   return (
@@ -752,12 +624,7 @@ function ExportButton({ label, onClick }) {
   );
 }
 
-
-function QuickLink({
-  href,
-  icon: Icon,
-  label,
-}) {
+function QuickLink({ href, icon: Icon, label }) {
   return (
     <Link
       href={href}
@@ -767,39 +634,27 @@ function QuickLink({
         <Icon size={21} />
       </div>
 
-      <span className="font-semibold text-slate-900">
-        {label}
-      </span>
+      <span className="font-semibold text-slate-900">{label}</span>
     </Link>
   );
 }
 
-
 function StatusBadge({ value }) {
-  const normalized = String(
-    value || "not_configured",
-  ).toLowerCase();
+  const normalized = String(value || "not_configured").toLowerCase();
 
   const classes = {
-    active:
-      "bg-green-100 text-green-700",
-    trial:
-      "bg-blue-100 text-blue-700",
-    grace:
-      "bg-amber-100 text-amber-700",
-    suspended:
-      "bg-red-100 text-red-700",
-    expired:
-      "bg-slate-200 text-slate-700",
-    not_configured:
-      "bg-slate-100 text-slate-600",
+    active: "bg-green-100 text-green-700",
+    trial: "bg-blue-100 text-blue-700",
+    grace: "bg-amber-100 text-amber-700",
+    suspended: "bg-red-100 text-red-700",
+    expired: "bg-slate-200 text-slate-700",
+    not_configured: "bg-slate-100 text-slate-600",
   };
 
   return (
     <span
       className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-        classes[normalized] ||
-        classes.not_configured
+        classes[normalized] || classes.not_configured
       }`}
     >
       {normalized.replaceAll("_", " ")}
