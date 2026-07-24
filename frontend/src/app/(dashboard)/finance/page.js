@@ -221,6 +221,33 @@ export default function FinanceDashboardPage() {
         </Link>
       </div>
 
+      {/* Accounting & Reporting */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Link href="/finance/accounting">
+          <div className="rounded-lg border bg-gradient-to-br from-purple-50 to-purple-100 p-6 hover:shadow-lg transition-shadow cursor-pointer">
+            <h3 className="font-semibold text-gray-900">General Ledger</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Manage accounts and journal entries
+            </p>
+            <div className="mt-4 flex items-center text-purple-600 text-sm font-medium">
+              View All <ArrowRight size={16} className="ml-2" />
+            </div>
+          </div>
+        </Link>
+
+        <Link href="/finance/reports">
+          <div className="rounded-lg border bg-gradient-to-br from-orange-50 to-orange-100 p-6 hover:shadow-lg transition-shadow cursor-pointer">
+            <h3 className="font-semibold text-gray-900">Financial Reports</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              View income statement, balance sheet, and more
+            </p>
+            <div className="mt-4 flex items-center text-orange-600 text-sm font-medium">
+              View All <ArrowRight size={16} className="ml-2" />
+            </div>
+          </div>
+        </Link>
+      </div>
+
       {/* Recent Activity */}
       {dashboard?.recent_transactions && (
         <div className="rounded-lg border bg-white p-6">
