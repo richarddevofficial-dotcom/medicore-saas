@@ -1427,7 +1427,7 @@ export default function SuperAdminDashboard() {
                       >
                         🔄 Login As
                       </Button>
-                      {h.days_left > 0 && (
+                      {h.plan === "trial" && h.days_left > 0 && (
                         <span className="text-xs text-orange-600 ml-2">
                           {h.days_left}d left
                         </span>
