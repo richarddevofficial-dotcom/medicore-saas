@@ -1,0 +1,87 @@
+Role,Frontend_Routes_Count,Sidebar_Defined,Backend_Model,HR_Permission,Finance_Permission,Backend_Permissions,IsAdmin,IsAuth_Only,Critical_Issues
+admin,All (*),Yes,Yes,N/A,N/A,IsAuthenticated,Yes,No,None
+super_admin,All (*),Yes,No (is_superuser),N/A,N/A,IsAdminUser,Yes,No,NOT IN STAFF MODEL - uses Django is_superuser
+doctor,6,Yes,Yes,N/A,N/A,READ_ROLES + CLINICAL_ROLES,No,No,None
+receptionist,7,Yes,Yes,N/A,N/A,READ_ROLES + ADMISSION_ROLES,No,No,None
+nurse,4,Yes,Yes,N/A,N/A,CLINICAL_ROLES,No,No,None
+pharmacist,4,Yes,Yes,N/A,N/A,IsAuthenticated,No,Yes,Limited backend coverage
+lab_technician,3,Yes,Yes,N/A,N/A,IsAuthenticated,No,Yes,Limited backend coverage
+radiographer,3,Yes,Yes,N/A,N/A,IsAuthenticated,No,Yes,Limited backend coverage
+accountant,10,Yes,Yes,N/A,IsFinanceUser,IsAuthenticated + IsFinanceUser,No,No,None
+finance,10,Yes,No,N/A,IsFinanceUser,IsAuthenticated + IsFinanceUser,No,Yes,NOT IN STAFF MODEL
+finance_manager,10,Yes,No,N/A,IsFinanceManager,IsAuthenticated + IsFinanceManager,No,Yes,NOT IN STAFF MODEL
+cashier,3,Yes,No,N/A,IsFinanceUser,IsAuthenticated + IsFinanceUser,No,Yes,NOT IN STAFF MODEL - Referenced in IPD READ_ROLES
+hr_manager,9,Yes,No,IsHRManager,N/A,IsAuthenticated + IsHRManager,No,Yes,NOT IN STAFF MODEL - Case mismatch (HR_MANAGER)
+hr_officer,5,Yes,No,IsHRUser,N/A,IsAuthenticated + IsHRUser,No,Yes,NOT IN STAFF MODEL - Case mismatch (HR_OFFICER)
+hr,4,Yes,No,IsHRUser,N/A,IsAuthenticated + IsHRUser,No,Yes,NOT IN STAFF MODEL - Case mismatch (HR)
+
+Summary Statistics:
+Total Roles in Frontend,15
+Total Roles in Backend Staff Model,8
+Roles Only in Frontend,7 (super_admin finance finance_manager cashier hr_manager hr_officer hr)
+Backend Permission Classes,4 (IsHRUser IsHRManager IsFinanceUser IsFinanceManager)
+Case Sensitivity Issues,3 (HR_MANAGER HR_OFFICER HR)
+Missing Permission Classes,3 (IsPharmacist IsLabTechnician IsRadiographer)
+
+Route Access Questions:
+Question,Finding,Status
+Can admin access /admin,Yes - All admin routes allowed,Pass
+Can finance_manager access /finance,Yes - 10 finance routes allowed,Pass (but role not in model)
+Can hr_manager access /hr,Yes - HR dashboard + employees + related routes,Pass (but role not in model)
+Can lab_technician access /patients,Yes - Via /dashboard and /patients,Pass
+Can cashier access /billing,Yes - 3 billing-related routes allowed,Pass (but role not in model)
+Can lab access /admin/lab,Yes - Lab technician has /admin/lab,Pass
+Can radiographer access /admin/imaging,Yes - Radiographer has /admin/imaging,Pass
+Can doctor access /admin,No - Admin routes restricted,Pass
+Can receptionist access /hr,No - HR routes not in receptionist allowed list,Pass
+Can receptionist access /admin,No - Admin restricted to admin role only,Pass
+
+Role Comparison Matrix:
+Frontend Role,In Sidebar,In RoleGuard,In Staff Model,In Permission Classes,In IPD Roles,Migration Needed
+admin,Yes,Yes,Yes,Implicit,Yes,No
+super_admin,Yes,Yes,No (is_superuser),Implicit (IsAdminUser),Yes,Yes
+doctor,Yes,Yes,Yes,Implicit,Yes,No
+receptionist,Yes,Yes,Yes,Implicit,Yes,No
+nurse,Yes,Yes,Yes,Implicit,Yes,No
+pharmacist,Yes,Yes,Yes,IsAuthenticated only,Yes,Create IsPharmacist
+lab_technician,Yes,Yes,Yes,IsAuthenticated only,Yes,Create IsLabTechnician
+radiographer,Yes,Yes,Yes,IsAuthenticated only,Yes,Create IsRadiographer
+accountant,Yes,Yes,Yes,IsFinanceUser,Yes,No
+finance,Yes,Yes,No,IsFinanceUser,No,Add to model
+finance_manager,Yes,Yes,No,IsFinanceManager,No,Add to model
+cashier,Yes,Yes,No,IsFinanceUser,Yes,Add to model
+hr_manager,Yes,Yes,No,IsHRManager,No,Add to model + Fix case
+hr_officer,Yes,Yes,No,IsHRUser,No,Add to model + Fix case
+hr,Yes,Yes,No,IsHRUser,No,Add to model + Fix case
+
+Access Summary by Domain:
+
+/admin routes:
+- Only: admin (can access all /admin/*)
+- super_admin (can access all /admin/*)
+- Partial: nurse (rooms/beds only)
+
+/finance routes:
+- Full: admin super_admin accountant finance finance_manager
+- Partial: hr_manager (can access /finance/payroll /finance/budgets /finance/expenses /finance/reports)
+- Limited: cashier (payroll only)
+
+/hr routes:
+- Full: admin super_admin
+- HR Access: hr_manager hr_officer hr (with different feature sets)
+- None: All other roles
+
+/patients:
+- Can access: admin super_admin doctor receptionist nurse lab_technician radiographer
+- Cannot access: pharmacist accountant finance finance_manager cashier hr_manager hr_officer hr
+
+/billing:
+- Can access: admin super_admin receptionist accountant finance finance_manager cashier
+- Cannot access: doctor nurse pharmacist lab_technician radiographer hr_manager hr_officer hr
+
+Case Sensitivity Issues Found:
+Backend File,Used Case,Should Be,Impact
+backend/human_resources/permissions.py,UPPERCASE (HR HR_MANAGER HR_OFFICER),lowercase,Auth bypass risk
+backend/finance/accounting_permissions.py,lowercase,consistent,OK
+frontend/src/components/auth/RoleGuard.jsx,lowercase,consistent,OK
+
