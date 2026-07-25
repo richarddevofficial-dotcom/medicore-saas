@@ -39,6 +39,7 @@ export default function BillingPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -47,15 +48,24 @@ export default function BillingPage() {
   async function loadBilling() {
     try {
       setError("");
+      setSubscriptionRequired(false);
 
       const response = await apiClient.get("/saas-billing/dashboard/");
 
       setData(response.data);
     } catch (requestError) {
-      setError(
-        requestError.response?.data?.error ||
-          "Unable to load billing information.",
-      );
+      if (requestError.response?.data?.subscription_required) {
+        setSubscriptionRequired(true);
+        setError(
+          requestError.response?.data?.error ||
+            "Subscription not configured. Please set up a plan first.",
+        );
+      } else {
+        setError(
+          requestError.response?.data?.error ||
+            "Unable to load billing information.",
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -154,17 +164,56 @@ export default function BillingPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="animate-spin text-orange-500" size={36} />
-      </div>
+      <DashboardLayout>
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <Loader2 className="animate-spin text-orange-500" size={36} />
+        </div>
+      </DashboardLayout>
     );
   }
 
   if (error && !data) {
     return (
-      <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
-        {error}
-      </div>
+      <DashboardLayout>
+        <div className="space-y-6 p-4 sm:p-6 lg:p-8">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">
+              Billing and Subscription
+            </h1>
+            <p className="mt-2 text-slate-600">
+              Manage your MediCore plan, invoices and payments.
+            </p>
+          </div>
+
+          {subscriptionRequired ? (
+            <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-8">
+              <div className="flex flex-col items-center gap-4 text-center">
+                <div className="rounded-full bg-amber-200 p-4">
+                  <AlertCircle size={32} className="text-amber-700" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-amber-950">
+                    Subscription Required
+                  </h2>
+                  <p className="mt-2 text-amber-800">{error}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    window.location.href = "/admin/subscription";
+                  }}
+                  className="mt-4 rounded-lg bg-amber-600 px-6 py-2 font-medium text-white hover:bg-amber-700"
+                >
+                  Set Up Subscription Plan
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
+              {error}
+            </div>
+          )}
+        </div>
+      </DashboardLayout>
     );
   }
 
@@ -199,10 +248,7 @@ export default function BillingPage() {
       {subscription.pending_plan && (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
           <div className="flex items-start gap-3">
-            <AlertCircle
-              size={22}
-              className="mt-0.5 shrink-0 text-amber-600"
-            />
+            <AlertCircle size={22} className="mt-0.5 shrink-0 text-amber-600" />
 
             <div className="flex-1">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
@@ -220,9 +266,7 @@ export default function BillingPage() {
               <p className="mt-2 text-sm leading-6 text-amber-800">
                 Your current plan remains active until{" "}
                 <span className="font-semibold">
-                  {dateValue(
-                    subscription.pending_plan_effective_date,
-                  )}
+                  {dateValue(subscription.pending_plan_effective_date)}
                 </span>
                 . The{" "}
                 <span className="font-semibold">
@@ -248,9 +292,7 @@ export default function BillingPage() {
                   </p>
 
                   <p className="mt-1 font-bold text-slate-900">
-                    {dateValue(
-                      subscription.pending_plan_effective_date,
-                    )}
+                    {dateValue(subscription.pending_plan_effective_date)}
                   </p>
                 </div>
               </div>
