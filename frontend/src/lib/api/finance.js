@@ -3,19 +3,37 @@ import apiClient from "@/lib/api-client";
 // Finance Dashboard
 export async function getFinanceDashboard() {
   try {
-    // Fetch key financial data from multiple endpoints
-    const [salarySlips, journals, budgets, expenses] = await Promise.all([
+    // Fetch key financial data - use allSettled to handle permission errors gracefully
+    const results = await Promise.allSettled([
       apiClient.get("/finance/salary-slips/"),
       apiClient.get("/finance/accounting/journals/"),
       apiClient.get("/budgets/years/"),
       apiClient.get("/expenses/expenses/"),
     ]);
 
+    // Extract data or use empty arrays if request failed
+    const salarySlipsResult = results[0];
+    const journalsResult = results[1];
+    const budgetsResult = results[2];
+    const expensesResult = results[3];
+
     return {
-      salarySlips: salarySlips.data,
-      journals: journals.data,
-      budgets: budgets.data,
-      expenses: expenses.data,
+      salarySlips:
+        salarySlipsResult.status === "fulfilled"
+          ? salarySlipsResult.value.data
+          : { results: [] },
+      journals:
+        journalsResult.status === "fulfilled"
+          ? journalsResult.value.data
+          : { results: [] },
+      budgets:
+        budgetsResult.status === "fulfilled"
+          ? budgetsResult.value.data
+          : { results: [] },
+      expenses:
+        expensesResult.status === "fulfilled"
+          ? expensesResult.value.data
+          : { results: [] },
     };
   } catch (error) {
     throw new Error(
