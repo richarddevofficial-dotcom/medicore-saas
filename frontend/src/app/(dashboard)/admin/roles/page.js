@@ -71,8 +71,15 @@ const rolesData = [
     role: "accountant",
     label: "Accountant",
     color: "default",
-    permissions: ["view_billing", "manage_payments", "insurance_claims"],
-    description: "Can manage billing, payments, and insurance claims.",
+    permissions: [
+      "view_billing",
+      "manage_payments",
+      "insurance_claims",
+      "view_finance",
+      "view_reports",
+    ],
+    description:
+      "Can manage billing, payments, insurance claims, and view financial reports.",
   },
   {
     role: "radiographer",
@@ -85,6 +92,95 @@ const rolesData = [
     ],
     description:
       "Can view imaging requests, perform scans, and submit results.",
+  },
+  {
+    role: "finance",
+    label: "Finance Officer",
+    color: "warning",
+    permissions: [
+      "view_finance",
+      "view_billing",
+      "manage_payments",
+      "manage_budgets",
+      "manage_expenses",
+      "view_payroll",
+      "manage_accounting",
+      "view_reports",
+    ],
+    description:
+      "Can access all finance modules including budgets, expenses, payroll, and accounting.",
+  },
+  {
+    role: "finance_manager",
+    label: "Finance Manager",
+    color: "danger",
+    permissions: [
+      "view_finance",
+      "view_billing",
+      "manage_payments",
+      "manage_budgets",
+      "manage_expenses",
+      "manage_payroll",
+      "manage_payroll_config",
+      "manage_accounting",
+      "post_journal_entries",
+      "reverse_transactions",
+      "view_reports",
+    ],
+    description:
+      "Full finance access including posting journal entries, payroll management, and financial reporting.",
+  },
+  {
+    role: "cashier",
+    label: "Cashier",
+    color: "info",
+    permissions: ["view_billing", "manage_payments", "view_payroll"],
+    description: "Can process billing payments and view payroll information.",
+  },
+  {
+    role: "hr_manager",
+    label: "HR Manager",
+    color: "danger",
+    permissions: [
+      "manage_employees",
+      "manage_contracts",
+      "manage_positions",
+      "manage_attendance",
+      "manage_leave_requests",
+      "manage_shifts",
+      "manage_departments",
+      "view_payroll",
+      "view_finance",
+      "manage_budgets",
+      "manage_expenses",
+      "view_reports",
+    ],
+    description:
+      "Full HR access: employees, contracts, attendance, leave, plus finance payroll and budget views.",
+  },
+  {
+    role: "hr_officer",
+    label: "HR Officer",
+    color: "info",
+    permissions: [
+      "view_employees",
+      "manage_attendance",
+      "manage_leave_requests",
+      "manage_shifts",
+    ],
+    description:
+      "Can view employees and manage attendance, leave requests, and shifts.",
+  },
+  {
+    role: "hr",
+    label: "HR Staff",
+    color: "default",
+    permissions: [
+      "view_employees",
+      "manage_attendance",
+      "manage_leave_requests",
+    ],
+    description: "Can view employees and manage attendance and leave requests.",
   },
 ];
 
@@ -114,6 +210,25 @@ const allPermissions = [
   { key: "manage_users", label: "Manage Users" },
   { key: "view_reports", label: "View Reports" },
   { key: "manage_settings", label: "Manage Settings" },
+  // Finance permissions
+  { key: "view_finance", label: "View Finance" },
+  { key: "manage_budgets", label: "Manage Budgets" },
+  { key: "manage_expenses", label: "Manage Expenses" },
+  { key: "view_payroll", label: "View Payroll" },
+  { key: "manage_payroll", label: "Manage Payroll" },
+  { key: "manage_payroll_config", label: "Manage Payroll Config" },
+  { key: "manage_accounting", label: "Manage Accounting" },
+  { key: "post_journal_entries", label: "Post Journal Entries" },
+  { key: "reverse_transactions", label: "Reverse Transactions" },
+  // HR permissions
+  { key: "view_employees", label: "View Employees" },
+  { key: "manage_employees", label: "Manage Employees" },
+  { key: "manage_contracts", label: "Manage Contracts" },
+  { key: "manage_positions", label: "Manage Positions" },
+  { key: "manage_attendance", label: "Manage Attendance" },
+  { key: "manage_leave_requests", label: "Manage Leave Requests" },
+  { key: "manage_shifts", label: "Manage Shifts" },
+  { key: "manage_departments", label: "Manage Departments" },
 ];
 
 export default function ManageRolesPage() {
