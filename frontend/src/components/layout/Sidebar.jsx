@@ -475,6 +475,88 @@ const navigationByRole = {
       ],
     },
   ],
+  finance: [
+    {
+      section: "FINANCE",
+      items: [
+        { name: "Finance Dashboard", href: "/finance", icon: BarChart3 },
+        { name: "Budgets", href: "/finance/budgets", icon: TrendingUp },
+        { name: "Expenses", href: "/finance/expenses", icon: Receipt },
+        { name: "Payroll", href: "/finance/payroll", icon: Wallet },
+        {
+          name: "Payroll Config",
+          href: "/finance/payroll-config",
+          icon: Sliders,
+        },
+        {
+          name: "Chart of Accounts",
+          href: "/finance/accounting",
+          icon: BookOpen,
+        },
+        {
+          name: "Journal Entries",
+          href: "/finance/accounting/journals",
+          icon: FileText,
+        },
+        { name: "Financial Reports", href: "/finance/reports", icon: PieChart },
+      ],
+    },
+    {
+      section: "MAIN",
+      items: [
+        { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+        { name: "Billing", href: "/billing", icon: DollarSign },
+        { name: "Reports", href: "/admin/reports", icon: FileText },
+      ],
+    },
+  ],
+  finance_manager: [
+    {
+      section: "FINANCE",
+      items: [
+        { name: "Finance Dashboard", href: "/finance", icon: BarChart3 },
+        { name: "Budgets", href: "/finance/budgets", icon: TrendingUp },
+        { name: "Expenses", href: "/finance/expenses", icon: Receipt },
+        { name: "Payroll", href: "/finance/payroll", icon: Wallet },
+        {
+          name: "Payroll Config",
+          href: "/finance/payroll-config",
+          icon: Sliders,
+        },
+        {
+          name: "Chart of Accounts",
+          href: "/finance/accounting",
+          icon: BookOpen,
+        },
+        {
+          name: "Journal Entries",
+          href: "/finance/accounting/journals",
+          icon: FileText,
+        },
+        { name: "Financial Reports", href: "/finance/reports", icon: PieChart },
+      ],
+    },
+    {
+      section: "MAIN",
+      items: [
+        { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+        { name: "Billing", href: "/billing", icon: DollarSign },
+        { name: "Insurance", href: "/admin/insurance", icon: Shield },
+        { name: "Reports", href: "/admin/reports", icon: FileText },
+      ],
+    },
+  ],
+  cashier: [
+    {
+      section: "BILLING",
+      items: [
+        { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+        { name: "Billing", href: "/billing", icon: DollarSign },
+        { name: "Payroll", href: "/finance/payroll", icon: Wallet },
+        { name: "Reports", href: "/admin/reports", icon: FileText },
+      ],
+    },
+  ],
 };
 
 export default function Sidebar({
