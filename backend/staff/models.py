@@ -13,6 +13,12 @@ class StaffProfile(models.Model):
         ('lab_technician', 'Lab Technician'),
         ('radiographer', 'Radiographer'),
         ('accountant', 'Accountant'),
+        ('finance', 'Finance Officer'),
+        ('finance_manager', 'Finance Manager'),
+        ('cashier', 'Cashier'),
+        ('hr', 'HR Officer'),
+        ('hr_officer', 'HR Officer'),
+        ('hr_manager', 'HR Manager'),
     ]
     
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='staff_profile')
