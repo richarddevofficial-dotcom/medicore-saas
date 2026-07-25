@@ -15,6 +15,7 @@ from .models import (
 from .serializers import SubscriptionPlanSerializer
 from .services import get_subscription_access
 from .plan_change_services import activate_plan_change
+from .receipt_services import send_payment_receipt_email
 
 
 def get_user_hospital(user):
@@ -910,6 +911,9 @@ def approve_manual_payment(request, payment_id):
         except Exception:
             pass
 
+    # Send payment receipt email
+    send_payment_receipt_email(payment)
+
     return Response(
         {
             "success": True,
@@ -931,6 +935,8 @@ def approve_manual_payment(request, payment_id):
                     .isoformat()
                 ),
             },
+            "receipt_email_sent": payment.receipt_delivery_status == 'sent',
+            "receipt_email_error": payment.receipt_last_error or None,
         }
     )
 

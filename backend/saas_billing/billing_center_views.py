@@ -1,5 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
+from django.db import transaction
 
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncMonth
@@ -19,6 +20,7 @@ from .models import (
     Invoice,
     Payment,
 )
+from .receipt_services import send_payment_receipt_email
 
 
 def is_platform_super_admin(user):
@@ -3319,6 +3321,9 @@ def billing_center_approve_payment(
         )
     )
 
+    # Send payment receipt email
+    send_payment_receipt_email(payment)
+
     return Response(
         {
             "success": True,
@@ -3332,6 +3337,8 @@ def billing_center_approve_payment(
             "subscription_status": (
                 subscription.status
             ),
+            "receipt_email_sent": payment.receipt_delivery_status == 'sent',
+            "receipt_email_error": payment.receipt_last_error or None,
         }
     )
 

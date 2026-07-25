@@ -527,6 +527,30 @@ class Payment(models.Model):
         blank=True,
     )
 
+    receipt_delivery_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('not_sent', 'Not Sent'),
+            ('sent', 'Sent'),
+            ('failed', 'Failed'),
+        ],
+        default='not_sent',
+    )
+
+    receipt_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    receipt_last_attempt_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    receipt_last_error = models.TextField(
+        blank=True,
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
     )
