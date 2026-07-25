@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import apiClient from "@/lib/api-client";
+import DashboardLayout from "@/components/layout/DashboardLayout";
 
 function money(value, currency = "USD") {
   const amount = Number(value || 0);

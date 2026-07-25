@@ -48,10 +48,10 @@ export default function SubscriptionPage() {
           <p className="text-sm text-gray-500 mt-1">
             Current Plan:{" "}
             <Badge variant="warning">
-              {subscription.subscription_plan?.toUpperCase()}
+              {subscription?.subscription_plan?.toUpperCase() || "NONE"}
             </Badge>
-            {subscription.subscription_plan === "trial" &&
-              subscription.days_left > 0 && (
+            {subscription?.subscription_plan === "trial" &&
+              subscription?.days_left > 0 && (
                 <span className="ml-2 text-orange-600">
                   ({subscription.days_left} days left in trial)
                 </span>
@@ -97,15 +97,19 @@ export default function SubscriptionPage() {
                 fullWidth
                 variant={plan.popular ? "primary" : "outline"}
                 disabled={
-                  subscription.subscription_plan === plan.id ||
+                  (subscription?.subscription_plan &&
+                    subscription.subscription_plan !== "none" &&
+                    subscription.subscription_plan === plan.id) ||
                   !!redirectingPlan
                 }
                 isLoading={redirectingPlan === plan.id}
                 onClick={() => handleUpgrade(plan.id)}
               >
-                {subscription.subscription_plan === plan.id
+                {subscription?.subscription_plan &&
+                subscription.subscription_plan !== "none" &&
+                subscription.subscription_plan === plan.id
                   ? "Current Plan"
-                  : "Upgrade"}
+                  : "Select Plan"}
               </Button>
             </Card>
           ))}
