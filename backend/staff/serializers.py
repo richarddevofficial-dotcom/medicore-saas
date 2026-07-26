@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.utils.crypto import get_random_string
 from .models import StaffProfile
 
 class UserSerializer(serializers.ModelSerializer):
@@ -26,7 +27,7 @@ class StaffCreateSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(write_only=True)
     last_name = serializers.CharField(write_only=True)
     email = serializers.EmailField(write_only=True)
-    password = serializers.CharField(write_only=True, min_length=6)
+    password = serializers.CharField(write_only=True, min_length=6, required=False, allow_blank=True)
     department = serializers.IntegerField(required=False, allow_null=True)
     
     class Meta:
@@ -41,7 +42,7 @@ class StaffCreateSerializer(serializers.ModelSerializer):
         first_name = validated_data.pop('first_name')
         last_name = validated_data.pop('last_name')
         email = validated_data.pop('email')
-        password = validated_data.pop('password')
+        password = validated_data.pop('password', None) or get_random_string(16)
         
         # Handle empty department
         department = validated_data.pop('department', None)

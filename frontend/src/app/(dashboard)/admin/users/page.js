@@ -74,7 +74,6 @@ export default function ManageUsersPage() {
     first_name: "",
     last_name: "",
     email: "",
-    password: "",
     role: "receptionist",
     phone: "",
   });
@@ -147,7 +146,7 @@ export default function ManageUsersPage() {
 
   const handleAdd = async (e) => {
     e.preventDefault();
-    if (!form.first_name || !form.last_name || !form.email || !form.password) {
+    if (!form.first_name || !form.last_name || !form.email) {
       toast.error("Please fill all required fields");
       return;
     }
@@ -157,7 +156,6 @@ export default function ManageUsersPage() {
       first_name: "",
       last_name: "",
       email: "",
-      password: "",
       role: "receptionist",
       phone: "",
     });
@@ -355,6 +353,9 @@ export default function ManageUsersPage() {
             </>
           }
         >
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+            A password reset link will be sent to the user&apos;s email address.
+          </div>
           <form className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Input
@@ -379,13 +380,6 @@ export default function ManageUsersPage() {
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              required
-            />
-            <Input
-              label="Password *"
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
               required
             />
             <Select
