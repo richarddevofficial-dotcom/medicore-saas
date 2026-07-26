@@ -571,6 +571,7 @@ export default function Sidebar({
   branding,
 }) {
   const [pathname, setPathname] = useState("");
+  const [search, setSearch] = useState("");
   const [role, setRole] = useState("admin");
   const [expandedSections, setExpandedSections] = useState({});
   const [logoIndex, setLogoIndex] = useState(0);
@@ -587,7 +588,10 @@ export default function Sidebar({
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const updatePathname = () => setPathname(window.location.pathname || "");
+    const updatePathname = () => {
+      setPathname(window.location.pathname || "");
+      setSearch(window.location.search || "");
+    };
     updatePathname();
 
     window.addEventListener("popstate", updatePathname);
@@ -682,17 +686,28 @@ export default function Sidebar({
             {(collapsed || expandedSections[section.section]) && (
               <ul className="space-y-1">
                 {section.items.map((item) => {
-                  const itemPath = item.href.split("?")[0];
+                  const itemBase = item.href.split("?")[0];
+                  const itemQuery = item.href.includes("?")
+                    ? item.href.slice(item.href.indexOf("?"))
+                    : "";
 
-                  // Only highlight exact match or exact child routes
-                  const isActive = pathname === itemPath;
+                  // If the nav item has query params, match both path AND query
+                  // Otherwise just match the base path
+                  const isActive = itemQuery
+                    ? pathname === itemBase && search === itemQuery
+                    : pathname === itemBase && !search;
                   const Icon = item.icon;
                   return (
                     <li key={item.name}>
                       <Link
                         href={item.href}
                         onClick={() => {
-                          setPathname(item.href);
+                          setPathname(item.href.split("?")[0]);
+                          setSearch(
+                            item.href.includes("?")
+                              ? item.href.slice(item.href.indexOf("?"))
+                              : "",
+                          );
                           onCloseMobile?.();
                         }}
                         className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${isActive ? "bg-orange-500/20 text-orange-400" : "text-gray-400 hover:text-white hover:bg-white/5"}`}
