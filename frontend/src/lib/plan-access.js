@@ -52,6 +52,21 @@ const PRO_ROUTE_PATTERNS = [
   "/admin/reports/*",
   "/admin/inventory",
   "/admin/inventory/*",
+  // Finance module (Professional and above)
+  "/finance",
+  "/finance/*",
+  "/finance/budgets",
+  "/finance/budgets/*",
+  "/finance/expenses",
+  "/finance/expenses/*",
+  "/finance/payroll",
+  "/finance/payroll/*",
+  "/finance/payroll-config",
+  "/finance/payroll-config/*",
+  "/finance/accounting",
+  "/finance/accounting/*",
+  "/finance/reports",
+  "/finance/reports/*",
 ];
 
 const ENTERPRISE_ROUTE_PATTERNS = [
