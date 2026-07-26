@@ -115,80 +115,23 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <AdminBackButton />
-            <h1 className="text-2xl font-bold">Settings</h1>
+            <div>
+              <h1 className="text-2xl font-bold">Settings</h1>
+              <p className="text-sm text-gray-500 mt-1">
+                For hospital branding & domain settings, visit{" "}
+                <a
+                  href="/admin/settings"
+                  className="text-orange-500 hover:underline"
+                >
+                  Admin Settings
+                </a>
+                .
+              </p>
+            </div>
           </div>
-          <Button icon={Save} onClick={handleSave} isLoading={saving}>
-            Save Changes
-          </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <div className="flex items-center gap-3 mb-4">
-              <Building2 className="h-5 w-5 text-orange-500" />
-              <h2 className="font-semibold">Hospital Information</h2>
-            </div>
-            <div className="space-y-4">
-              <Input
-                label="Hospital Name"
-                value={settings.name}
-                onChange={(e) =>
-                  setSettings({ ...settings, name: e.target.value })
-                }
-              />
-              <Input
-                label="Email"
-                type="email"
-                value={settings.email}
-                onChange={(e) =>
-                  setSettings({ ...settings, email: e.target.value })
-                }
-              />
-              <Input
-                label="Phone"
-                value={settings.phone}
-                onChange={(e) =>
-                  setSettings({ ...settings, phone: e.target.value })
-                }
-              />
-              <Input
-                label="Address"
-                value={settings.address}
-                onChange={(e) =>
-                  setSettings({ ...settings, address: e.target.value })
-                }
-              />
-              <div className="grid grid-cols-2 gap-4">
-                <Input
-                  label="City"
-                  value={settings.city}
-                  onChange={(e) =>
-                    setSettings({ ...settings, city: e.target.value })
-                  }
-                />
-                <Input
-                  label="State"
-                  value={settings.state}
-                  onChange={(e) =>
-                    setSettings({ ...settings, state: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-center gap-3 mb-4">
-              <Shield className="h-5 w-5 text-orange-500" />
-              <h2 className="font-semibold">System Preferences</h2>
-            </div>
-            <div className="space-y-4">
-              <Input label="Currency" value="SSP" disabled />
-              <Input label="Timezone" value="Africa/Juba" disabled />
-              <Input label="Language" value="English" disabled />
-            </div>
-          </Card>
-
           <Card>
             <div className="flex items-center gap-3 mb-4">
               <Bell className="h-5 w-5 text-orange-500" />

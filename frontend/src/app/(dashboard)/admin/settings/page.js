@@ -19,6 +19,23 @@ export default function SettingsPage() {
   const [domainSetupLoading, setDomainSetupLoading] = useState(false);
   const [domainVerifyLoading, setDomainVerifyLoading] = useState(false);
   const [domainVerification, setDomainVerification] = useState(null);
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState("");
+
+  const handleLogoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Logo must be under 2MB");
+      return;
+    }
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+  };
 
   const [settings, setSettings] = useState({
     name: "",
@@ -60,7 +77,9 @@ export default function SettingsPage() {
             domain_last_checked_at: data.domain_last_checked_at || null,
             platform_subdomain: data.platform_subdomain || "",
           });
-
+          if (data.logo_url || data.logo) {
+            setLogoPreview(data.logo_url || data.logo || "");
+          }
           if (data.custom_domain && data.domain_verification_token) {
             setDomainVerification({
               type: "dns-txt",
@@ -82,13 +101,21 @@ export default function SettingsPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await apiClient.put("/hospitals/settings/", {
-        ...settings,
-        primary_color: settings.primary_color,
-        secondary_color: settings.secondary_color,
-        custom_domain: settings.custom_domain,
-      });
+      let payload;
+      let headers = {};
+      if (logoFile) {
+        payload = new FormData();
+        Object.entries(settings).forEach(([k, v]) => {
+          if (v !== null && v !== undefined) payload.append(k, v);
+        });
+        payload.append("logo", logoFile);
+        headers["Content-Type"] = "multipart/form-data";
+      } else {
+        payload = { ...settings };
+      }
+      await apiClient.put("/hospitals/settings/", payload, { headers });
       await queryClient.invalidateQueries({ queryKey: ["hospital-branding"] });
+      setLogoFile(null);
       toast.success("Settings saved!");
 
       // Refresh local settings so domain status/token UI stays in sync.
@@ -214,6 +241,46 @@ export default function SettingsPage() {
         </div>
         <Card>
           <h2 className="font-semibold mb-4">🎨 White Labeling / Branding</h2>
+          {/* Logo Upload */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Hospital Logo
+            </label>
+            <div className="flex items-center gap-4">
+              <div className="h-20 w-20 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-gray-50">
+                {logoPreview ? (
+                  <img
+                    src={logoPreview}
+                    alt="Logo"
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  <span className="text-xs text-gray-400 text-center px-1">
+                    No logo
+                  </span>
+                )}
+              </div>
+              <div>
+                <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  Upload Logo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleLogoChange}
+                  />
+                </label>
+                <p className="text-xs text-gray-400 mt-1">
+                  PNG, JPG up to 2MB. Recommended: 200×200px
+                </p>
+                {logoFile && (
+                  <p className="text-xs text-green-600 mt-1">
+                    New logo selected: {logoFile.name}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
