@@ -33,6 +33,10 @@ import {
   PieChart,
   Sliders,
 } from "lucide-react";
+import {
+  filterNavigationByPlan,
+  getStoredHospitalPlan,
+} from "@/lib/plan-access";
 
 const navigationByRole = {
   admin: [
@@ -570,6 +574,7 @@ export default function Sidebar({
   const [role, setRole] = useState("admin");
   const [expandedSections, setExpandedSections] = useState({});
   const [logoIndex, setLogoIndex] = useState(0);
+  const [subscriptionPlan, setSubscriptionPlan] = useState("trial");
 
   const logoSources = [
     branding?.logoUrl,
@@ -595,6 +600,8 @@ export default function Sidebar({
   useEffect(() => {
     const storedRole = localStorage.getItem("role");
     if (storedRole) setRole(storedRole);
+    const plan = getStoredHospitalPlan();
+    setSubscriptionPlan(plan);
     const nav = navigationByRole[storedRole] || navigationByRole.admin;
     const sections = {};
     nav.forEach((s) => (sections[s.section] = true));
@@ -609,7 +616,11 @@ export default function Sidebar({
     section.items.some((item) => item.href === "/hr"),
   );
 
-  const navigation = baseNavigation;
+  // Filter navigation by subscription plan - only for regular admins and roles (not super_admin)
+  const isSuperAdmin = role === "super_admin" || role === "superadmin";
+  const navigation = isSuperAdmin
+    ? baseNavigation
+    : filterNavigationByPlan(baseNavigation, subscriptionPlan);
 
   return (
     <aside
