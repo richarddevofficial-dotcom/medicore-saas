@@ -194,22 +194,10 @@ export default function SettingsPage() {
               <Bell className="h-5 w-5 text-orange-500" />
               <h2 className="font-semibold">Notifications</h2>
             </div>
-            <div className="space-y-3">
-              {[
-                "Email notifications",
-                "SMS alerts",
-                "Low stock alerts",
-                "Appointment reminders",
-              ].map((item) => (
-                <label
-                  key={item}
-                  className="flex items-center justify-between py-2 border-b cursor-pointer"
-                >
-                  <span className="text-sm">{item}</span>
-                  <input type="checkbox" defaultChecked className="rounded" />
-                </label>
-              ))}
-            </div>
+            <p className="text-sm text-gray-500">
+              Notification preferences are managed by your system administrator.
+              Contact support to configure email or SMS alerts.
+            </p>
           </Card>
 
           <Card>
@@ -220,7 +208,7 @@ export default function SettingsPage() {
             <div className="space-y-4">
               <div className="flex justify-between py-2 border-b">
                 <span className="text-sm">Session Timeout</span>
-                <span className="font-medium">30 minutes</span>
+                <span className="font-medium">5 minutes (idle)</span>
               </div>
               <div className="flex justify-between py-2 border-b">
                 <span className="text-sm">Max Login Attempts</span>
