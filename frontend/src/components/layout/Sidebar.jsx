@@ -32,6 +32,7 @@ import {
   BookOpen,
   PieChart,
   Sliders,
+  BadgeCheck,
 } from "lucide-react";
 import {
   filterNavigationByPlan,
@@ -204,7 +205,7 @@ const navigationByRole = {
         { name: "Service Fees", href: "/admin/services", icon: Receipt },
         { name: "Laboratory", href: "/admin/lab", icon: FlaskConical },
         { name: "Imaging", href: "/admin/imaging", icon: Camera },
-        { name: "Insurance", href: "/admin/insurance", icon: Shield },
+        { name: "Insurance", href: "/admin/insurance", icon: BadgeCheck },
         { name: "Inventory", href: "/admin/inventory", icon: Package },
         { name: "Bed Management", href: "/admin/beds", icon: Bed },
       ],
@@ -420,7 +421,7 @@ const navigationByRole = {
       items: [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
         { name: "Billing", href: "/billing", icon: DollarSign },
-        { name: "Insurance", href: "/admin/insurance", icon: Shield },
+        { name: "Insurance", href: "/admin/insurance", icon: BadgeCheck },
         { name: "Reports", href: "/admin/reports", icon: FileText },
       ],
     },
@@ -545,7 +546,7 @@ const navigationByRole = {
       items: [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
         { name: "Billing", href: "/billing", icon: DollarSign },
-        { name: "Insurance", href: "/admin/insurance", icon: Shield },
+        { name: "Insurance", href: "/admin/insurance", icon: BadgeCheck },
         { name: "Reports", href: "/admin/reports", icon: FileText },
       ],
     },
