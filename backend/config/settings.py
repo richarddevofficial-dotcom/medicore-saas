@@ -203,6 +203,14 @@ CSRF_TRUSTED_ORIGINS = _env_list(
     'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002' if DEBUG else 'https://medicore.com,https://www.medicore.com,https://app.medicore.com'
 )
 
+# ✅ CSRF Configuration (Enhanced Security)
+CSRF_USE_SESSIONS = False  # Use cookies instead (more secure)
+CSRF_COOKIE_SECURE = _env_bool('CSRF_COOKIE_SECURE', not DEBUG)  # HTTPS only
+CSRF_COOKIE_HTTP_ONLY = False  # JavaScript needs to read for fetch requests (with credentials)
+CSRF_COOKIE_SAMESITE = 'Lax'  # CSRF attack prevention
+CSRF_COOKIE_AGE = 31449600  # 1 year
+CSRF_COOKIE_NAME = 'csrftoken'  # Standard name (Next.js expects this)
+
 # Allow tenant subdomains (for multi-tenant SaaS)
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r'^https://([a-zA-Z0-9-]+\.)?medicorecloud\.com$' if not DEBUG else None

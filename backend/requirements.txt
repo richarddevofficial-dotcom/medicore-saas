@@ -20,3 +20,5 @@ openpyxl==3.1.5
 pandas==3.0.3
 reportlab==5.0.0
 requests>=2.32.0
+cryptography>=41.0.0
+bleach>=6.1.0

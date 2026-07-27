@@ -1,6 +1,5 @@
 from django.contrib import admin
 from django.urls import path, include
-import random
 import secrets
 from datetime import timedelta
 from rest_framework.routers import DefaultRouter
@@ -54,6 +53,7 @@ from config.superadmin_views import (
     list_notification_failures,
     retry_failed_receipt_jobs,
 )
+from config.csrf_views import get_csrf_token, csrf_failure
 
 SYSTEM_SUPER_ADMIN_EMAIL = 'drichigroup@gmail.com'
 OTP_RESEND_COOLDOWN_SECONDS = 60
@@ -536,7 +536,8 @@ def login_initiate(request):
 
     LoginOTP.objects.filter(user=user, is_used=False, expires_at__gt=now).update(is_used=True)
 
-    otp_code = f"{random.randint(100000, 999999)}"
+    # Use cryptographically secure random for OTP (not random.randint which is predictable)
+    otp_code = f"{secrets.randbelow(900000) + 100000}"
     otp = LoginOTP.objects.create(
         user=user,
         channel='email',
@@ -937,6 +938,7 @@ urlpatterns = [
     # JWT Token Endpoints with Rate Limiting
     path('api/v1/token/', ThrottledTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/v1/token/refresh/', ThrottledTokenRefreshView.as_view(), name='token_refresh'),
+    path('api/v1/csrf-token/', get_csrf_token, name='csrf-token'),  # 🔒 CSRF token endpoint
     
     # Custom Login
     path('api/v1/hospitals/login/', login_view, name='login'),

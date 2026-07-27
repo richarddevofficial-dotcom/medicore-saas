@@ -2,6 +2,7 @@ from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
+from config.encrypted_fields import EncryptedCharField
 
 
 class TimestampedModel(models.Model):
@@ -105,8 +106,8 @@ class Employee(TimestampedModel):
         blank=True,
     )
     date_of_birth = models.DateField(null=True, blank=True)
-    national_id = models.CharField(max_length=100, blank=True)
-    passport_number = models.CharField(max_length=100, blank=True)
+    national_id = EncryptedCharField(max_length=500, blank=True)  # 🔒 Encrypted
+    passport_number = EncryptedCharField(max_length=500, blank=True)  # 🔒 Encrypted
 
     email = models.EmailField(blank=True)
     phone = models.CharField(max_length=30, blank=True)
@@ -151,8 +152,8 @@ class Employee(TimestampedModel):
 
     bank_name = models.CharField(max_length=150, blank=True)
     bank_account_name = models.CharField(max_length=150, blank=True)
-    bank_account_number = models.CharField(max_length=100, blank=True)
-    tax_number = models.CharField(max_length=100, blank=True)
+    bank_account_number = EncryptedCharField(max_length=500, blank=True)  # 🔒 Encrypted
+    tax_number = EncryptedCharField(max_length=500, blank=True)  # 🔒 Encrypted
 
     emergency_contact_name = models.CharField(max_length=150, blank=True)
     emergency_contact_phone = models.CharField(max_length=30, blank=True)
