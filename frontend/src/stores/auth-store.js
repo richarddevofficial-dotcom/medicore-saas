@@ -3,14 +3,18 @@ import apiClient from "@/lib/api-client";
 
 const useAuthStore = create((set, get) => ({
   user: null,
-  token: null,
   hospital: null,
   isAuthenticated: false,
   isLoading: false,
 
-  login: (token, user, hospital) => {
+  login: (user, hospital) => {
+    // ✅ SECURITY: Token is now in httpOnly cookie, not stored in frontend
+    // Only store user info and hospital info for UI purposes
+    localStorage.setItem("user", JSON.stringify(user));
+    localStorage.setItem("hospital", JSON.stringify(hospital));
+    localStorage.setItem("role", user?.role || "");
+
     set({
-      token,
       user,
       hospital,
       isAuthenticated: true,
@@ -27,24 +31,30 @@ const useAuthStore = create((set, get) => ({
         .catch(() => {});
     }
 
-    localStorage.removeItem("token");
+    // ✅ SECURITY: Don't remove token from localStorage (it's a httpOnly cookie now)
+    // Only remove user/hospital/device info
     localStorage.removeItem("user");
     localStorage.removeItem("hospital");
     localStorage.removeItem("trusted_device_token");
+    localStorage.removeItem("role");
+    localStorage.removeItem("impersonating_hospital_id");
+    sessionStorage.removeItem("impersonating_hospital_id");
+    sessionStorage.removeItem("super_admin_state");
+
     set({
       user: null,
-      token: null,
       hospital: null,
       isAuthenticated: false,
     });
   },
 
   checkAuth: () => {
-    const token = localStorage.getItem("token");
+    // ✅ SECURITY: Check for user in localStorage instead of token
+    // Token is automatically sent by axios via httpOnly cookie
     const user = localStorage.getItem("user");
     const hospital = localStorage.getItem("hospital");
 
-    if (token && user) {
+    if (user) {
       let parsedUser = null;
       let parsedHospital = null;
 
@@ -61,12 +71,11 @@ const useAuthStore = create((set, get) => ({
       }
 
       set({
-        token,
         user: parsedUser,
         hospital: parsedHospital,
-        isAuthenticated: Boolean(token && parsedUser),
+        isAuthenticated: Boolean(parsedUser),
       });
-      return Boolean(token && parsedUser);
+      return Boolean(parsedUser);
     }
     return false;
   },

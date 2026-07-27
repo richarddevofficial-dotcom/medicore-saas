@@ -11,17 +11,16 @@ const apiClient = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  withCredentials: true,
+  withCredentials: true, // ✅ CRITICAL: Enables httpOnly cookie sending
 });
 
-// Add token to requests
+// ✅ SECURITY: Tokens are now in httpOnly cookies (not localStorage)
+// This protects against XSS attacks - JS cannot read the token
+// Axios automatically sends cookies with requests when withCredentials: true
+
+// Add custom headers for super admin impersonation
 apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
-    const token = localStorage.getItem("token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
     const impersonatingHospitalId = sessionStorage.getItem(
       "impersonating_hospital_id",
     );

@@ -420,6 +420,21 @@ def password_change(request):
     return Response({'success': True, 'message': 'Password changed successfully.'}, status=200)
 
 
+# Throttled Token Views (with rate limiting)
+from config.throttles import LoginThrottle, RefreshTokenThrottle
+from rest_framework.decorators import throttle_classes
+
+
+class ThrottledTokenObtainPairView(TokenObtainPairView):
+    """Token endpoint with login rate limiting (5 attempts/minute per IP)"""
+    throttle_classes = [LoginThrottle]
+
+
+class ThrottledTokenRefreshView(TokenRefreshView):
+    """Token refresh endpoint with rate limiting (10 attempts/minute per user)"""
+    throttle_classes = [RefreshTokenThrottle]
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
@@ -919,9 +934,9 @@ urlpatterns = [
     ),
     path('admin/', admin.site.urls),
     
-    # JWT Token Endpoints (Add these for proper JWT support)
-    path('api/v1/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/v1/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    # JWT Token Endpoints with Rate Limiting
+    path('api/v1/token/', ThrottledTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/v1/token/refresh/', ThrottledTokenRefreshView.as_view(), name='token_refresh'),
     
     # Custom Login
     path('api/v1/hospitals/login/', login_view, name='login'),

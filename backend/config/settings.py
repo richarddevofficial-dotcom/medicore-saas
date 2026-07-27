@@ -61,9 +61,14 @@ def _database_from_url(database_url):
     }
 
 
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-dev-only-change-me-please-12345')
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    raise ValueError(
+        "DJANGO_SECRET_KEY environment variable is required. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(50))\""
+    )
 
-DEBUG = _env_bool('DEBUG', True)
+DEBUG = _env_bool('DEBUG', False)  # Default to False for security
 
 ALLOWED_HOSTS = _env_list('ALLOWED_HOSTS', '127.0.0.1,localhost')
 
@@ -75,6 +80,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework_simplejwt.token_blacklist',  # Token rotation & blacklist
     'corsheaders',
     'django_filters',
     'import_export',
@@ -145,7 +151,7 @@ if DATABASE_URL:
     if parsed_db:
         DATABASES['default'] = parsed_db
 
-ENABLE_PASSWORD_VALIDATORS = _env_bool('ENABLE_PASSWORD_VALIDATORS', not DEBUG)
+ENABLE_PASSWORD_VALIDATORS = True  # Always enable (critical for security)
 AUTH_PASSWORD_VALIDATORS = (
     [
         {
@@ -153,7 +159,7 @@ AUTH_PASSWORD_VALIDATORS = (
         },
         {
             'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-            'OPTIONS': {'min_length': 8},
+            'OPTIONS': {'min_length': 12},  # Increased from 8 to 12
         },
         {
             'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -178,22 +184,61 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOW_ALL_ORIGINS = _env_bool('CORS_ALLOW_ALL_ORIGINS', DEBUG)
+# ✅ SECURITY: Never allow all CORS origins
+CORS_ALLOW_ALL_ORIGINS = False
+
+# Whitelist specific frontend origins
 CORS_ALLOWED_ORIGINS = _env_list(
     'CORS_ALLOWED_ORIGINS',
-    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002',
+    # Dev: localhost, Prod: medicorecloud.com domains
+    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002' if DEBUG else 'https://medicore.com,https://www.medicore.com,https://app.medicore.com'
 )
+
 CORS_ALLOW_CREDENTIALS = True
+
+# Whitelist CSRF trusted origins
 CSRF_TRUSTED_ORIGINS = _env_list(
     'CSRF_TRUSTED_ORIGINS',
-    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002',
+    # Dev: localhost, Prod: medicorecloud.com domains
+    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002' if DEBUG else 'https://medicore.com,https://www.medicore.com,https://app.medicore.com'
 )
+
+# Allow tenant subdomains (for multi-tenant SaaS)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r'^https://([a-zA-Z0-9-]+\.)?medicorecloud\.com$' if not DEBUG else None
+]
+CORS_ALLOWED_ORIGIN_REGEXES = [r for r in CORS_ALLOWED_ORIGIN_REGEXES if r]  # Remove None values
 
 if not DEBUG:
     SECURE_SSL_REDIRECT = _env_bool('SECURE_SSL_REDIRECT', True)
     SESSION_COOKIE_SECURE = _env_bool('SESSION_COOKIE_SECURE', True)
     CSRF_COOKIE_SECURE = _env_bool('CSRF_COOKIE_SECURE', True)
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    
+    # ✅ SECURITY HEADERS
+    # HSTS: Force HTTPS for all future requests (1 year)
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # CSP: Prevent XSS by restricting script sources
+    SECURE_CONTENT_SECURITY_POLICY = {
+        'default-src': ("'self'",),
+        'script-src': ("'self'", "'unsafe-inline'"),  # NextJS requires unsafe-inline
+        'style-src': ("'self'", "'unsafe-inline'"),   # CSS inline needed
+        'img-src': ("'self'", "data:", "https:"),     # Allow data URIs and HTTPS images
+        'font-src': ("'self'", "https:"),             # Google Fonts, etc
+        'connect-src': ("'self'", "https:"),          # API calls HTTPS only
+        'frame-ancestors': ("'none'",),               # Prevent clickjacking (X-Frame-Options: DENY)
+    }
+    
+    # XSS Protection
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True  # Prevent MIME sniffing
+    X_FRAME_OPTIONS = "DENY"             # Prevent clickjacking
+    
+    # Referrer Policy: Don't leak URLs in referer headers
+    REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -204,13 +249,35 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 100,
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',     # Anonymous users: 100 requests/hour
+        'user': '1000/hour',    # Authenticated users: 1000/hour
+        'login': '5/minute',    # Login attempts: 5/minute per IP
+        'password_reset': '3/hour',  # Password resets: 3/hour per IP
+        'refresh_token': '10/minute',  # Token refresh: 10/minute per user
+    }
 }
 
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),  # Short-lived access tokens
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),     # Long-lived refresh tokens
     'AUTH_HEADER_TYPES': ('Bearer',),
+    
+    # Store tokens in httpOnly cookies instead of localStorage
+    'AUTH_COOKIE': 'access_token',
+    'AUTH_COOKIE_SECURE': not DEBUG,  # HTTPS only in production
+    'AUTH_COOKIE_HTTP_ONLY': True,    # JS cannot access (prevents XSS theft)
+    'AUTH_COOKIE_SAMESITE': 'Lax',    # CSRF protection
+    'AUTH_COOKIE_DOMAIN': os.getenv('AUTH_COOKIE_DOMAIN', None),  # Set for cross-subdomain
+    
+    # Refresh token rotation (invalidate old tokens after refresh)
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
 }
 
 # Email settings

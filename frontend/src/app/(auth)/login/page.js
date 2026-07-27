@@ -65,7 +65,8 @@ export default function LoginPage() {
     if (data.trusted_device_token) {
       localStorage.setItem("trusted_device_token", data.trusted_device_token);
     }
-    localStorage.setItem("token", data.token);
+    // ✅ SECURITY: Do NOT store token in localStorage
+    // Token is now in httpOnly cookie - axios sends it automatically
     localStorage.setItem("user", JSON.stringify(data.user));
     if (data.hospital) {
       localStorage.setItem("hospital", JSON.stringify(data.hospital));
@@ -74,7 +75,9 @@ export default function LoginPage() {
     }
     localStorage.setItem("role", data.user.role);
     localStorage.setItem("is_superuser", data.user?.is_superuser || false);
-    login(data.token, data.user, data.hospital || null);
+
+    // Pass user and hospital only (not token)
+    login(data.user, data.hospital || null);
 
     if (data.user.role === "doctor") router.push("/doctors/queue");
     else if (data.user.role === "receptionist") router.push("/reception");
