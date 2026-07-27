@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hospital Patient Journey - Registration to Pharmacy</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 14px;
+        }
+
+        .flow-diagram {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .stage {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .stage-number {
+            flex-shrink: 0;
+            width: 50px;
+            height: 50px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .stage-content {
+            flex: 1;
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .stage-content h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .stage-content p {
+            color: #666;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .role {
+            display: inline-block;
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 10px;
+            margin-top: 8px;
+        }
+
+        .payment-gate {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+        }
+
+        .payment-gate .stage-number {
+            background: #ff9800;
+        }
+
+        .payment-gate h3 {
+            color: #ff6f00;
+        }
+
+        .arrow {
+            text-align: center;
+            font-size: 24px;
+            color: #667eea;
+            margin: -10px 0;
+        }
+
+        .choice-box {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .choice-box h4 {
+            color: #2e7d32;
+            margin-bottom: 10px;
+        }
+
+        .options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .option {
+            background: white;
+            border: 2px solid #4caf50;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .option h5 {
+            color: #2e7d32;
+            margin-bottom: 5px;
+        }
+
+        .option p {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .legend {
+            margin-top: 40px;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+
+        .legend h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .legend-box {
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .legend-standard {
+            background: #667eea;
+        }
+
+        .legend-payment {
+            background: #ff9800;
+        }
+
+        .legend-choice {
+            background: #4caf50;
+        }
+
+        .download-section {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+        }
+
+        .download-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+            margin: 5px;
+        }
+
+        .download-btn:hover {
+            background: #764ba2;
+        }
+
+        .print-btn {
+            background: #4caf50;
+        }
+
+        .print-btn:hover {
+            background: #388e3c;
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+
+            .download-section {
+                display: none;
+            }
+
+            .container {
+                box-shadow: none;
+                padding: 20px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .options {
+                grid-template-columns: 1fr;
+            }
+
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 22px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🏥 Hospital Patient Journey</h1>
+        <p class="subtitle">Complete workflow from Registration to Pharmacy with Payment Gates</p>
+
+        <div class="flow-diagram">
+            <!-- Stage 1: Reception -->
+            <div class="stage">
+                <div class="stage-number">1</div>
+                <div class="stage-content">
+                    <h3>👤 Patient Arrives at Reception</h3>
+                    <p><strong>What happens:</strong> Patient comes to hospital and goes to reception desk</p>
+                    <p><strong>Actions:</strong></p>
+                    <ul style="margin-left: 20px; color: #666; font-size: 14px;">
+                        <li>Receive patient & welcome</li>
+                        <li>Get patient information</li>
+                        <li>Check if new or existing patient</li>
+                    </ul>
+                    <span class="role">👤 Receptionist / Admin</span>
+                </div>
+            </div>
+
+            <div class="arrow">⬇️</div>
+
+            <!-- Stage 2: Registration -->
+            <div class="stage">
+                <div class="stage-number">2</div>
+                <div class="stage-content">
+                    <h3>📋 Patient Registration</h3>
+                    <p><strong>What happens:</strong> Create patient record in system</p>
+                    <p><strong>Data Collected:</strong></p>
+                    <ul style="margin-left: 20px; color: #666; font-size: 14px;">
+                        <li>Full name, age, gender</li>
+                        <li>Phone, address</li>
+                        <li>Insurance details & policy number</li>
+                        <li>Medical history</li>
+                        <li>Assign MRN (Medical Record Number)</li>
+                    </ul>
+                    <span class="role">👤 Receptionist / Admin</span>
+                </div>
+            </div>
+
+            <div class="arrow">⬇️</div>
+
+            <!-- Stage 3: Payment Gate 1 -->
+            <div class="stage">
+                <div class="stage-number">💰</div>
+                <div class="stage-content payment-gate">
+                    <h3>💳 Payment 1: Consultation Fee</h3>
+                    <p><strong>⚠️ PAYMENT REQUIRED BEFORE CONSULTATION</strong></p>
+                    <p><strong>Amount:</strong> Doctor consultation fee (e.g., $50)</p>
+                    <p><strong>Payment Methods:</strong></p>
+                    <ul style="margin-left: 20px; color: #666; font-size: 14px;">
+                        <li>💵 Cash</li>
+                        <li>💳 Credit/Debit Card</li>
+                        <li>🏦 Insurance Coverage (if applicable)</li>
+                    </ul>
+                    <p style="margin-top: 10px; font-weight: 600; color: #ff6f00;">✓ Once payment confirmed → Proceed to
+                        Doctor</p>
+                    <span class="role">💰 Cashier / Finance</span>
+                </div>
+            </div>
+
+            <div class="arrow">⬇️</div>
+
+            <!-- Stage 4: Doctor Consultation -->
+            <div class="stage">
+                <div class="stage-number">3</div>
+                <div class="stage-content">
+                    <h3>👨‍⚕️ Doctor Consultation</h3>
+                    <p><strong>What happens:</strong> Patient sees doctor for evaluation</p>
+                    <p><strong>Doctor Actions:</strong></p>
+                    <ul style="margin-left: 20px; color: #666; font-size: 14px;">
+                        <li>Review patient history</li>
+                        <li>Listen to complaints</li>
+                        <li>Physical examination</li>
+                        <li>Take vital signs (BP, temp, etc.)</li>
+                        <li>Make initial diagnosis</li>
+                    </ul>
+                    <span class="role">👨‍⚕️ Doctor</span>
+                </div>
+            </div>
+
+            <div class="arrow">⬇️</div>
+
+            <!-- Stage 5: Doctor's Decision -->
+            <div class="choice-box">
+                <h4>🔀 Doctor Decision: Further Investigation Needed?</h4>
+                <p style="margin-bottom: 15px; color: #666; font-size: 14px;">Doctor decides based on symptoms and
+                    examination</p>
+                <div class="options">
+                    <div class="option">
+                        <h5>🧪 Option A: Laboratory Tests</h5>
+                        <p>Blood tests, urine tests, chemistry panel</p>
+                    </div>
+                    <div class="option">
+                        <h5>📸 Option B: Imaging</h5>
+                        <p>X-ray, CT scan, Ultrasound</p>
+                    </div>
+                </div>
+                <p style="margin-top: 15px; text-align: center; color: #2e7d32; font-size: 12px; font-weight: 600;">
+                    👇 Or Both | Or Direct to Prescription 👇
+                </p>
+            </div>
+
+            <div class="arrow">⬇️</div>
+
+            <!-- Stage 6a: Lab Tests Branch -->
+            <div style="margin-left: 50px; border-left: 3px dashed #4caf50; padding-left: 30px;">
+                <div class="stage">
+                    <div class="stage-number" style="background: #4caf50;">4A</div>
+                    <div class="stage-content">
+                        <h3>🧪 Laboratory Tests (If Ordered)</h3>
+                        <p><strong>What happens:</strong> Patient gives blood sample for testing</p>
+                        <p><strong>Lab Tech Actions:</strong></p>
+                        <ul style="margin-left: 20px; color: #666; font-size: 14px;">
+                            <li>Call patient name</li>
+                            <li>Collect blood sample</li>
+                            <li>Perform tests (CBC, UA, Chemistry)</li>
+                            <li>Record results</li>
+                            <li>Send results to doctor (24-48 hours)</li>
+                        </ul>
+                        <span class="role">🧪 Lab Technician</span>
+                    </div>
+                </div>
+
+                <div class="arrow">⬇️</div>
+
+                <div class="stage">
+                    <div class="stage-number" style="background: #ff9800;">💰</div>
+                    <div class="stage-content payment-gate">
+                        <h3>💳 Payment 2: Lab Tests Fee</h3>
+                        <p><strong>⚠️ PAYMENT REQUIRED FOR LAB TESTS</strong></p>
+                        <p><strong>Amount:</strong> Lab test charges (varies by tests)</p>
+                        <span class="role">💰 Cashier / Finance</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stage 6b: Imaging Branch -->
+            <div style="margin-left: 50px; border-left: 3px dashed #4caf50; padding-left: 30px; margin-top: 20px;">
+                <div class="stage">
+                    <div class="stage-number" style="background: #4caf50;">4B</div>
+                    <div class="stage-content">
+                        <h3>📸 Imaging/Radiology (If Ordered)</h3>
+                        <p><strong>What happens:</strong> Patient gets X-ray, CT, or Ultrasound</p>
+                        <p><strong>Radiographer Actions:</strong></p>
+                        <ul style="margin-left: 20px; color: #666; font-size: 14px;">
+                            <li>Call patient name</li>
+                            <li>Position patient for imaging</li>
+                            <li>Perform X-ray / CT / Ultrasound</li>
+                            <li>Capture images</li>
+                            <li>Send images & report to doctor</li>
+                        </ul>
+                        <span class="role">📸 Radiographer</span>
+                    </div>
+                </div>
+
+                <div class="arrow">⬇️</div>
+
+                <div class="stage">
+                    <div class="stage-number" style="background: #ff9800;">💰</div>
+                    <div class="stage-content payment-gate">
+                        <h3>💳 Payment 3: Imaging Fee</h3>
+                        <p><strong>⚠️ PAYMENT REQUIRED FOR IMAGING</strong></p>
+                        <p><strong>Amount:</strong> Imaging charges (X-ray/CT/Ultrasound)</p>
+                        <span class="role">💰 Cashier / Finance</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="arrow" style="margin-left: 50px; margin-top: 30px;">⬇️ Results Back to Doctor ⬇️</div>
+
+            <!-- Stage 7: Doctor Reviews & Prescribes -->
+            <div class="stage">
+                <div class="stage-number">5</div>
+                <div class="stage-content">
+                    <h3>📋 Doctor Reviews & Prescribes Medicine</h3>
+                    <p><strong>What happens:</strong> Doctor reviews all test results and issues prescription</p>
+                    <p><strong>Doctor Actions:</strong></p>
+                    <ul style="margin-left: 20px; color: #666; font-size: 14px;">
+                        <li>Review lab results (if done)</li>
+                        <li>Review imaging (if done)</li>
+                        <li>Finalize diagnosis</li>
+                        <li>Select appropriate medicine</li>
+                        <li>Specify dosage (e.g., 500mg twice daily)</li>
+                        <li>Specify duration (e.g., 7 days)</li>
+                        <li>Send prescription to pharmacy</li>
+                    </ul>
+                    <span class="role">👨‍⚕️ Doctor</span>
+                </div>
+            </div>
+
+            <div class="arrow">⬇️</div>
+
+            <!-- Stage 8: Payment Gate 2 -->
+            <div class="stage">
+                <div class="stage-number">💰</div>
+                <div class="stage-content payment-gate">
+                    <h3>💳 Payment 4: Medicine Cost</h3>
+                    <p><strong>⚠️ PAYMENT REQUIRED BEFORE PHARMACY DISPENSES</strong></p>
+                    <p><strong>Amount:</strong> Cost of medicines (varies by prescription)</p>
+                    <p><strong>Price breakdown:</strong></p>
+                    <ul style="margin-left: 20px; color: #666; font-size: 14px;">
+                        <li>Medicine 1: $15</li>
+                        <li>Medicine 2: $20</li>
+                        <li>Packaging: $2</li>
+                    </ul>
+                    <p style="margin-top: 10px; font-weight: 600; color: #ff6f00;">✓ Once payment confirmed → Proceed to
+                        Pharmacy</p>
+                    <span class="role">💰 Cashier / Finance</span>
+                </div>
+            </div>
+
+            <div class="arrow">⬇️</div>
+
+            <!-- Stage 9: Pharmacy Dispensation -->
+            <div class="stage">
+                <div class="stage-number">6</div>
+                <div class="stage-content">
+                    <h3>🏥 Pharmacy Dispensation</h3>
+                    <p><strong>What happens:</strong> Pharmacist prepares and gives medicine to patient</p>
+                    <p><strong>Pharmacist Actions:</strong></p>
+                    <ul style="margin-left: 20px; color: #666; font-size: 14px;">
+                        <li>Receive prescription from doctor</li>
+                        <li>Verify prescription validity</li>
+                        <li>Check for drug interactions</li>
+                        <li>Check medicine availability & expiry</li>
+                        <li>Count correct quantity</li>
+                        <li>Label bottles with patient name</li>
+                        <li>Package medicines properly</li>
+                        <li>Provide usage instructions</li>
+                        <li>Hand package to patient</li>
+                    </ul>
+                    <span class="role">💊 Pharmacist</span>
+                </div>
+            </div>
+
+            <div class="arrow">⬇️</div>
+
+            <!-- Stage 10: Final Receipt -->
+            <div class="stage">
+                <div class="stage-number">7</div>
+                <div class="stage-content payment-gate">
+                    <h3>📄 Final Receipt & Summary</h3>
+                    <p><strong>Patient Receives:</strong></p>
+                    <ul style="margin-left: 20px; color: #666; font-size: 14px;">
+                        <li>✓ Medicines (in proper packaging)</li>
+                        <li>✓ Medicine instructions & warnings</li>
+                        <li>✓ Doctor's prescription copy</li>
+                        <li>✓ Lab results (if done)</li>
+                        <li>✓ Imaging report (if done)</li>
+                        <li>✓ Final itemized receipt</li>
+                    </ul>
+                    <p style="margin-top: 15px; color: #ff6f00; font-weight: 600;">Total Amount Paid: [Consultation +
+                        Lab + Imaging + Medicines]</p>
+                    <span class="role">💰 Finance</span>
+                </div>
+            </div>
+
+            <div class="arrow">⬇️</div>
+
+            <!-- Stage 11: Exit -->
+            <div class="stage">
+                <div class="stage-number">✓</div>
+                <div class="stage-content" style="background: #e8f5e9; border-left-color: #4caf50;">
+                    <h3>👋 Patient Leaves Hospital</h3>
+                    <p><strong>Journey Complete!</strong></p>
+                    <p>Patient follows medicine instructions at home and recovers.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="legend">
+            <h3>📊 Legend</h3>
+            <div class="legend-item">
+                <div class="legend-box legend-standard">1</div>
+                <span>Standard Process Stage</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box legend-payment">💰</div>
+                <span>Payment Required (MUST Pay Before Proceeding)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box legend-choice">🔀</div>
+                <span>Doctor's Decision Point (Multiple Paths)</span>
+            </div>
+        </div>
+
+        <!-- Total Cost Example -->
+        <div
+            style="margin-top: 30px; padding: 20px; background: #f0f4ff; border-radius: 8px; border-left: 4px solid #667eea;">
+            <h3 style="color: #333; margin-bottom: 15px;">💵 Typical Cost Breakdown Example</h3>
+            <table style="width: 100%; color: #666; font-size: 14px;">
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 10px;">1. Consultation Fee (Doctor)</td>
+                    <td style="text-align: right; padding: 10px; font-weight: 600;">$50</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 10px;">2. Lab Tests (Blood, Urine)</td>
+                    <td style="text-align: right; padding: 10px; font-weight: 600;">$75</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 10px;">3. Imaging (X-Ray)</td>
+                    <td style="text-align: right; padding: 10px; font-weight: 600;">$100</td>
+                </tr>
+                <tr style="border-bottom: 2px solid #667eea;">
+                    <td style="padding: 10px;">4. Medicines</td>
+                    <td style="text-align: right; padding: 10px; font-weight: 600;">$80</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; font-weight: 600; color: #333;">TOTAL COST</td>
+                    <td style="text-align: right; padding: 10px; font-weight: 700; color: #667eea; font-size: 16px;">
+                        $305</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- Download Section -->
+        <div class="download-section">
+            <h3 style="color: #333; margin-bottom: 15px;">⬇️ Download or Print This Guide</h3>
+            <button class="download-btn" onclick="downloadAsHTML()">📥 Download as HTML</button>
+            <button class="download-btn print-btn" onclick="window.print()">🖨️ Print to PDF</button>
+            <button class="download-btn" style="background: #1976d2;" onclick="copyToClipboard()">📋 Copy Link</button>
+        </div>
+    </div>
+
+    <script>
+        function downloadAsHTML() {
+            const element = document.documentElement;
+            const opt = {
+                margin: 10,
+                filename: 'Hospital-Patient-Journey.html',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+            };
+
+            // For HTML download
+            const html = element.outerHTML;
+            const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'Hospital-Patient-Journey.html';
+            link.click();
+        }
+
+        function copyToClipboard() {
+            const url = window.location.href;
+            navigator.clipboard.writeText(url).then(() => {
+                alert('✓ Link copied to clipboard!');
+            }).catch(() => {
+                alert('Could not copy link');
+            });
+        }
+
+        // Print styling
+        window.addEventListener('beforeprint', () => {
+            document.body.style.background = 'white';
+        });
+    </script>
+</body>
+
+</html>
