@@ -54,13 +54,15 @@ from config.superadmin_views import (
     retry_failed_receipt_jobs,
 )
 from config.csrf_views import get_csrf_token, csrf_failure
+from config.secure_tokens import SecureTokenGenerator
+from config.activity_monitor import ActivityMonitor
 
 SYSTEM_SUPER_ADMIN_EMAIL = 'drichigroup@gmail.com'
 OTP_RESEND_COOLDOWN_SECONDS = 60
-OTP_INITIATE_WINDOW_SECONDS = 15 * 60
+OTP_INITIATE_WINDOW_SECONDS = 5 * 60  # 🔒 Reduced from 15 to 5 minutes for tighter security
 OTP_INITIATE_IP_MAX_REQUESTS = 10
 OTP_INITIATE_ACCOUNT_MAX_REQUESTS = 5
-OTP_VERIFY_WINDOW_SECONDS = 15 * 60
+OTP_VERIFY_WINDOW_SECONDS = 5 * 60  # 🔒 Reduced from 15 to 5 minutes for tighter security
 OTP_VERIFY_IP_MAX_REQUESTS = 20
 OTP_VERIFY_SESSION_MAX_REQUESTS = 10
 TRUSTED_DEVICE_MAX_AGE_SECONDS = int(

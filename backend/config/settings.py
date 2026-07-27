@@ -267,6 +267,8 @@ REST_FRAMEWORK = {
         'login': '5/minute',    # Login attempts: 5/minute per IP
         'password_reset': '3/hour',  # Password resets: 3/hour per IP
         'refresh_token': '10/minute',  # Token refresh: 10/minute per user
+        'export': '10/hour',    # 🔒 Data exports: 10/hour per user
+        'bulk_access': '100/hour',  # Bulk data access limited
     }
 }
 
