@@ -17,7 +17,6 @@ import {
 
 import apiClient from "@/lib/api-client";
 
-
 function money(value, currency = "USD") {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -25,13 +24,8 @@ function money(value, currency = "USD") {
   }).format(Number(value || 0));
 }
 
-
 function limitLabel(value, singular, plural) {
-  if (
-    value === null ||
-    value === undefined ||
-    Number(value) === 0
-  ) {
+  if (value === null || value === undefined || Number(value) === 0) {
     return `Unlimited ${plural}`;
   }
 
@@ -42,20 +36,16 @@ function limitLabel(value, singular, plural) {
   }`;
 }
 
-
 export default function BillingPlansPage() {
   const router = useRouter();
 
-  const [currentPlan, setCurrentPlan] =
-    useState(null);
+  const [currentPlan, setCurrentPlan] = useState(null);
 
   const [plans, setPlans] = useState([]);
-  const [selectedPlan, setSelectedPlan] =
-    useState(null);
+  const [selectedPlan, setSelectedPlan] = useState(null);
 
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] =
-    useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -65,13 +55,9 @@ export default function BillingPlansPage() {
       setLoading(true);
       setError("");
 
-      const response = await apiClient.get(
-        "/saas-billing/plan-changes/",
-      );
+      const response = await apiClient.get("/saas-billing/plan-changes/");
 
-      setCurrentPlan(
-        response.data?.current_plan || null,
-      );
+      setCurrentPlan(response.data?.current_plan || null);
 
       setPlans(response.data?.plans || []);
     } catch (requestError) {
@@ -106,8 +92,7 @@ export default function BillingPlansPage() {
       );
 
       const message =
-        response.data?.message ||
-        "Plan-change request completed.";
+        response.data?.message || "Plan-change request completed.";
 
       setSuccess(message);
 
@@ -129,10 +114,7 @@ export default function BillingPlansPage() {
     return (
       <div className="flex min-h-[65vh] items-center justify-center">
         <div className="text-center">
-          <Loader2
-            size={42}
-            className="mx-auto animate-spin text-orange-500"
-          />
+          <Loader2 size={42} className="mx-auto animate-spin text-orange-500" />
 
           <p className="mt-4 text-sm text-slate-500">
             Loading subscription plans...
@@ -163,8 +145,8 @@ export default function BillingPlansPage() {
           </h1>
 
           <p className="mt-2 max-w-3xl text-slate-600">
-            Compare available subscription plans and
-            select the plan that best fits your hospital.
+            Compare available subscription plans and select the plan that best
+            fits your hospital.
           </p>
         </div>
 
@@ -179,10 +161,7 @@ export default function BillingPlansPage() {
             </p>
 
             <p className="mt-1 text-sm text-slate-600">
-              {money(
-                currentPlan.monthly_price,
-                currentPlan.currency || "USD",
-              )}{" "}
+              {money(currentPlan.monthly_price, currentPlan.currency || "USD")}{" "}
               per month
             </p>
           </div>
@@ -191,10 +170,7 @@ export default function BillingPlansPage() {
 
       {error && (
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-red-700">
-          <AlertCircle
-            size={20}
-            className="mt-0.5 shrink-0"
-          />
+          <AlertCircle size={20} className="mt-0.5 shrink-0" />
 
           <p className="text-sm">{error}</p>
         </div>
@@ -202,10 +178,7 @@ export default function BillingPlansPage() {
 
       {success && (
         <div className="flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-4 text-green-700">
-          <CheckCircle2
-            size={20}
-            className="mt-0.5 shrink-0"
-          />
+          <CheckCircle2 size={20} className="mt-0.5 shrink-0" />
 
           <p className="text-sm">{success}</p>
         </div>
@@ -214,14 +187,11 @@ export default function BillingPlansPage() {
       <section className="grid gap-6 lg:grid-cols-3">
         {plans.map((plan) => {
           const isCurrent =
-            plan.change_type === "current" ||
-            currentPlan?.code === plan.code;
+            plan.change_type === "current" || currentPlan?.code === plan.code;
 
-          const isSelected =
-            selectedPlan?.code === plan.code;
+          const isSelected = selectedPlan?.code === plan.code;
 
-          const canChange =
-            plan.allowed && !isCurrent;
+          const canChange = plan.allowed && !isCurrent;
 
           return (
             <article
@@ -240,13 +210,12 @@ export default function BillingPlansPage() {
                 </div>
               )}
 
-              {plan.change_type === "upgrade" &&
-                !isCurrent && (
-                  <div className="absolute right-5 top-5 flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700">
-                    <Sparkles size={13} />
-                    Upgrade
-                  </div>
-                )}
+              {plan.change_type === "upgrade" && !isCurrent && (
+                <div className="absolute right-5 top-5 flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700">
+                  <Sparkles size={13} />
+                  Upgrade
+                </div>
+              )}
 
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-100 text-orange-600">
                 {plan.code === "enterprise" ? (
@@ -268,24 +237,16 @@ export default function BillingPlansPage() {
               <div className="mt-6">
                 <div className="flex items-end gap-2">
                   <span className="text-4xl font-bold text-slate-900">
-                    {money(
-                      plan.monthly_price,
-                      plan.currency,
-                    )}
+                    {money(plan.monthly_price, plan.currency)}
                   </span>
 
-                  <span className="pb-1 text-sm text-slate-500">
-                    / month
-                  </span>
+                  <span className="pb-1 text-sm text-slate-500">/ month</span>
                 </div>
 
                 <p className="mt-3 text-sm text-slate-600">
-                  Annual service fee:{" "}
+                  One-time setup fee:{" "}
                   <span className="font-semibold text-slate-900">
-                    {money(
-                      plan.service_fee,
-                      plan.currency,
-                    )}
+                    {money(plan.service_fee, plan.currency)}
                   </span>
                 </p>
               </div>
@@ -302,11 +263,7 @@ export default function BillingPlansPage() {
                 />
 
                 <FeatureItem
-                  label={limitLabel(
-                    plan.max_patients,
-                    "patient",
-                    "patients",
-                  )}
+                  label={limitLabel(plan.max_patients, "patient", "patients")}
                 />
 
                 {Number(plan.storage_gb || 0) > 0 && (
@@ -318,45 +275,39 @@ export default function BillingPlansPage() {
                 )}
 
                 {Array.isArray(plan.features) &&
-                  plan.features.map(
-                    (feature, index) => (
-                      <FeatureItem
-                        key={`${plan.code}-${index}`}
-                        label={
-                          typeof feature === "string"
-                            ? feature
-                            : feature?.name ||
-                              feature?.label ||
-                              "Included feature"
-                        }
-                      />
-                    ),
-                  )}
+                  plan.features.map((feature, index) => (
+                    <FeatureItem
+                      key={`${plan.code}-${index}`}
+                      label={
+                        typeof feature === "string"
+                          ? feature
+                          : feature?.name ||
+                            feature?.label ||
+                            "Included feature"
+                      }
+                    />
+                  ))}
               </div>
 
-              {!plan.allowed &&
-                !isCurrent &&
-                plan.reason && (
-                  <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle
-                        size={18}
-                        className="mt-0.5 shrink-0 text-amber-600"
-                      />
+              {!plan.allowed && !isCurrent && plan.reason && (
+                <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle
+                      size={18}
+                      className="mt-0.5 shrink-0 text-amber-600"
+                    />
 
-                      <p className="text-sm leading-6 text-amber-800">
-                        {plan.reason}
-                      </p>
-                    </div>
+                    <p className="text-sm leading-6 text-amber-800">
+                      {plan.reason}
+                    </p>
                   </div>
-                )}
+                </div>
+              )}
 
               <button
                 type="button"
                 disabled={!canChange}
-                onClick={() =>
-                  setSelectedPlan(plan)
-                }
+                onClick={() => setSelectedPlan(plan)}
                 className={`mt-6 w-full rounded-xl px-4 py-3 font-semibold transition ${
                   isCurrent
                     ? "cursor-not-allowed bg-slate-100 text-slate-500"
@@ -373,8 +324,7 @@ export default function BillingPlansPage() {
                     ? "Unavailable"
                     : isSelected
                       ? "Selected"
-                      : plan.change_type ===
-                          "downgrade"
+                      : plan.change_type === "downgrade"
                         ? "Select Downgrade"
                         : "Select Upgrade"}
               </button>
@@ -404,8 +354,7 @@ export default function BillingPlansPage() {
               </h2>
 
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-                {selectedPlan.change_type ===
-                "downgrade"
+                {selectedPlan.change_type === "downgrade"
                   ? "The downgrade will be processed according to the billing rules configured by MediCore."
                   : "An adjustment invoice may be generated. The new plan will activate after the required payment is approved."}
               </p>
@@ -415,9 +364,7 @@ export default function BillingPlansPage() {
               <button
                 type="button"
                 disabled={submitting}
-                onClick={() =>
-                  setSelectedPlan(null)
-                }
+                onClick={() => setSelectedPlan(null)}
                 className="inline-flex items-center gap-2 rounded-xl border border-slate-600 px-5 py-3 font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
               >
                 <X size={18} />
@@ -431,17 +378,12 @@ export default function BillingPlansPage() {
                 className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
               >
                 {submitting ? (
-                  <Loader2
-                    size={18}
-                    className="animate-spin"
-                  />
+                  <Loader2 size={18} className="animate-spin" />
                 ) : (
                   <Check size={18} />
                 )}
 
-                {submitting
-                  ? "Processing..."
-                  : "Confirm Change"}
+                {submitting ? "Processing..." : "Confirm Change"}
               </button>
             </div>
           </div>
@@ -451,7 +393,6 @@ export default function BillingPlansPage() {
   );
 }
 
-
 function FeatureItem({ label }) {
   return (
     <div className="flex items-start gap-3">
@@ -459,9 +400,7 @@ function FeatureItem({ label }) {
         <Check size={13} />
       </div>
 
-      <span className="text-sm text-slate-700">
-        {label}
-      </span>
+      <span className="text-sm text-slate-700">{label}</span>
     </div>
   );
 }
