@@ -24,6 +24,7 @@ from .serializers import (
     POSReceiptSerializer,
 )
 from pharmacy.models import Medicine, StockMovement
+from config.role_permissions import IsFinanceStaff, IsFinanceManager
 
 
 def _sync_patient_prescription_payment_status(bill):
@@ -281,7 +282,7 @@ def _queue_subscription_receipt(payment):
 class ServiceCatalogViewSet(viewsets.ModelViewSet):
     queryset = ServiceCatalog.objects.all()
     serializer_class = ServiceCatalogSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsFinanceStaff]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'code', 'service_type']
@@ -408,7 +409,7 @@ class ServiceCatalogViewSet(viewsets.ModelViewSet):
 class BillViewSet(viewsets.ModelViewSet):
     queryset = Bill.objects.all()
     serializer_class = BillSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsFinanceStaff]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['bill_number', 'patient_name', 'status']
@@ -537,7 +538,7 @@ class BillViewSet(viewsets.ModelViewSet):
 class POSReceiptViewSet(viewsets.ModelViewSet):
     queryset = POSReceipt.objects.select_related('hospital', 'medicine', 'created_by').all()
     serializer_class = POSReceiptSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsFinanceManager]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['receipt_number', 'customer_name', 'medicine_name_snapshot']
@@ -628,7 +629,7 @@ class POSReceiptViewSet(viewsets.ModelViewSet):
 class SubscriptionPaymentViewSet(viewsets.ModelViewSet):
     queryset = SubscriptionPayment.objects.all()
     serializer_class = SubscriptionPaymentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsFinanceManager]
     
     def get_queryset(self):
         user = self.request.user

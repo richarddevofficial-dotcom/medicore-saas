@@ -1,7 +1,9 @@
 from rest_framework import viewsets, filters
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
 from .models import LabTest
 from .serializers import LabTestSerializer
+from config.role_permissions import IsLabTechnician
 
 
 def _resolve_request_hospital(request):
@@ -20,6 +22,7 @@ def _resolve_request_hospital(request):
 class LabTestViewSet(viewsets.ModelViewSet):
     queryset = LabTest.objects.all()
     serializer_class = LabTestSerializer
+    permission_classes = [IsAuthenticated, IsLabTechnician]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['test_name', 'category', 'patient__first_name']

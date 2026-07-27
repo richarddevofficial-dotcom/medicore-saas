@@ -12,6 +12,7 @@ from staff.models import StaffProfile
 from saas_billing.services import check_hospital_limit
 from .serializers import PatientListSerializer, PatientDetailSerializer
 from billing.models import Bill
+from config.role_permissions import CanManagePatients, IsClinicalStaff
 
 
 def _resolve_request_hospital(request):
@@ -77,7 +78,7 @@ def _stage_is_paid(patient, stage):
 
 class PatientViewSet(viewsets.ModelViewSet):
     queryset = Patient.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsClinicalStaff]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['first_name', 'last_name', 'phone', 'mrn']
     ordering_fields = ['created_at', 'first_name', 'mrn', 'status']

@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError
 from .models import Medicine, Prescription
 from .serializers import MedicineSerializer, PrescriptionSerializer
 from billing.models import Bill
+from config.role_permissions import IsPharmacyStaff, CanViewMedicines
 
 
 def _refresh_bill_status(bill):
@@ -25,7 +26,7 @@ def _refresh_bill_status(bill):
 class MedicineViewSet(viewsets.ModelViewSet):
     queryset = Medicine.objects.all()
     serializer_class = MedicineSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewMedicines]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'generic_name', 'category__name']
@@ -231,7 +232,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
 class PrescriptionViewSet(viewsets.ModelViewSet):
     queryset = Prescription.objects.all()
     serializer_class = PrescriptionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsPharmacyStaff]
     pagination_class = None
     filter_backends = [filters.SearchFilter]
     search_fields = ['medicine_name', 'notes']

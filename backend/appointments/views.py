@@ -1,8 +1,10 @@
 from rest_framework import viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from .models import Appointment
 from .serializers import AppointmentSerializer
+from config.role_permissions import CanManageAppointments
 
 
 def _resolve_request_hospital(request):
@@ -21,6 +23,7 @@ def _resolve_request_hospital(request):
 class AppointmentViewSet(viewsets.ModelViewSet):
     queryset = Appointment.objects.all()
     serializer_class = AppointmentSerializer
+    permission_classes = [IsAuthenticated, CanManageAppointments]
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['appointment_date', 'appointment_time', 'status']
     ordering = ['-appointment_date', '-appointment_time']

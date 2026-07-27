@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 from config.plan_permissions import RequiresProPlan
+from config.role_permissions import IsRadiographer
 from .models import ImagingTest
 from .serializers import ImagingTestSerializer
 
@@ -25,7 +26,7 @@ def _resolve_request_hospital(request):
 class ImagingTestViewSet(viewsets.ModelViewSet):
     queryset = ImagingTest.objects.all()
     serializer_class = ImagingTestSerializer
-    permission_classes = [IsAuthenticated, RequiresProPlan]
+    permission_classes = [IsAuthenticated, RequiresProPlan, IsRadiographer]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['patient_name', 'test_type', 'body_part']
