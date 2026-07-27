@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
@@ -25,6 +25,8 @@ import {
   Phone,
   Mail,
   FileText,
+  Search,
+  User,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import apiClient from "@/lib/api-client";
@@ -56,6 +58,55 @@ export default function InsurancePage() {
   const [approveError, setApproveError] = useState("");
   const [approveAmount, setApproveAmount] = useState("");
 
+  // Patient search state
+  const [patientSearch, setPatientSearch] = useState("");
+  const [patientResults, setPatientResults] = useState([]);
+  const [patientSearching, setPatientSearching] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const patientSearchRef = useRef(null);
+  const patientDebounceRef = useRef(null);
+
+  const handlePatientSearch = (query) => {
+    setPatientSearch(query);
+    setSelectedPatient(null);
+    setBillForm((f) => ({
+      ...f,
+      patient_name: query,
+      policy_number: "",
+      patient: "",
+    }));
+    clearTimeout(patientDebounceRef.current);
+    if (!query.trim()) {
+      setPatientResults([]);
+      return;
+    }
+    patientDebounceRef.current = setTimeout(async () => {
+      setPatientSearching(true);
+      try {
+        const { data } = await apiClient.get("/patients/", {
+          params: { search: query, page_size: 8 },
+        });
+        setPatientResults(data.results || data || []);
+      } catch {
+        setPatientResults([]);
+      } finally {
+        setPatientSearching(false);
+      }
+    }, 350);
+  };
+
+  const selectPatient = (p) => {
+    setSelectedPatient(p);
+    setPatientSearch(`${p.first_name} ${p.last_name} (${p.mrn})`);
+    setPatientResults([]);
+    setBillForm((f) => ({
+      ...f,
+      patient: p.id,
+      patient_name: `${p.first_name} ${p.last_name}`,
+      policy_number: p.insurance_number || f.policy_number,
+    }));
+  };
+
   const [companyForm, setCompanyForm] = useState({
     name: "",
     code: "",
@@ -64,6 +115,7 @@ export default function InsurancePage() {
     coverage_percentage: "100",
   });
   const [billForm, setBillForm] = useState({
+    patient: "",
     patient_name: "",
     policy_number: "",
     company: "",
@@ -189,18 +241,24 @@ export default function InsurancePage() {
     setClaimError("");
     setIsSaving(true);
     try {
-      await apiClient.post("/insurance-claims/", {
+      const payload = {
         patient_name: billForm.patient_name.trim(),
         policy_number: billForm.policy_number.trim(),
         company: billForm.company,
         claim_amount: parseFloat(billForm.claim_amount || 0),
         description: billForm.description.trim(),
         status: "pending",
-      });
+      };
+      if (billForm.patient) payload.patient = billForm.patient;
+      await apiClient.post("/insurance-claims/", payload);
       toast.success("Insurance claim created!");
       setShowBillModal(false);
       setClaimError("");
+      setPatientSearch("");
+      setPatientResults([]);
+      setSelectedPatient(null);
       setBillForm({
+        patient: "",
         patient_name: "",
         policy_number: "",
         company: "",
@@ -686,6 +744,9 @@ export default function InsurancePage() {
           onClose={() => {
             setShowBillModal(false);
             setClaimError("");
+            setPatientSearch("");
+            setPatientResults([]);
+            setSelectedPatient(null);
           }}
           title="New Insurance Claim"
           size="md"
@@ -696,6 +757,9 @@ export default function InsurancePage() {
                 onClick={() => {
                   setShowBillModal(false);
                   setClaimError("");
+                  setPatientSearch("");
+                  setPatientResults([]);
+                  setSelectedPatient(null);
                 }}
               >
                 Cancel
@@ -712,13 +776,58 @@ export default function InsurancePage() {
                 {claimError}
               </div>
             )}
-            <Input
-              label="Patient Name *"
-              value={billForm.patient_name}
-              onChange={(e) =>
-                setBillForm({ ...billForm, patient_name: e.target.value })
-              }
-            />
+            {/* Patient search */}
+            <div className="relative" ref={patientSearchRef}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Search Patient (MRN / Name) *
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
+                  placeholder="Type MRN or patient name..."
+                  value={patientSearch}
+                  onChange={(e) => handlePatientSearch(e.target.value)}
+                />
+                {patientSearching && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Spinner size="sm" />
+                  </div>
+                )}
+              </div>
+              {patientResults.length > 0 && (
+                <ul className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {patientResults.map((p) => (
+                    <li
+                      key={p.id}
+                      onClick={() => selectPatient(p)}
+                      className="flex items-center gap-3 px-3 py-2 hover:bg-orange-50 cursor-pointer text-sm"
+                    >
+                      <User className="h-4 w-4 text-gray-400 shrink-0" />
+                      <div>
+                        <p className="font-medium">
+                          {p.first_name} {p.last_name}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          MRN: {p.mrn}
+                          {p.insurance_number
+                            ? ` • Policy: ${p.insurance_number}`
+                            : ""}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {selectedPatient && (
+                <div className="mt-1 flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded px-2 py-1">
+                  <User className="h-3 w-3" />
+                  Linked: {selectedPatient.first_name}{" "}
+                  {selectedPatient.last_name} — MRN {selectedPatient.mrn}
+                </div>
+              )}
+            </div>
             <Select
               label="Insurance Company *"
               value={billForm.company}
@@ -733,11 +842,12 @@ export default function InsurancePage() {
               ]}
             />
             <Input
-              label="Policy Number *"
+              label="Policy Number"
               value={billForm.policy_number}
               onChange={(e) =>
                 setBillForm({ ...billForm, policy_number: e.target.value })
               }
+              placeholder="Auto-filled if patient has policy on record"
             />
             <Input
               label="Claim Amount (USD) *"

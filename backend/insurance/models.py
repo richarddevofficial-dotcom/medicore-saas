@@ -36,6 +36,13 @@ class InsuranceClaim(models.Model):
     ]
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE)
     company = models.ForeignKey(InsuranceCompany, on_delete=models.CASCADE)
+    patient = models.ForeignKey(
+        'patients.Patient',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='insurance_claims',
+    )
     patient_name = models.CharField(max_length=200)
     policy_number = models.CharField(max_length=100)
     claim_amount = models.DecimalField(max_digits=12, decimal_places=2)

@@ -29,6 +29,8 @@ class InsuranceCompanySerializer(serializers.ModelSerializer):
 
 class InsuranceClaimSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source='company.name', read_only=True)
+    patient_mrn = serializers.CharField(source='patient.mrn', read_only=True)
+    patient_phone = serializers.CharField(source='patient.phone', read_only=True)
 
     class Meta:
         model = InsuranceClaim
