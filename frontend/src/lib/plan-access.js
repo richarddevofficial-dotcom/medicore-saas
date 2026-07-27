@@ -38,12 +38,14 @@ const BASIC_ROUTE_PATTERNS = [
   "/admin/payment/*",
   "/admin/settings",
   "/admin/settings/*",
-  "/hr",
-  "/hr/*",
 ];
 
 const PRO_ROUTE_PATTERNS = [
   ...BASIC_ROUTE_PATTERNS,
+  "/hr",
+  "/hr/*",
+  "/ipd",
+  "/ipd/*",
   "/admin/imaging",
   "/admin/imaging/*",
   "/admin/insurance",
