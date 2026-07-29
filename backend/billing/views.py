@@ -900,7 +900,7 @@ class SubscriptionPaymentViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Hospital email is not configured'}, status=400)
 
         try:
-            payment.receipt_delivery_status = 'queued'
+            payment.receipt_delivery_status = 'not_sent'
             payment.receipt_last_attempt_at = timezone.now()
             payment.receipt_sent_at = None
             payment.receipt_last_error = ''
@@ -912,26 +912,51 @@ class SubscriptionPaymentViewSet(viewsets.ModelViewSet):
                     'receipt_last_error',
                 ]
             )
-            _queue_subscription_receipt(payment)
+
+            sent = _send_subscription_receipt(payment)
+            if not sent:
+                raise ValueError('Receipt email could not be sent')
+
+            payment.receipt_delivery_status = 'sent'
+            payment.receipt_sent_at = timezone.now()
+            payment.receipt_last_error = ''
+            payment.save(
+                update_fields=[
+                    'receipt_delivery_status',
+                    'receipt_sent_at',
+                    'receipt_last_error',
+                ]
+            )
+
             try:
                 AuditLog.objects.create(
                     hospital=payment.hospital,
                     user=request.user.email or request.user.username,
                     role='super_admin' if request.user.is_superuser else '',
                     action='subscription_receipt_resend',
-                    target=f'payment:{payment.id}:queued',
+                    target=f'payment:{payment.id}:sent',
                     action_type='billing',
                 )
             except Exception:
                 pass
         except Exception as exc:
-            return Response({'error': f'Failed to queue receipt: {exc}'}, status=500)
+            payment.receipt_delivery_status = 'failed'
+            payment.receipt_sent_at = None
+            payment.receipt_last_error = str(exc)
+            payment.save(
+                update_fields=[
+                    'receipt_delivery_status',
+                    'receipt_sent_at',
+                    'receipt_last_error',
+                ]
+            )
+            return Response({'error': f'Failed to resend receipt: {exc}'}, status=500)
 
         return Response(
             {
                 'success': True,
-                'message': 'Receipt email queued for delivery',
-                'receipt_delivery_status': 'queued',
+                'message': 'Receipt email sent successfully',
+                'receipt_delivery_status': 'sent',
             },
-            status=status.HTTP_202_ACCEPTED,
+            status=status.HTTP_200_OK,
         )

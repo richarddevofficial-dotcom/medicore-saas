@@ -1057,7 +1057,8 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertIn("rows", response.data)
         self.assertGreaterEqual(len(response.data["rows"]), 1)
 
-    def test_superadmin_can_resend_receipt_for_paid_payment(self):
+    @patch("billing.views.EmailMessage.send")
+    def test_superadmin_can_resend_receipt_for_paid_payment(self, mock_email_send):
         reviewer = User.objects.create_superuser(
             username="superadmin-resend@example.com",
             email="superadmin-resend@example.com",
@@ -1079,15 +1080,14 @@ class AuthAndBillingSmokeTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data.get("success"))
-        self.assertTrue(
-            ReceiptEmailJob.objects.filter(payment=payment, status="pending").exists()
-        )
+        self.assertEqual(response.data.get("receipt_delivery_status"), "sent")
+        self.assertTrue(mock_email_send.called)
         payment.refresh_from_db()
-        self.assertEqual(payment.receipt_delivery_status, "queued")
+        self.assertEqual(payment.receipt_delivery_status, "sent")
         self.assertIsNotNone(payment.receipt_last_attempt_at)
-        self.assertIsNone(payment.receipt_sent_at)
+        self.assertIsNotNone(payment.receipt_sent_at)
 
     @patch("billing.views.EmailMessage.send")
     def test_receipt_queue_worker_sends_pending_jobs(self, mock_email_send):
