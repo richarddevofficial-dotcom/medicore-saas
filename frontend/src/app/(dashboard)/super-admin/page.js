@@ -187,17 +187,22 @@ export default function SuperAdminDashboard() {
         "super_admin_state",
         JSON.stringify({
           token: localStorage.getItem("token"),
+          refresh: localStorage.getItem("refresh"),
           user: localStorage.getItem("user"),
           role: localStorage.getItem("role"),
           isSuperuser: localStorage.getItem("is_superuser"),
         }),
       );
-      sessionStorage.setItem("impersonating_hospital_id", hospitalId);
 
       const { data } = await apiClient.post("/super-admin/switch-hospital/", {
         hospital_id: hospitalId,
       });
+
+      sessionStorage.setItem("impersonating_hospital_id", String(hospitalId));
       localStorage.setItem("token", data.token);
+      if (data.refresh) {
+        localStorage.setItem("refresh", data.refresh);
+      }
       localStorage.setItem("user", JSON.stringify(data.user));
       localStorage.setItem("hospital", JSON.stringify(data.hospital));
       localStorage.setItem("role", data.user.role);
@@ -206,7 +211,8 @@ export default function SuperAdminDashboard() {
       // Force a full navigation so auth/role state is re-evaluated immediately.
       window.location.assign("/admin");
     } catch (err) {
-      toast.error("Failed to switch");
+      sessionStorage.removeItem("impersonating_hospital_id");
+      toast.error(err?.response?.data?.error || "Failed to switch");
     }
   };
 

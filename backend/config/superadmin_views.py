@@ -398,6 +398,7 @@ def switch_hospital(request):
         
         return Response({
             'token': str(refresh.access_token),
+            'refresh': str(refresh),
             'user': {
                 'id': request.user.id,
                 'email': request.user.email,
