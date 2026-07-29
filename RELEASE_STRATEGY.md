@@ -98,6 +98,11 @@ Set these in repository settings:
 3. Optional for `dev`:
    - Require at least one review for larger changes
 
+Required status checks to enforce:
+
+1. `Backend Check`
+2. `Frontend Lint Build`
+
 ## Release Checklist
 
 1. Code merged to `dev`
