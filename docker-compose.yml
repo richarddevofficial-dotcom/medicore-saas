@@ -33,20 +33,6 @@ services:
       - postgres
       - redis
 
-  receipt-worker:
-    build:
-      context: ./backend
-    container_name: medicore-receipt-worker
-    restart: always
-    command: sh -c "while true; do python manage.py process_receipt_email_queue --limit=100; sleep 30; done"
-    volumes:
-      - ./backend:/app
-    env_file:
-      - .env
-    depends_on:
-      - postgres
-      - redis
-
   frontend:
     build:
       context: ./frontend

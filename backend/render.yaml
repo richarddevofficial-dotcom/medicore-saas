@@ -36,14 +36,3 @@ services:
         value: "true"
       - key: DB_SSLMODE
         value: require
-
-  - type: worker
-    name: medicore-receipt-worker
-    env: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: |
-      while true; do
-        python manage.py process_receipt_email_queue --limit=100 ;
-        sleep 30 ;
-      done
