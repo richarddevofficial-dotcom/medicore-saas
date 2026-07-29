@@ -377,6 +377,13 @@ export default function AdminDashboard() {
       accent: "from-cyan-500 to-blue-600",
     },
     {
+      name: "Open Analytics",
+      desc: "Explore trends, utilization and period-over-period performance.",
+      icon: TrendingUp,
+      href: "/admin/analytics",
+      accent: "from-sky-500 to-cyan-600",
+    },
+    {
       name: "Review Reports",
       desc: "Check finance, utilization and service trend snapshots.",
       icon: ClipboardCheck,
@@ -480,6 +487,13 @@ export default function AdminDashboard() {
         title: "Governance",
         subtitle: "Visibility, control and compliance oversight",
         modules: [
+          {
+            name: "Hospital Analytics",
+            icon: TrendingUp,
+            desc: "Track KPIs, trends and service performance by period.",
+            tag: "Insights",
+            href: "/admin/analytics",
+          },
           {
             name: "Reports",
             icon: FileText,
@@ -603,6 +617,13 @@ export default function AdminDashboard() {
                   isLoading={isRefreshing}
                 >
                   Refresh
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="bg-white/15 text-white hover:bg-white/25"
+                  onClick={() => router.push("/admin/analytics")}
+                >
+                  Open Analytics
                 </Button>
                 <Button
                   variant="secondary"
