@@ -209,7 +209,7 @@ export default function SuperAdminDashboard() {
       localStorage.setItem("is_superuser", String(data.user.is_superuser));
       toast.success(`Switched to ${data.hospital.name}`);
       // Force a full navigation so auth/role state is re-evaluated immediately.
-      window.location.assign("/admin");
+      window.location.assign("/dashboard");
     } catch (err) {
       sessionStorage.removeItem("impersonating_hospital_id");
       toast.error(err?.response?.data?.error || "Failed to switch");

@@ -200,12 +200,27 @@ export default function DashboardPage() {
     },
   ];
 
-  const handleSwitchBack = () => {
+  const handleSwitchBack = async () => {
     // Restore super admin state from sessionStorage
     const savedState = sessionStorage.getItem("super_admin_state");
+    if (!savedState) {
+      toast.error("Super admin session not found");
+      return;
+    }
+
+    const state = JSON.parse(savedState);
+
+    try {
+      await apiClient.post("/super-admin/switch-back/");
+    } catch {
+      // Continue with local restoration even if switch-back audit call fails.
+    }
+
     if (savedState) {
-      const state = JSON.parse(savedState);
       localStorage.setItem("token", state.token);
+      if (state.refresh) {
+        localStorage.setItem("refresh", state.refresh);
+      }
       localStorage.setItem("user", state.user);
       localStorage.setItem("role", state.role);
       localStorage.setItem("is_superuser", state.isSuperuser);
@@ -217,12 +232,13 @@ export default function DashboardPage() {
 
     // IMPORTANT: Remove hospital data from localStorage
     // Dispatch a custom event to notify Header component of the change
+    const oldHospital = localStorage.getItem("hospital") || null;
     localStorage.removeItem("hospital");
     window.dispatchEvent(
       new StorageEvent("storage", {
         key: "hospital",
         newValue: null,
-        oldValue: localStorage.getItem("hospital") || null,
+        oldValue: oldHospital,
         storageArea: localStorage,
       }),
     );
