@@ -130,7 +130,6 @@ const navigationByRole = {
     {
       section: "REPORTS",
       items: [
-        { name: "Analytics", href: "/admin/analytics", icon: TrendingUp },
         { name: "Reports", href: "/admin/reports", icon: FileText },
         { name: "Audit Logs", href: "/admin/logs", icon: Database },
       ],
@@ -281,7 +280,6 @@ const navigationByRole = {
     {
       section: "REPORTS",
       items: [
-        { name: "Analytics", href: "/admin/analytics", icon: TrendingUp },
         { name: "Reports", href: "/admin/reports", icon: FileText },
         { name: "Audit Logs", href: "/admin/logs", icon: Database },
       ],
@@ -423,7 +421,6 @@ const navigationByRole = {
       items: [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
         { name: "Billing", href: "/billing", icon: DollarSign },
-        { name: "Analytics", href: "/admin/analytics", icon: TrendingUp },
         { name: "Insurance", href: "/admin/insurance", icon: BadgeCheck },
         { name: "Reports", href: "/admin/reports", icon: FileText },
       ],
@@ -514,7 +511,6 @@ const navigationByRole = {
       items: [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
         { name: "Billing", href: "/billing", icon: DollarSign },
-        { name: "Analytics", href: "/admin/analytics", icon: TrendingUp },
         { name: "Reports", href: "/admin/reports", icon: FileText },
       ],
     },
@@ -550,7 +546,6 @@ const navigationByRole = {
       items: [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
         { name: "Billing", href: "/billing", icon: DollarSign },
-        { name: "Analytics", href: "/admin/analytics", icon: TrendingUp },
         { name: "Insurance", href: "/admin/insurance", icon: BadgeCheck },
         { name: "Reports", href: "/admin/reports", icon: FileText },
       ],
@@ -563,7 +558,6 @@ const navigationByRole = {
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
         { name: "Billing", href: "/billing", icon: DollarSign },
         { name: "Payroll", href: "/finance/payroll", icon: Wallet },
-        { name: "Analytics", href: "/admin/analytics", icon: TrendingUp },
         { name: "Reports", href: "/admin/reports", icon: FileText },
       ],
     },

@@ -50,8 +50,6 @@ const PRO_ROUTE_PATTERNS = [
   "/admin/imaging/*",
   "/admin/insurance",
   "/admin/insurance/*",
-  "/admin/analytics",
-  "/admin/analytics/*",
   "/admin/reports",
   "/admin/reports/*",
   "/admin/inventory",
