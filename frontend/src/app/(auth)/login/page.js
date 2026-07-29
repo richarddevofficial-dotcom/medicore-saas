@@ -62,11 +62,15 @@ export default function LoginPage() {
   const finalizeLogin = (data) => {
     sessionStorage.removeItem("impersonating_hospital_id");
     sessionStorage.removeItem("super_admin_state");
+    if (data.token) {
+      localStorage.setItem("token", data.token);
+    }
+    if (data.refresh) {
+      localStorage.setItem("refresh", data.refresh);
+    }
     if (data.trusted_device_token) {
       localStorage.setItem("trusted_device_token", data.trusted_device_token);
     }
-    // ✅ SECURITY: Do NOT store token in localStorage
-    // Token is now in httpOnly cookie - axios sends it automatically
     localStorage.setItem("user", JSON.stringify(data.user));
     if (data.hospital) {
       localStorage.setItem("hospital", JSON.stringify(data.hospital));

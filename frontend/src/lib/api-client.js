@@ -21,6 +21,11 @@ const apiClient = axios.create({
 // Add custom headers for super admin impersonation
 apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
+    const token = localStorage.getItem("token");
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
     const impersonatingHospitalId = sessionStorage.getItem(
       "impersonating_hospital_id",
     );

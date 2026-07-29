@@ -31,8 +31,8 @@ const useAuthStore = create((set, get) => ({
         .catch(() => {});
     }
 
-    // ✅ SECURITY: Don't remove token from localStorage (it's a httpOnly cookie now)
-    // Only remove user/hospital/device info
+    localStorage.removeItem("token");
+    localStorage.removeItem("refresh");
     localStorage.removeItem("user");
     localStorage.removeItem("hospital");
     localStorage.removeItem("trusted_device_token");
