@@ -49,6 +49,7 @@ const roleAccess = {
     "/finance/reports",
     "/billing",
     "/admin/insurance",
+    "/admin/analytics",
     "/admin/reports",
   ],
   finance: [
@@ -61,6 +62,7 @@ const roleAccess = {
     "/finance/accounting",
     "/finance/reports",
     "/billing",
+    "/admin/analytics",
     "/admin/reports",
   ],
   finance_manager: [
@@ -73,9 +75,10 @@ const roleAccess = {
     "/finance/accounting",
     "/finance/reports",
     "/billing",
+    "/admin/analytics",
     "/admin/reports",
   ],
-  cashier: ["/dashboard", "/billing", "/finance/payroll"],
+  cashier: ["/dashboard", "/billing", "/finance/payroll", "/admin/analytics"],
   // HR roles
   hr_manager: [
     "/dashboard",
