@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 from billing.models import Bill
 from billing.models import ReceiptEmailJob, SubscriptionPayment
 from auditlog.models import AuditLog, NotificationEvent
+from config.services.brevo_email import BrevoEmailError
 from hospitals.models import Hospital, LoginOTP, TrustedDevice
 from staff.models import StaffProfile
 
@@ -266,8 +267,8 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertEqual(response.data["user"]["role"], "super_admin")
         self.assertNotIn("hospital", response.data)
 
-    @patch("config.urls.send_mail")
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email")
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     def test_login_initiate_generates_otp_session(self, _mock_randint, mock_send_mail):
         response = self.client.post(
             "/api/v1/auth/login/initiate/",
@@ -281,8 +282,8 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertTrue(LoginOTP.objects.filter(user=self.user, is_used=False).exists())
         self.assertTrue(mock_send_mail.called)
 
-    @patch("config.urls.send_mail", side_effect=Exception("SMTP unavailable"))
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email", side_effect=BrevoEmailError("SMTP unavailable"))
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     def test_login_initiate_records_failed_otp_notification(self, _mock_randint, _mock_send_mail):
         response = self.client.post(
             "/api/v1/auth/login/initiate/",
@@ -290,7 +291,7 @@ class AuthAndBillingSmokeTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.status_code, 502)
         self.assertTrue(
             NotificationEvent.objects.filter(
                 notification_type="otp",
@@ -299,8 +300,8 @@ class AuthAndBillingSmokeTests(TestCase):
             ).exists()
         )
 
-    @patch("config.urls.send_mail")
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email")
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     def test_trusted_device_token_skips_otp_on_next_login(self, _mock_randint, _mock_send_mail):
         initiate_response = self.client.post(
             "/api/v1/auth/login/initiate/",
@@ -350,8 +351,8 @@ class AuthAndBillingSmokeTests(TestCase):
             first_trusted_token,
         )
 
-    @patch("config.urls.send_mail")
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email")
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     @patch("config.urls.OTP_RESEND_COOLDOWN_SECONDS", 0)
     def test_trusted_device_login_requires_otp_when_ip_changes(
         self,
@@ -397,8 +398,8 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertTrue(trusted_login_response.data.get("mfa_required"))
         self.assertIn("otp_session_id", trusted_login_response.data)
 
-    @patch("config.urls.send_mail")
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email")
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     @patch("config.urls.OTP_RESEND_COOLDOWN_SECONDS", 0)
     def test_revoked_trusted_device_token_requires_otp_again(
         self,
@@ -453,8 +454,8 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertTrue(post_revoke_login_response.data.get("mfa_required"))
         self.assertIn("otp_session_id", post_revoke_login_response.data)
 
-    @patch("config.urls.send_mail")
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email")
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     @patch("config.urls.OTP_RESEND_COOLDOWN_SECONDS", 0)
     def test_trusted_device_list_and_revoke_all(
         self,
@@ -511,8 +512,8 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertEqual(login_after_revoke_all.status_code, 200)
         self.assertTrue(login_after_revoke_all.data.get("mfa_required"))
 
-    @patch("config.urls.send_mail")
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email")
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     @patch("config.urls.OTP_RESEND_COOLDOWN_SECONDS", 0)
     def test_invalid_trusted_device_token_falls_back_to_otp(
         self,
@@ -534,8 +535,8 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertTrue(response.data.get("mfa_required"))
         self.assertIn("otp_session_id", response.data)
 
-    @patch("config.urls.send_mail")
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email")
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     @patch("config.urls.OTP_RESEND_COOLDOWN_SECONDS", 0)
     def test_expired_trusted_device_record_falls_back_to_otp(
         self,
@@ -583,8 +584,8 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertTrue(trusted_login_response.data.get("mfa_required"))
         self.assertIn("otp_session_id", trusted_login_response.data)
 
-    @patch("config.urls.send_mail")
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email")
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     def test_login_initiate_enforces_resend_cooldown(self, _mock_randint, _mock_send_mail):
         first_response = self.client.post(
             "/api/v1/auth/login/initiate/",
@@ -602,8 +603,8 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertEqual(second_response.status_code, 429)
         self.assertIn("retry_after_seconds", second_response.data)
 
-    @patch("config.urls.send_mail")
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email")
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     @patch("config.urls.OTP_RESEND_COOLDOWN_SECONDS", 0)
     @patch("config.urls.OTP_INITIATE_IP_MAX_REQUESTS", 1)
     def test_login_initiate_rate_limits_by_ip(
@@ -629,8 +630,8 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertEqual(second_response.status_code, 429)
         self.assertIn("retry_after_seconds", second_response.data)
 
-    @patch("config.urls.send_mail")
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email")
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     @patch("config.urls.OTP_RESEND_COOLDOWN_SECONDS", 0)
     @patch("config.urls.OTP_INITIATE_ACCOUNT_MAX_REQUESTS", 1)
     def test_login_initiate_rate_limits_by_account(
@@ -656,8 +657,8 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertEqual(second_response.status_code, 429)
         self.assertIn("retry_after_seconds", second_response.data)
 
-    @patch("config.urls.send_mail")
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email")
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     def test_login_verify_returns_token_after_valid_otp(self, _mock_randint, _mock_send_mail):
         initiate_response = self.client.post(
             "/api/v1/auth/login/initiate/",
@@ -678,8 +679,8 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertIn("token", verify_response.data)
         self.assertEqual(verify_response.data["user"]["email"], "richard@gmail.com")
 
-    @patch("config.urls.send_mail")
-    @patch("config.urls.random.randint", return_value=123456)
+    @patch("config.urls.send_brevo_email")
+    @patch("config.urls.secrets.randbelow", return_value=23456)
     @patch("config.urls.OTP_VERIFY_IP_MAX_REQUESTS", 1)
     def test_login_verify_rate_limits_by_ip(
         self,
@@ -1366,3 +1367,4 @@ class AuthAndBillingSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data.get("admin_type"), "secondary")
+
