@@ -576,12 +576,6 @@ export default function BillingCenterDashboardPage() {
           icon={CreditCard}
           label="Payment Center"
         />
-
-        <QuickLink
-          href="/platform/billing/analytics"
-          icon={BarChart3}
-          label="Revenue Analytics"
-        />
       </section>
     </div>
   );
