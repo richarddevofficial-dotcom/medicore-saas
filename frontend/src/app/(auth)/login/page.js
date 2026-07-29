@@ -70,6 +70,8 @@ export default function LoginPage() {
     }
     if (data.trusted_device_token) {
       localStorage.setItem("trusted_device_token", data.trusted_device_token);
+    } else if (step === "otp" && !rememberDevice) {
+      localStorage.removeItem("trusted_device_token");
     }
     localStorage.setItem("user", JSON.stringify(data.user));
     if (data.hospital) {
