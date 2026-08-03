@@ -5,7 +5,7 @@ import { useState } from "react";
 export default function AuthLayout({ children, title, subtitle }) {
   const [logoIndex, setLogoIndex] = useState(0);
   const logoSources = [
-    "/brand/hospital-default-logo.svg",
+    "/brand/medicorecloud-logo.jpeg",
     "/brand/logo-icon.svg",
   ];
   const activeLogo = logoSources[logoIndex] || "";
@@ -21,7 +21,7 @@ export default function AuthLayout({ children, title, subtitle }) {
               </span>
             </div>
           ) : (
-            <div className="h-16 w-16 rounded-2xl bg-white border border-gray-100 shadow-sm p-2 flex items-center justify-center">
+            <div className="h-24 w-64 rounded-xl bg-white border border-gray-100 shadow-sm p-2 flex items-center justify-center">
               <img
                 src={activeLogo}
                 alt="MediCore"

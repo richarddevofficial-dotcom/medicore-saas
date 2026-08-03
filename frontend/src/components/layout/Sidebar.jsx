@@ -579,7 +579,7 @@ export default function Sidebar({
 
   const logoSources = [
     branding?.logoUrl,
-    "/brand/hospital-default-logo.svg",
+    "/brand/medicorecloud-logo.jpeg",
     "/brand/logo-light.svg",
   ].filter(Boolean);
 
@@ -643,7 +643,9 @@ export default function Sidebar({
               </span>
             </div>
           ) : (
-            <div className="h-10 w-10 rounded-xl bg-white/10 ring-1 ring-white/20 flex items-center justify-center flex-shrink-0 p-1">
+            <div
+              className={`${collapsed ? "h-10 w-10" : "h-11 w-36"} rounded-lg bg-white/10 ring-1 ring-white/20 flex items-center justify-center flex-shrink-0 p-1`}
+            >
               <img
                 src={activeLogo}
                 alt="MediCore"
@@ -652,12 +654,11 @@ export default function Sidebar({
               />
             </div>
           )}
-          {!collapsed && (
-            <div>
+          {!collapsed && branding?.name && (
+            <div className="min-w-0">
               <h1 className="text-base font-bold tracking-wide text-white">
-                MediCore
+                {branding.name}
               </h1>
-              <p className="text-[10px] text-gray-400">HMS Platform</p>
             </div>
           )}
         </Link>

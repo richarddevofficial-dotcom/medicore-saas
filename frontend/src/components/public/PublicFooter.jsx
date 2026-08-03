@@ -5,7 +5,11 @@ export default function PublicFooter() {
     <footer className="border-t border-slate-800 bg-slate-950 text-slate-300">
       <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-3 lg:px-8">
         <div>
-          <h2 className="text-xl font-bold text-white">MediCore HMS</h2>
+          <img
+            src="/brand/medicorecloud-logo.jpeg"
+            alt="MediCoreCloud Hospital Management System"
+            className="h-16 w-56 rounded-lg bg-white object-contain p-1"
+          />
           <p className="mt-3 max-w-sm text-sm leading-6 text-slate-400">
             A secure cloud hospital management platform for clinical,
             administrative and financial operations.

@@ -19,14 +19,17 @@ export default function PublicNavbar() {
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-500 font-bold text-white">
-            M
+          <div className="flex h-12 w-40 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white p-1">
+            <img
+              src="/brand/medicorecloud-logo.jpeg"
+              alt="MediCoreCloud Hospital Management System"
+              className="h-full w-full object-contain"
+            />
           </div>
 
-          <div>
-            <p className="font-bold text-slate-900">MediCore HMS</p>
-            <p className="text-xs text-slate-500">Hospital Management SaaS</p>
-          </div>
+          <p className="hidden text-xs font-medium text-slate-500 lg:block">
+            Hospital Management SaaS
+          </p>
         </Link>
 
         <nav className="hidden items-center gap-7 md:flex">

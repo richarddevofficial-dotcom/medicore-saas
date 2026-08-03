@@ -66,7 +66,7 @@ export default function Header({ branding, onMenuToggle }) {
   const secondaryColor = branding?.secondaryColor || "#1E3A5F";
   const logoSources = [
     branding?.logoUrl,
-    "/brand/hospital-default-logo.svg",
+    "/brand/medicorecloud-logo.jpeg",
     "/brand/logo-icon.svg",
   ].filter(Boolean);
   const activeLogo = logoSources[logoIndex] || "";
@@ -100,7 +100,7 @@ export default function Header({ branding, onMenuToggle }) {
               </span>
             </div>
           ) : (
-            <div className="h-10 w-10 rounded-xl bg-white ring-1 ring-gray-200 shadow-sm p-1.5 flex items-center justify-center">
+            <div className="h-10 w-28 rounded-lg bg-white ring-1 ring-gray-200 shadow-sm p-1 flex items-center justify-center">
               <img
                 src={activeLogo}
                 alt="MediCore"
