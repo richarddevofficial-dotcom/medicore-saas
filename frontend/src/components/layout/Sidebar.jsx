@@ -577,9 +577,12 @@ export default function Sidebar({
   const [logoIndex, setLogoIndex] = useState(0);
   const [subscriptionPlan, setSubscriptionPlan] = useState("trial");
 
+  const platformLogo = collapsed
+    ? "/brand/medicorecloud-logo-mark.png"
+    : "/brand/medicorecloud-logo-compact.png";
   const logoSources = [
     branding?.logoUrl,
-    "/brand/medicorecloud-logo.jpeg",
+    platformLogo,
     "/brand/logo-light.svg",
   ].filter(Boolean);
 

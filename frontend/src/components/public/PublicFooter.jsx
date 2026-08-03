@@ -6,7 +6,7 @@ export default function PublicFooter() {
       <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 md:grid-cols-3 lg:px-8">
         <div>
           <img
-            src="/brand/medicorecloud-logo.jpeg"
+            src="/brand/medicorecloud-logo-full.png"
             alt="MediCoreCloud Hospital Management System"
             className="h-16 w-56 object-contain"
           />

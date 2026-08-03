@@ -21,7 +21,7 @@ export default function PublicNavbar() {
         <Link href="/" className="flex items-center gap-3">
           <div className="flex h-12 w-40 items-center justify-center">
             <img
-              src="/brand/medicorecloud-logo.jpeg"
+              src="/brand/medicorecloud-logo-compact.png"
               alt="MediCoreCloud Hospital Management System"
               className="h-full w-full object-contain"
             />

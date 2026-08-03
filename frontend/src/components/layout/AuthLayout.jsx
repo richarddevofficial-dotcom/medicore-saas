@@ -5,7 +5,7 @@ import { useState } from "react";
 export default function AuthLayout({ children, title, subtitle }) {
   const [logoIndex, setLogoIndex] = useState(0);
   const logoSources = [
-    "/brand/medicorecloud-logo.jpeg",
+    "/brand/medicorecloud-logo-full.png",
     "/brand/logo-icon.svg",
   ];
   const activeLogo = logoSources[logoIndex] || "";
