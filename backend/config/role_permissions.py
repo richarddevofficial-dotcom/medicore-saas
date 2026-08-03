@@ -144,6 +144,23 @@ class CanCreatePrescription(BasePermission):
         return get_staff_role(user) in self.allowed_roles
 
 
+class CanOperatePharmacyPOS(BasePermission):
+    """Allow pharmacists to handle walk-in pharmacy sales."""
+    message = "Pharmacy POS permission required."
+
+    allowed_roles = {"admin", "pharmacist", "finance_manager"}
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        if user.is_superuser:
+            return True
+
+        return get_staff_role(user) in self.allowed_roles
+
+
 class IsPharmacist(BasePermission):
     """Only pharmacists can access pharmacy management."""
     message = "Pharmacist permission required."

@@ -2,11 +2,11 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db import models as dj_models
+from django.db import models as dj_models, transaction
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError
-from .models import Medicine, Prescription
+from .models import Medicine, Prescription, StockMovement
 from .serializers import MedicineSerializer, PrescriptionSerializer
 from billing.models import Bill
 from config.role_permissions import CanCreatePrescription, IsPharmacyStaff, CanViewMedicines
@@ -290,6 +290,10 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         medicine = Medicine.objects.filter(name__iexact=medicine_name, hospital=hospital).first()
         if not medicine:
             raise ValidationError({'medicine_name': f'Medicine "{medicine_name}" not found in this hospital'})
+        if not medicine.is_active:
+            raise ValidationError({'medicine_name': 'Medicine is inactive and cannot be prescribed.'})
+        if medicine.is_expired:
+            raise ValidationError({'medicine_name': 'Medicine is expired and cannot be prescribed.'})
 
         medicine_amount = Decimal(str(medicine.selling_price or 0)) * Decimal(str(quantity_prescribed))
         prescription_status = 'pending'
@@ -350,19 +354,9 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     def dispense(self, request, pk=None):
         prescription = self.get_object()
         user = request.user
-        
-        # Check if already fully dispensed
-        if prescription.status == 'dispensed':
-            return Response({'error': 'Prescription already fully dispensed'}, status=status.HTTP_400_BAD_REQUEST)
-
-        remaining_qty = int((prescription.quantity_prescribed or 0) - (prescription.quantity_dispensed or 0))
-        if remaining_qty <= 0:
-            return Response({'error': 'No quantity left to dispense'}, status=status.HTTP_400_BAD_REQUEST)
 
         requested_qty = request.data.get('quantity')
-        if requested_qty in (None, '', 0, '0'):
-            qty = remaining_qty
-        else:
+        if requested_qty not in (None, '', 0, '0'):
             try:
                 qty = int(requested_qty)
             except (TypeError, ValueError):
@@ -370,39 +364,77 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
 
             if qty <= 0:
                 return Response({'error': 'Quantity must be positive'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            qty = None
 
-        if qty > remaining_qty:
-            return Response(
-                {'error': f'Only {remaining_qty} unit(s) remaining to dispense'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        # Get hospital for this prescription
-        hospital = prescription.hospital
-        
-        # Find the medicine
-        medicine = Medicine.objects.filter(
-            name__iexact=prescription.medicine_name, 
-            hospital=hospital
-        ).first()
-        
-        if not medicine:
-            return Response({'error': f'Medicine "{prescription.medicine_name}" not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        if medicine.quantity < qty:
-            return Response({'error': f'Only {medicine.quantity} units in stock'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Perform dispense transaction
-        from django.db import transaction
         with transaction.atomic():
-            medicine.quantity -= qty
-            medicine.save()
-            
-            prescription.quantity_dispensed += qty
+            prescription = Prescription.objects.select_for_update().get(pk=prescription.pk)
+            if prescription.status not in {'ready', 'partial'}:
+                return Response(
+                    {'error': 'Prescription must be paid before dispensing.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            remaining_qty = int(
+                (prescription.quantity_prescribed or 0)
+                - (prescription.quantity_dispensed or 0)
+            )
+            if remaining_qty <= 0:
+                return Response(
+                    {'error': 'No quantity left to dispense'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            dispense_quantity = remaining_qty if qty is None else qty
+            if dispense_quantity > remaining_qty:
+                return Response(
+                    {'error': f'Only {remaining_qty} unit(s) remaining to dispense'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            medicine = Medicine.objects.select_for_update().filter(
+                name__iexact=prescription.medicine_name,
+                hospital=prescription.hospital,
+            ).first()
+            if not medicine:
+                return Response(
+                    {'error': f'Medicine "{prescription.medicine_name}" not found'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if not medicine.is_active:
+                return Response(
+                    {'error': 'Medicine is inactive and cannot be dispensed.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if medicine.is_expired:
+                return Response(
+                    {'error': 'Medicine is expired and cannot be dispensed.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if medicine.quantity < dispense_quantity:
+                return Response(
+                    {'error': f'Only {medicine.quantity} units in stock'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            staff_name = f'{user.first_name} {user.last_name}'.strip() or user.email or user.username
+            medicine.quantity -= dispense_quantity
+            medicine.save(update_fields=['quantity', 'updated_at'])
+
+            StockMovement.objects.create(
+                hospital=prescription.hospital,
+                medicine=medicine,
+                movement_type='out',
+                quantity=dispense_quantity,
+                reference=f'Prescription {prescription.id}',
+                notes=f'Dispensed for patient {prescription.patient_id or "walk-in"}',
+                created_by=staff_name,
+            )
+
+            prescription.quantity_dispensed += dispense_quantity
             prescription.status = 'dispensed' if prescription.quantity_dispensed >= prescription.quantity_prescribed else 'partial'
             prescription.dispensed_at = timezone.now()
-            prescription.dispensed_by = user  # Add this field to your model if not present
-            prescription.save()
+            prescription.save(update_fields=['quantity_dispensed', 'status', 'dispensed_at'])
         
         return Response(PrescriptionSerializer(prescription).data)
     

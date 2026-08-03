@@ -7,7 +7,7 @@ from patients.models import Patient
 from staff.models import StaffProfile
 from departments.models import Department
 from billing.models import Bill
-from pharmacy.models import Prescription, Medicine
+from pharmacy.models import Prescription, Medicine, StockMovement
 
 
 class PrescriptionDispenseFlowTests(TestCase):
@@ -184,6 +184,67 @@ class PrescriptionDispenseFlowTests(TestCase):
 		self.assertEqual(self.prescription.status, "dispensed")
 		self.assertEqual(self.prescription.quantity_dispensed, 5)
 		self.assertEqual(self.medicine.quantity, 45)
+		self.assertTrue(
+			StockMovement.objects.filter(
+				medicine=self.medicine,
+				movement_type="out",
+				reference=f"Prescription {self.prescription.id}",
+			).exists()
+		)
+
+	def test_dispense_rejects_pending_prescription_before_payment(self):
+		self.prescription.status = "pending"
+		self.prescription.save(update_fields=["status"])
+
+		response = self.client.post(
+			f"/api/v1/prescriptions/{self.prescription.id}/dispense/",
+			{"quantity": 1},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 400)
+		self.prescription.refresh_from_db()
+		self.medicine.refresh_from_db()
+		self.assertEqual(self.prescription.status, "pending")
+		self.assertEqual(self.medicine.quantity, 50)
+
+	def test_dispense_rejects_inactive_medicine(self):
+		self.medicine.is_active = False
+		self.medicine.save(update_fields=["is_active"])
+
+		response = self.client.post(
+			f"/api/v1/prescriptions/{self.prescription.id}/dispense/",
+			{"quantity": 1},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 400)
+		self.medicine.refresh_from_db()
+		self.assertEqual(self.medicine.quantity, 50)
+
+	def test_pharmacist_can_complete_pos_sale(self):
+		response = self.client.post(
+			"/api/v1/pos-receipts/",
+			{
+				"medicine_id": self.medicine.id,
+				"quantity": 2,
+				"unit_price": "100.00",
+				"customer_name": "Walk-in Customer",
+				"payment_method": "cash",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 201)
+		self.medicine.refresh_from_db()
+		self.assertEqual(self.medicine.quantity, 48)
+		self.assertTrue(
+			StockMovement.objects.filter(
+				medicine=self.medicine,
+				movement_type="out",
+				reference="POS Sale",
+			).exists()
+		)
 
 	def test_dispense_endpoint_rejects_when_stock_is_insufficient(self):
 		self.medicine.quantity = 2

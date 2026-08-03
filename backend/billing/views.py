@@ -25,6 +25,7 @@ from .serializers import (
 )
 from pharmacy.models import Medicine, StockMovement
 from config.role_permissions import (
+    CanOperatePharmacyPOS,
     CanViewBillingStats,
     IsFinanceStaff,
     IsFinanceManager,
@@ -589,6 +590,11 @@ class POSReceiptViewSet(viewsets.ModelViewSet):
     search_fields = ['receipt_number', 'customer_name', 'medicine_name_snapshot']
     ordering = ['-created_at']
 
+    def get_permissions(self):
+        if self.action in {'list', 'retrieve', 'create'}:
+            return [IsAuthenticated(), CanOperatePharmacyPOS()]
+        return [IsAuthenticated(), IsFinanceManager()]
+
     def get_queryset(self):
         user = self.request.user
         if user.is_superuser:
@@ -628,18 +634,24 @@ class POSReceiptViewSet(viewsets.ModelViewSet):
         payment_method = serializer.validated_data.get('payment_method')
         notes = serializer.validated_data.get('notes', '')
 
-        medicine = Medicine.objects.filter(id=medicine_id, hospital=hospital).first()
-        if not medicine:
-            return Response({'error': 'Medicine not found for this hospital'}, status=404)
-
-        if quantity > (medicine.quantity or 0):
-            return Response({'error': 'Not enough stock for this sale'}, status=400)
-
         staff_name = ''
         if hasattr(user, 'staff_profile'):
             staff_name = f"{user.first_name} {user.last_name}".strip() or user.email or user.username
 
         with transaction.atomic():
+            medicine = Medicine.objects.select_for_update().filter(
+                id=medicine_id,
+                hospital=hospital,
+            ).first()
+            if not medicine:
+                return Response({'error': 'Medicine not found for this hospital'}, status=404)
+            if not medicine.is_active:
+                return Response({'error': 'Medicine is inactive and cannot be sold'}, status=400)
+            if medicine.is_expired:
+                return Response({'error': 'Medicine is expired and cannot be sold'}, status=400)
+            if quantity > (medicine.quantity or 0):
+                return Response({'error': 'Not enough stock for this sale'}, status=400)
+
             medicine.quantity = (medicine.quantity or 0) - quantity
             medicine.save(update_fields=['quantity', 'updated_at'])
 
