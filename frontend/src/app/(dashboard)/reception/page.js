@@ -110,8 +110,8 @@ export default function ReceptionDashboard() {
     fetchData();
   }, []);
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
+  const handleRegister = async (event) => {
+    event.preventDefault();
     if (!form.first_name || !form.last_name || !form.phone)
       return toast.error("Name and phone required");
     if (!form.consultation_service_id)
@@ -696,13 +696,21 @@ export default function ReceptionDashboard() {
               >
                 Cancel
               </Button>
-              <Button onClick={handleRegister} isLoading={isSubmitting}>
+              <Button
+                type="submit"
+                form="reception-patient-registration"
+                isLoading={isSubmitting}
+              >
                 Register
               </Button>
             </>
           }
         >
-          <form className="space-y-4">
+          <form
+            id="reception-patient-registration"
+            className="space-y-4"
+            onSubmit={handleRegister}
+          >
             <div className="grid grid-cols-2 gap-4">
               <Input
                 label="First Name *"
