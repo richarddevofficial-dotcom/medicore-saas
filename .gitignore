@@ -19,3 +19,5 @@ backend/staticfiles/
 
 # Python configuration backups
 *.bak
+__pycache__/
+*.py[cod]
