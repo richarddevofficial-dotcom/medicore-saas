@@ -749,6 +749,17 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertEqual(patient_stats_response.status_code, 200)
         self.assertEqual(billing_stats_response.status_code, 200)
 
+    def test_receptionist_can_load_read_only_dashboard_stats(self):
+        self.staff_profile.role = "receptionist"
+        self.staff_profile.save(update_fields=["role"])
+        self.client.force_authenticate(user=self.user)
+
+        patient_stats_response = self.client.get("/api/v1/patients/stats/")
+        billing_stats_response = self.client.get(reverse("bill-stats"))
+
+        self.assertEqual(patient_stats_response.status_code, 200)
+        self.assertEqual(billing_stats_response.status_code, 200)
+
     def test_subscription_payment_create_assigns_hospital_from_authenticated_user(self):
         login_response = self.client.post(
             reverse("login"),

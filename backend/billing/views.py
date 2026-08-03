@@ -24,7 +24,7 @@ from .serializers import (
     POSReceiptSerializer,
 )
 from pharmacy.models import Medicine, StockMovement
-from config.role_permissions import IsFinanceStaff, IsFinanceManager
+from config.role_permissions import IsFinanceStaff, IsFinanceManager, IsReceptionist
 
 
 def _sync_patient_prescription_payment_status(bill):
@@ -410,6 +410,11 @@ class BillViewSet(viewsets.ModelViewSet):
     queryset = Bill.objects.all()
     serializer_class = BillSerializer
     permission_classes = [IsAuthenticated, IsFinanceStaff]
+
+    def get_permissions(self):
+        if self.action == 'stats':
+            return [IsAuthenticated(), IsReceptionist()]
+        return [IsAuthenticated(), IsFinanceStaff()]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['bill_number', 'patient_name', 'status']
