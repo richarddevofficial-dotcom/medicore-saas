@@ -1174,7 +1174,7 @@ class AuthAndBillingSmokeTests(TestCase):
                 "email": "new-platform-admin@example.com",
                 "first_name": "New",
                 "last_name": "Platform",
-                "password": "Admin@1234",
+                "password": "PlatformAdmin!2026",
             },
             format="json",
         )
@@ -1342,7 +1342,7 @@ class AuthAndBillingSmokeTests(TestCase):
                 "email": "new-primary-admin@example.com",
                 "first_name": "Chief",
                 "last_name": "Admin",
-                "password": "Admin@1234",
+                "password": "PlatformAdmin!2026",
                 "admin_type": "primary",
             },
             format="json",
@@ -1370,7 +1370,7 @@ class AuthAndBillingSmokeTests(TestCase):
             "/api/v1/super-admin/platform-admins/create/",
             {
                 "email": "new-secondary-admin@example.com",
-                "password": "Admin@1234",
+                "password": "PlatformAdmin!2026",
                 "admin_type": "secondary",
             },
             format="json",

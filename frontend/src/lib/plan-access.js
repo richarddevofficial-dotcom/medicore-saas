@@ -32,6 +32,8 @@ const BASIC_ROUTE_PATTERNS = [
   "/admin/medicines/*",
   "/admin/lab",
   "/admin/lab/*",
+  "/admin/services",
+  "/admin/services/*",
   "/admin/subscription",
   "/admin/subscription/*",
   "/admin/payment",

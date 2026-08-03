@@ -31,8 +31,15 @@ let refreshPromise = null;
 // Add custom headers for super admin impersonation
 apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
+    const requestUrl = String(config.url || "");
+    const isPublicAuthEndpoint =
+      requestUrl.includes("/auth/login/initiate/") ||
+      requestUrl.includes("/auth/login/verify/") ||
+      requestUrl.includes("/auth/register/") ||
+      requestUrl.includes("/auth/password-setup/");
+
     const token = localStorage.getItem("token");
-    if (token) {
+    if (token && !isPublicAuthEndpoint) {
       config.headers.Authorization = `Bearer ${token}`;
     }
 

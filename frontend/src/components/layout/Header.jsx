@@ -32,10 +32,17 @@ export default function Header({ branding, onMenuToggle }) {
     }
 
     const storedRole = localStorage.getItem("role") || "";
-    if (storedRole === "super_admin") {
+    const impersonatingHospitalId = sessionStorage.getItem(
+      "impersonating_hospital_id",
+    );
+
+    // Prefer the active hospital context for hospital users and impersonation sessions.
+    if (parsedHospital?.name) {
+      setHospitalName(parsedHospital.name);
+    } else if (storedRole === "super_admin" && !impersonatingHospitalId) {
       setHospitalName("MediCore");
     } else {
-      setHospitalName(parsedHospital?.name || branding?.name || "MediCore");
+      setHospitalName(branding?.name || "MediCore");
     }
     setUserData(parsedUser);
     setRole(storedRole);
