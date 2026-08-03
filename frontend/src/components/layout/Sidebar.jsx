@@ -580,11 +580,7 @@ export default function Sidebar({
   const platformLogo = collapsed
     ? "/brand/medicorecloud-logo-mark.png"
     : "/brand/medicorecloud-logo-sidebar.png";
-  const logoSources = [
-    branding?.logoUrl,
-    platformLogo,
-    "/brand/logo-light.svg",
-  ].filter(Boolean);
+  const logoSources = [platformLogo, "/brand/logo-light.svg"].filter(Boolean);
 
   const activeLogo = logoSources[logoIndex] || "";
 
@@ -635,10 +631,7 @@ export default function Sidebar({
     >
       {/* Logo */}
       <div className="flex items-center h-16 px-4 border-b border-[#2a3a5e] flex-shrink-0">
-        <Link
-          href="/dashboard"
-          className="flex items-center gap-3 overflow-hidden"
-        >
+        <Link href="/dashboard" className="flex items-center overflow-hidden">
           {!activeLogo ? (
             <div className="h-10 w-10 rounded-xl bg-white/10 ring-1 ring-white/20 flex items-center justify-center flex-shrink-0">
               <span className="text-white font-bold text-sm tracking-wide">
@@ -655,13 +648,6 @@ export default function Sidebar({
                 className="h-full w-full object-contain"
                 onError={() => setLogoIndex((prev) => prev + 1)}
               />
-            </div>
-          )}
-          {!collapsed && branding?.name && (
-            <div className="min-w-0">
-              <h1 className="text-base font-bold tracking-wide text-white">
-                {branding.name}
-              </h1>
             </div>
           )}
         </Link>
