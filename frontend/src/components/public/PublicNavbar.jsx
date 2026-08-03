@@ -19,7 +19,7 @@ export default function PublicNavbar() {
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-3">
-          <div className="flex h-12 w-40 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white p-1">
+          <div className="flex h-12 w-40 items-center justify-center">
             <img
               src="/brand/medicorecloud-logo.jpeg"
               alt="MediCoreCloud Hospital Management System"

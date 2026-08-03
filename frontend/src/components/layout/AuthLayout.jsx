@@ -21,7 +21,7 @@ export default function AuthLayout({ children, title, subtitle }) {
               </span>
             </div>
           ) : (
-            <div className="h-24 w-64 rounded-xl bg-white border border-gray-100 shadow-sm p-2 flex items-center justify-center">
+            <div className="h-24 w-64 flex items-center justify-center">
               <img
                 src={activeLogo}
                 alt="MediCore"

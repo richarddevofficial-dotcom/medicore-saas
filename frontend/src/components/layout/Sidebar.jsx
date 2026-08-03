@@ -644,7 +644,7 @@ export default function Sidebar({
             </div>
           ) : (
             <div
-              className={`${collapsed ? "h-10 w-10" : "h-11 w-36"} rounded-lg bg-white/10 ring-1 ring-white/20 flex items-center justify-center flex-shrink-0 p-1`}
+              className={`${collapsed ? "h-10 w-10" : "h-11 w-36"} flex items-center justify-center flex-shrink-0`}
             >
               <img
                 src={activeLogo}

@@ -8,7 +8,7 @@ export default function PublicFooter() {
           <img
             src="/brand/medicorecloud-logo.jpeg"
             alt="MediCoreCloud Hospital Management System"
-            className="h-16 w-56 rounded-lg bg-white object-contain p-1"
+            className="h-16 w-56 object-contain"
           />
           <p className="mt-3 max-w-sm text-sm leading-6 text-slate-400">
             A secure cloud hospital management platform for clinical,

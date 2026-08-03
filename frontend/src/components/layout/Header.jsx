@@ -100,7 +100,7 @@ export default function Header({ branding, onMenuToggle }) {
               </span>
             </div>
           ) : (
-            <div className="h-10 w-28 rounded-lg bg-white ring-1 ring-gray-200 shadow-sm p-1 flex items-center justify-center">
+            <div className="h-10 w-28 flex items-center justify-center">
               <img
                 src={activeLogo}
                 alt="MediCore"
