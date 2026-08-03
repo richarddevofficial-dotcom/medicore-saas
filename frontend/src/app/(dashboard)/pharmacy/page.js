@@ -135,15 +135,20 @@ export default function PharmacyPage() {
     const fetchDashboardData = async () => {
       setLoading(true);
       try {
-        const [presRes, medRes, billRes, posRes] = await Promise.all([
-          apiClient.get("/prescriptions/queue/"),
-          apiClient.get("/medicines/"),
-          apiClient.get("/bills/stats/"),
-          apiClient.get("/pos-receipts/"),
-        ]);
+        const [queueRes, prescriptionHistoryRes, medRes, billRes, posRes] =
+          await Promise.all([
+            apiClient.get("/prescriptions/queue/"),
+            apiClient.get("/prescriptions/history/?days=30"),
+            apiClient.get("/medicines/"),
+            apiClient.get("/bills/stats/"),
+            apiClient.get("/pos-receipts/"),
+          ]);
 
-        const prescriptions = Array.isArray(presRes.data)
-          ? presRes.data.filter(Boolean)
+        const queuePrescriptions = Array.isArray(queueRes.data)
+          ? queueRes.data.filter(Boolean)
+          : [];
+        const prescriptions = Array.isArray(prescriptionHistoryRes.data)
+          ? prescriptionHistoryRes.data.filter(Boolean)
           : [];
         const medicines = Array.isArray(medRes.data?.results)
           ? medRes.data.results
@@ -180,7 +185,7 @@ export default function PharmacyPage() {
           return date >= rangeStart;
         });
 
-        const readyQueue = prescriptions.filter((item) => {
+        const readyQueue = queuePrescriptions.filter((item) => {
           const status = String(item?.status || "").toLowerCase();
           return status === "ready" || status === "partial";
         });
@@ -276,9 +281,13 @@ export default function PharmacyPage() {
           .sort((a, b) => b.revenue - a.revenue)
           .slice(0, 6);
 
-        const getDateKey = (item) => {
-          const date = getPrescriptionDate(item);
+        const getDateKey = (item, useDispenseDate = false) => {
+          const date =
+            useDispenseDate && item?.dispensed_at
+              ? new Date(item.dispensed_at)
+              : getPrescriptionDate(item);
           if (!date) return null;
+          if (Number.isNaN(date.getTime())) return null;
           return date.toISOString().slice(0, 10);
         };
 
@@ -303,12 +312,15 @@ export default function PharmacyPage() {
         }, {});
 
         tabFilteredPrescriptions.forEach((item) => {
-          const key = getDateKey(item);
+          const isDispensed =
+            String(item?.status).toLowerCase() === "dispensed";
+          const key = getDateKey(item, isDispensed);
           if (!key || bucketIndex[key] === undefined) return;
           const idx = bucketIndex[key];
-          dayBuckets[idx].prescriptions += 1;
-          if (String(item?.status).toLowerCase() === "dispensed") {
+          if (isDispensed) {
             dayBuckets[idx].dispensed += 1;
+          } else {
+            dayBuckets[idx].prescriptions += 1;
           }
         });
 

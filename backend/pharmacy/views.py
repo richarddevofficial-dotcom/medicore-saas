@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import models as dj_models, transaction
 from django.utils import timezone
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError
 from .models import Medicine, Prescription, StockMovement
@@ -477,6 +478,33 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         
         serializer = PrescriptionSerializer(prescriptions, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def history(self, request):
+        user = request.user
+        days = request.query_params.get('days', 30)
+        try:
+            days = min(max(int(days), 1), 30)
+        except (TypeError, ValueError):
+            return Response({'error': 'days must be a number between 1 and 30'}, status=400)
+
+        if user.is_superuser:
+            hospital_id = request.query_params.get('hospital_id')
+            prescriptions = Prescription.objects.all()
+            if hospital_id:
+                prescriptions = prescriptions.filter(hospital_id=hospital_id)
+        elif hasattr(user, 'staff_profile'):
+            prescriptions = Prescription.objects.filter(
+                hospital=user.staff_profile.hospital,
+            )
+        else:
+            return Response({'error': 'User has no staff profile'}, status=status.HTTP_403_FORBIDDEN)
+
+        since = timezone.now() - timedelta(days=days)
+        prescriptions = prescriptions.exclude(status='cancelled').filter(
+            created_at__gte=since,
+        ).order_by('-created_at')
+        return Response(PrescriptionSerializer(prescriptions, many=True).data)
     
     @action(detail=False, methods=['post'])
     def mark_paid_by_patient(self, request):

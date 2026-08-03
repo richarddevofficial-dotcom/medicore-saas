@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.contrib.auth.models import User
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from hospitals.models import Hospital
@@ -83,6 +84,28 @@ class PrescriptionDispenseFlowTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(len(response.data), 1)
 		self.assertEqual(response.data[0]["status"], "ready")
+
+	def test_history_includes_dispensed_prescriptions_but_queue_does_not(self):
+		self.prescription.status = "dispensed"
+		self.prescription.quantity_dispensed = self.prescription.quantity_prescribed
+		self.prescription.dispensed_at = timezone.now()
+		self.prescription.save(
+			update_fields=["status", "quantity_dispensed", "dispensed_at"],
+		)
+
+		queue_response = self.client.get("/api/v1/prescriptions/queue/")
+		history_response = self.client.get("/api/v1/prescriptions/history/?days=30")
+
+		self.assertEqual(queue_response.status_code, 200)
+		self.assertNotIn(
+			self.prescription.id,
+			[item["id"] for item in queue_response.data],
+		)
+		self.assertEqual(history_response.status_code, 200)
+		self.assertIn(
+			self.prescription.id,
+			[item["id"] for item in history_response.data],
+		)
 
 	def test_paid_medicine_bill_makes_prescription_ready_for_pharmacy(self):
 		pending_prescription = Prescription.objects.create(
