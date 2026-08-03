@@ -12,7 +12,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Clock, AlertTriangle } from "lucide-react";
 
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 const WARNING_MS = 60 * 1000; // warn at 1 minute remaining
 
 function IdleWarningModal({ secondsLeft, onStayLoggedIn, onLogoutNow }) {
