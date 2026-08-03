@@ -59,10 +59,12 @@ class Command(BaseCommand):
             for prescription in prescriptions:
                 amount = Decimal(str(prescription.medicine_amount or 0))
                 if amount <= 0:
-                    medicine = Medicine.objects.filter(
-                        hospital=prescription.hospital,
-                        name__iexact=prescription.medicine_name,
-                    ).first()
+                    medicine = prescription.medicine
+                    if not medicine:
+                        medicine = Medicine.objects.filter(
+                            hospital=prescription.hospital,
+                            name__iexact=prescription.medicine_name,
+                        ).first()
                     if medicine:
                         qty = Decimal(str(prescription.quantity_prescribed or 1))
                         amount = Decimal(str(medicine.selling_price or 0)) * qty

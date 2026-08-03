@@ -66,6 +66,7 @@ class PrescriptionDispenseFlowTests(TestCase):
 		self.prescription = Prescription.objects.create(
 			hospital=self.hospital,
 			patient=self.patient,
+			medicine=self.medicine,
 			medicine_name="Paracetamol",
 			dosage="1 tab bd",
 			quantity_prescribed=5,
@@ -87,6 +88,7 @@ class PrescriptionDispenseFlowTests(TestCase):
 		pending_prescription = Prescription.objects.create(
 			hospital=self.hospital,
 			patient=self.patient,
+			medicine=self.medicine,
 			medicine_name=self.medicine.name,
 			dosage="1 tablet daily",
 			quantity_prescribed=2,
@@ -160,6 +162,7 @@ class PrescriptionDispenseFlowTests(TestCase):
 		self.assertEqual(prescription_response.status_code, 201)
 		prescription = Prescription.objects.get(id=prescription_response.data["id"])
 		self.assertEqual(prescription.doctor, doctor)
+		self.assertEqual(prescription.medicine, self.medicine)
 
 		treatment_response = self.client.post(
 			f"/api/v1/patients/{self.patient.mrn}/update_status/",
@@ -191,6 +194,20 @@ class PrescriptionDispenseFlowTests(TestCase):
 				reference=f"Prescription {self.prescription.id}",
 			).exists()
 		)
+
+	def test_dispense_uses_linked_medicine_after_its_name_changes(self):
+		self.medicine.name = "Paracetamol 500mg"
+		self.medicine.save(update_fields=["name"])
+
+		response = self.client.post(
+			f"/api/v1/prescriptions/{self.prescription.id}/dispense/",
+			{"quantity": 1},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.medicine.refresh_from_db()
+		self.assertEqual(self.medicine.quantity, 49)
 
 	def test_dispense_rejects_pending_prescription_before_payment(self):
 		self.prescription.status = "pending"

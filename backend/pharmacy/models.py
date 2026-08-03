@@ -101,6 +101,7 @@ class Prescription(models.Model):
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='pharmacy_prescriptions')
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE, null=True, blank=True, related_name='pharmacy_prescriptions')
     doctor = models.ForeignKey(StaffProfile, on_delete=models.SET_NULL, null=True, blank=True)
+    medicine = models.ForeignKey(Medicine, on_delete=models.SET_NULL, null=True, blank=True, related_name='prescriptions')
     medicine_name = models.CharField(max_length=200)
     dosage = models.CharField(max_length=200)
     quantity_prescribed = models.IntegerField(default=1)

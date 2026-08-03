@@ -15,7 +15,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prescription
         fields = '__all__'
-        read_only_fields = ['hospital', 'created_at', 'dispensed_at']
+        read_only_fields = ['hospital', 'medicine', 'created_at', 'dispensed_at']
     
     def get_patient_name(self, obj):
         return f"{obj.patient.first_name} {obj.patient.last_name}" if obj.patient else "N/A"

@@ -326,6 +326,7 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         serializer.save(
             hospital=hospital,
             doctor=prescribing_doctor,
+            medicine=medicine,
             medicine_amount=medicine_amount,
             status=prescription_status,
         )
@@ -392,13 +393,14 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            medicine = Medicine.objects.select_for_update().filter(
-                name__iexact=prescription.medicine_name,
-                hospital=prescription.hospital,
-            ).first()
+            medicine = (
+                Medicine.objects.select_for_update()
+                .filter(id=prescription.medicine_id, hospital=prescription.hospital)
+                .first()
+            )
             if not medicine:
                 return Response(
-                    {'error': f'Medicine "{prescription.medicine_name}" not found'},
+                    {'error': 'Prescription medicine is unavailable. Contact pharmacy administration.'},
                     status=status.HTTP_404_NOT_FOUND,
                 )
             if not medicine.is_active:
