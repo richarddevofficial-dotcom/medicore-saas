@@ -170,14 +170,7 @@ export default function BillingPage() {
       });
       const { data: updatedBill } = await apiClient.get(`/bills/${bill.id}/`);
       if (updatedBill.status === "paid" && updatedBill.patient_mrn) {
-        try {
-          await apiClient.post("/prescriptions/mark_paid_by_patient/", {
-            mrn: updatedBill.patient_mrn,
-          });
-          toast.success("Payment recorded! Pharmacy notified ✅");
-        } catch (err) {
-          toast.success("Payment recorded!");
-        }
+        toast.success("Payment recorded! Prescription sent to pharmacy.");
       } else {
         toast.success("Payment recorded!");
       }

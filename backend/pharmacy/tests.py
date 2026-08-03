@@ -6,6 +6,7 @@ from hospitals.models import Hospital
 from patients.models import Patient
 from staff.models import StaffProfile
 from departments.models import Department
+from billing.models import Bill
 from pharmacy.models import Prescription, Medicine
 
 
@@ -81,6 +82,54 @@ class PrescriptionDispenseFlowTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(len(response.data), 1)
 		self.assertEqual(response.data[0]["status"], "ready")
+
+	def test_paid_medicine_bill_makes_prescription_ready_for_pharmacy(self):
+		pending_prescription = Prescription.objects.create(
+			hospital=self.hospital,
+			patient=self.patient,
+			medicine_name=self.medicine.name,
+			dosage="1 tablet daily",
+			quantity_prescribed=2,
+			status="pending",
+			medicine_amount=200,
+		)
+		bill = Bill.objects.create(
+			hospital=self.hospital,
+			patient_name="John Doe",
+			patient_mrn=self.patient.mrn,
+			medicine_fee=200,
+		)
+		cashier_user = User.objects.create_user(
+			username="cashier@example.com",
+			email="cashier@example.com",
+			password="Cashier@1234",
+		)
+		StaffProfile.objects.create(
+			user=cashier_user,
+			hospital=self.hospital,
+			department=self.department,
+			role="receptionist",
+			phone="0911111113",
+		)
+		self.client.force_authenticate(user=cashier_user)
+
+		payment_response = self.client.post(
+			f"/api/v1/bills/{bill.id}/make_payment/",
+			{"amount": "200.00"},
+			format="json",
+		)
+
+		self.assertEqual(payment_response.status_code, 200)
+		pending_prescription.refresh_from_db()
+		self.assertEqual(pending_prescription.status, "ready")
+
+		self.client.force_authenticate(user=self.user)
+		queue_response = self.client.get("/api/v1/prescriptions/queue/?status=ready")
+		self.assertEqual(queue_response.status_code, 200)
+		self.assertIn(
+			pending_prescription.id,
+			[item["id"] for item in queue_response.data],
+		)
 
 	def test_doctor_can_prescribe_and_complete_treatment(self):
 		doctor_user = User.objects.create_user(

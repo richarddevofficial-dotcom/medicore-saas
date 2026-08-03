@@ -25,6 +25,7 @@ import {
   BarChart3,
   TrendingUp,
   Download,
+  RefreshCw,
 } from "lucide-react";
 import {
   AreaChart,
@@ -362,6 +363,8 @@ export default function PharmacyPage() {
     };
 
     fetchDashboardData();
+    const refreshInterval = setInterval(fetchDashboardData, 30000);
+    return () => clearInterval(refreshInterval);
   }, [range, selectedTab, refreshKey]);
 
   const handleDispense = async (item) => {
@@ -486,6 +489,13 @@ export default function PharmacyPage() {
           >
             Export Analytics
           </Button>
+          <Button
+            variant="outline"
+            icon={RefreshCw}
+            onClick={() => setRefreshKey((previous) => previous + 1)}
+            title="Refresh pharmacy queue"
+            aria-label="Refresh pharmacy queue"
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
