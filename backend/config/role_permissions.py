@@ -9,11 +9,14 @@ def get_staff_role(user):
     """Extract staff role from user, handling case variations."""
     if not user or not user.is_authenticated:
         return None
-    
+
     staff_profile = getattr(user, "staff_profile", None)
     if staff_profile:
-        return str(staff_profile.role or "").lower()
-    
+        role = str(staff_profile.role or "").strip().lower()
+        if role in {"hospital_admin", "hospital administrator", "administrator"}:
+            return "admin"
+        return role
+
     return None
 
 
