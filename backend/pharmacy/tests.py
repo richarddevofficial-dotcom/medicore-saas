@@ -82,6 +82,46 @@ class PrescriptionDispenseFlowTests(TestCase):
 		self.assertEqual(len(response.data), 1)
 		self.assertEqual(response.data[0]["status"], "ready")
 
+	def test_doctor_can_prescribe_and_complete_treatment(self):
+		doctor_user = User.objects.create_user(
+			username="doctor@example.com",
+			email="doctor@example.com",
+			password="Doctor@1234",
+		)
+		doctor = StaffProfile.objects.create(
+			user=doctor_user,
+			hospital=self.hospital,
+			department=self.department,
+			role="doctor",
+			phone="0911111112",
+		)
+		self.client.force_authenticate(user=doctor_user)
+
+		prescription_response = self.client.post(
+			"/api/v1/prescriptions/",
+			{
+				"patient": self.patient.id,
+				"medicine_name": self.medicine.name,
+				"dosage": "1 tablet daily",
+				"quantity_prescribed": 2,
+			},
+			format="json",
+		)
+
+		self.assertEqual(prescription_response.status_code, 201)
+		prescription = Prescription.objects.get(id=prescription_response.data["id"])
+		self.assertEqual(prescription.doctor, doctor)
+
+		treatment_response = self.client.post(
+			f"/api/v1/patients/{self.patient.mrn}/update_status/",
+			{"status": "treated", "diagnosis": "Recovered"},
+			format="json",
+		)
+
+		self.assertEqual(treatment_response.status_code, 200)
+		self.patient.refresh_from_db()
+		self.assertEqual(self.patient.status, "treated")
+
 	def test_dispense_endpoint_marks_prescription_dispensed(self):
 		response = self.client.post(
 			f"/api/v1/prescriptions/{self.prescription.id}/dispense/",

@@ -269,7 +269,16 @@ export default function DoctorQueuePage() {
       setSelectedMedicines([]);
       fetchQueue();
     } catch (err) {
-      toast.error("Failed");
+      const error = err?.response?.data;
+      const message =
+        error?.error ||
+        error?.detail ||
+        (typeof error === "object" &&
+          Object.values(error)
+            .flat()
+            .find((value) => typeof value === "string")) ||
+        "Unable to complete treatment";
+      toast.error(message);
     }
   };
 

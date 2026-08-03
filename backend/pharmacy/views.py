@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 from .models import Medicine, Prescription
 from .serializers import MedicineSerializer, PrescriptionSerializer
 from billing.models import Bill
-from config.role_permissions import IsPharmacyStaff, CanViewMedicines
+from config.role_permissions import CanCreatePrescription, IsPharmacyStaff, CanViewMedicines
 
 
 def _refresh_bill_status(bill):
@@ -237,6 +237,11 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter]
     search_fields = ['medicine_name', 'notes']
     ordering = ['-created_at']
+
+    def get_permissions(self):
+        if self.action == 'create':
+            return [IsAuthenticated(), CanCreatePrescription()]
+        return [IsAuthenticated(), IsPharmacyStaff()]
     
     def get_queryset(self):
         """Return prescriptions filtered by hospital or all for superuser"""
@@ -274,6 +279,9 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             if not hasattr(user, 'staff_profile'):
                 raise ValidationError("User has no staff profile")
             hospital = user.staff_profile.hospital
+
+        if patient and patient.hospital_id != hospital.id:
+            raise ValidationError({'patient': 'Patient does not belong to your hospital.'})
         
         # Validate that medicine exists in this hospital
         if not Medicine.objects.filter(name__iexact=medicine_name, hospital=hospital).exists():
@@ -306,8 +314,14 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                 if medicine_fee > 0 and paid >= (consultation_fee + lab_fee + medicine_fee):
                     prescription_status = 'ready'
 
+        prescribing_doctor = (
+            user.staff_profile
+            if hasattr(user, 'staff_profile') and user.staff_profile.role == 'doctor'
+            else None
+        )
         serializer.save(
             hospital=hospital,
+            doctor=prescribing_doctor,
             medicine_amount=medicine_amount,
             status=prescription_status,
         )
