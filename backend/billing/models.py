@@ -1,6 +1,7 @@
 from django.db import models
 from django.db.models import Q
 from django.conf import settings
+from decimal import Decimal
 from hospitals.models import Hospital
 
 
@@ -8,6 +9,7 @@ class ServiceCatalog(models.Model):
     SERVICE_TYPES = [
         ('consultation', 'Consultation'),
         ('lab', 'Lab'),
+        ('imaging', 'Imaging'),
         ('other', 'Other Service'),
     ]
 
@@ -43,6 +45,7 @@ class Bill(models.Model):
     patient_mrn = models.CharField(max_length=50, blank=True)
     consultation_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     lab_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    imaging_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     medicine_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     room_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     other_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -66,8 +69,19 @@ class Bill(models.Model):
             last = Bill.objects.order_by('-id').first()
             num = (last.id + 1) if last else 1
             self.bill_number = f"BILL-{datetime.now().strftime('%Y%m%d')}-{num:04d}"
-        self.total_amount = self.consultation_fee + self.lab_fee + self.medicine_fee + self.room_fee + self.other_fee
-        self.balance = self.total_amount - self.amount_paid
+        fee_fields = [
+            self.consultation_fee,
+            self.lab_fee,
+            self.imaging_fee,
+            self.medicine_fee,
+            self.room_fee,
+            self.other_fee,
+        ]
+        self.total_amount = sum(
+            (Decimal(str(fee or 0)) for fee in fee_fields),
+            Decimal('0'),
+        )
+        self.balance = self.total_amount - Decimal(str(self.amount_paid or 0))
         super().save(*args, **kwargs)
 
 

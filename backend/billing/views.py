@@ -28,6 +28,7 @@ from config.role_permissions import (
     IsFinanceStaff,
     IsFinanceManager,
     IsReceptionist,
+    IsServiceRequester,
     get_staff_role,
 )
 
@@ -295,7 +296,7 @@ class ServiceCatalogViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action == 'list':
-            return [IsAuthenticated(), IsReceptionist()]
+            return [IsAuthenticated(), IsServiceRequester()]
         return [IsAuthenticated(), IsFinanceStaff()]
 
     def get_queryset(self):
@@ -314,6 +315,11 @@ class ServiceCatalogViewSet(viewsets.ModelViewSet):
             if get_staff_role(user) == 'receptionist':
                 return queryset.filter(
                     service_type='consultation',
+                    is_active=True,
+                )
+            if get_staff_role(user) == 'doctor':
+                return queryset.filter(
+                    service_type__in=['lab', 'imaging'],
                     is_active=True,
                 )
             return queryset

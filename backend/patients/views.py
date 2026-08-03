@@ -11,7 +11,7 @@ from .models import Patient
 from staff.models import StaffProfile
 from saas_billing.services import check_hospital_limit
 from .serializers import PatientListSerializer, PatientDetailSerializer
-from billing.models import Bill
+from billing.models import Bill, ServiceCatalog
 from config.role_permissions import CanManagePatients, IsClinicalStaff, IsReceptionist
 
 
@@ -38,6 +38,28 @@ def _get_patient_bill(patient):
         hospital=patient.hospital,
         patient_mrn=patient.mrn,
     ).order_by('-created_at').first()
+
+
+def _get_requested_services(patient, service_ids, service_type):
+    service_ids = service_ids if isinstance(service_ids, list) else []
+    selected_ids = {str(service_id) for service_id in service_ids if service_id}
+    if not selected_ids:
+        return []
+
+    services = list(
+        ServiceCatalog.objects.filter(
+            hospital=patient.hospital,
+            service_type=service_type,
+            is_active=True,
+            id__in=selected_ids,
+        )
+    )
+    if len(services) != len(selected_ids):
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError(
+            {'service_ids': f'One or more selected {service_type} services are unavailable.'}
+        )
+    return services
 
 
 def _refresh_bill_status(bill):
@@ -156,26 +178,50 @@ class PatientViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def request_lab_test(self, request, mrn=None):
         patient = self.get_object()
-        lab_tests = request.data.get('lab_test_requested', '')
-        if lab_tests:
-            bill = _get_patient_bill(patient)
-            if not bill:
-                return Response(
-                    {'error': 'No consultation bill found. Please create bill first.'},
-                    status=status.HTTP_402_PAYMENT_REQUIRED,
-                )
+        services = _get_requested_services(
+            patient,
+            request.data.get('service_ids'),
+            'lab',
+        )
+        manual_tests = str(request.data.get('lab_test_requested', '')).strip()
+        if not services and not manual_tests:
+            return Response(
+                {'error': 'Select a configured lab service or provide lab test notes.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-            requested_lab_fee = request.data.get('lab_fee', 30)
-            lab_fee = Decimal(str(requested_lab_fee or 0))
-            if lab_fee > 0 and Decimal(str(bill.lab_fee or 0)) <= 0:
-                bill.lab_fee = lab_fee
-                bill.save()
-                _refresh_bill_status(bill)
-                bill.save(update_fields=['status', 'updated_at'])
+        bill = _get_patient_bill(patient)
+        if not bill:
+            return Response(
+                {'error': 'No consultation bill found. Please create bill first.'},
+                status=status.HTTP_402_PAYMENT_REQUIRED,
+            )
 
-            patient.lab_test_requested = lab_tests
-            patient.status = 'lab_requested'
-            patient.save()
+        from laboratory.models import LabTest
+        service_fee = sum((service.price for service in services), Decimal('0'))
+        service_labels = [
+            f'{service.name}{f" ({service.code})" if service.code else ""}'
+            for service in services
+        ]
+        requested_tests = '\n'.join(filter(None, ['\n'.join(service_labels), manual_tests]))
+        for service in services:
+            LabTest.objects.create(
+                hospital=patient.hospital,
+                patient=patient,
+                test_name=service.name,
+                category='Service Catalog',
+                price=service.price,
+                notes=service.notes,
+            )
+
+        bill.lab_fee = Decimal(str(bill.lab_fee or 0)) + service_fee
+        bill.save()
+        _refresh_bill_status(bill)
+        bill.save(update_fields=['status', 'updated_at'])
+
+        patient.lab_test_requested = requested_tests
+        patient.status = 'lab_requested'
+        patient.save()
         return Response(PatientDetailSerializer(patient).data)
     
     @action(detail=True, methods=['post'])
@@ -184,18 +230,56 @@ class PatientViewSet(viewsets.ModelViewSet):
         is_paid, message = _stage_is_paid(patient, 'consultation')
         if not is_paid:
             return Response({'error': message}, status=status.HTTP_402_PAYMENT_REQUIRED)
-        imaging_info = request.data.get('imaging_requested', '')
-        test_type = request.data.get('test_type', 'xray')
+        services = _get_requested_services(
+            patient,
+            request.data.get('service_ids'),
+            'imaging',
+        )
+        if not services:
+            return Response(
+                {'error': 'Select at least one configured imaging service.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bill = _get_patient_bill(patient)
+        if not bill:
+            return Response(
+                {'error': 'No consultation bill found. Please create bill first.'},
+                status=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+
+        imaging_info = str(request.data.get('imaging_requested', '')).strip()
         body_part = request.data.get('body_part', '')
-        patient.imaging_requested = imaging_info
+        service_fee = sum((service.price for service in services), Decimal('0'))
+        bill.imaging_fee = Decimal(str(bill.imaging_fee or 0)) + service_fee
+        bill.save()
+        _refresh_bill_status(bill)
+        bill.save(update_fields=['status', 'updated_at'])
+
+        service_labels = []
+        from imaging.models import ImagingTest
+        for service in services:
+            test_type = next(
+                (value for value, _label in ImagingTest.TYPES if value == service.code.lower()),
+                'other',
+            ) if service.code else 'other'
+            service_labels.append(service.name)
+            ImagingTest.objects.create(
+                hospital=patient.hospital,
+                patient=patient,
+                patient_name=f"{patient.first_name} {patient.last_name}",
+                test_type=test_type,
+                body_part=body_part,
+                notes=imaging_info,
+                price=service.price,
+            )
+
+        requested_imaging = ', '.join(service_labels)
+        if imaging_info:
+            requested_imaging = f'{requested_imaging}: {imaging_info}'
+        patient.imaging_requested = requested_imaging
         patient.status = 'imaging_requested'
         patient.save()
-        from imaging.models import ImagingTest
-        ImagingTest.objects.create(
-            hospital=patient.hospital, patient=patient,
-            patient_name=f"{patient.first_name} {patient.last_name}",
-            test_type=test_type, body_part=body_part, notes=imaging_info,
-        )
         return Response(PatientDetailSerializer(patient).data)
     
     @action(detail=True, methods=['post'])

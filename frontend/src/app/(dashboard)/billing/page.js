@@ -207,6 +207,7 @@ export default function BillingPage() {
     const balance = Math.max(total - paidApplied, 0);
     const consult = parseFloat(bill.consultation_fee || bill.consult || 0);
     const lab = parseFloat(bill.lab_fee || bill.lab || 0);
+    const imaging = parseFloat(bill.imaging_fee || 0);
     const medicine = parseFloat(bill.medicine_fee || bill.medicine || 0);
 
     const printWindow = window.open("", "_blank", "width=400,height=600");
@@ -234,6 +235,7 @@ export default function BillingPage() {
       <div class="divider"></div>
       ${consult > 0 ? `<div class="row"><span>Consultation</span><span>${sym} ${consult.toLocaleString()}</span></div>` : ""}
       ${lab > 0 ? `<div class="row"><span>Laboratory</span><span>${sym} ${lab.toLocaleString()}</span></div>` : ""}
+      ${imaging > 0 ? `<div class="row"><span>Imaging</span><span>${sym} ${imaging.toLocaleString()}</span></div>` : ""}
       ${medicine > 0 ? `<div class="row"><span>Medicine</span><span>${sym} ${medicine.toLocaleString()}</span></div>` : ""}
       <div class="total-row"><div class="row"><span>TOTAL</span><span>${sym} ${total.toLocaleString()}</span></div></div>
       ${paidApplied > 0 ? `<div class="row"><span>Amount Paid</span><span style="color:#10B981">${sym} ${paidApplied.toLocaleString()}</span></div>` : ""}

@@ -18,6 +18,9 @@ from billing.models import ReceiptEmailJob, SubscriptionPayment
 from auditlog.models import AuditLog, NotificationEvent
 from config.services.brevo_email import BrevoEmailError
 from hospitals.models import Hospital, LoginOTP, TrustedDevice
+from imaging.models import ImagingTest
+from laboratory.models import LabTest
+from patients.models import Patient
 from staff.models import StaffProfile
 
 
@@ -870,6 +873,102 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["mrn"], "MEDICORE-HOSPIT-0001")
         self.assertLessEqual(len(response.data["mrn"]), 20)
+
+    def test_doctor_requests_catalog_backed_lab_and_imaging_services(self):
+        self.staff_profile.role = "doctor"
+        self.staff_profile.save(update_fields=["role"])
+        patient = Patient.objects.create(
+            hospital=self.hospital,
+            first_name="Service",
+            last_name="Patient",
+            date_of_birth="1995-01-01",
+            gender="F",
+            phone="555100202",
+            status="in_consultation",
+        )
+        bill = Bill.objects.create(
+            hospital=self.hospital,
+            patient_name="Service Patient",
+            patient_mrn=patient.mrn,
+            consultation_fee="20.00",
+            amount_paid="20.00",
+            status="paid",
+        )
+        lab_service = ServiceCatalog.objects.create(
+            hospital=self.hospital,
+            name="Full Blood Count",
+            code="FBC",
+            service_type="lab",
+            price="35.00",
+            is_active=True,
+        )
+        imaging_service = ServiceCatalog.objects.create(
+            hospital=self.hospital,
+            name="Chest X-Ray",
+            code="xray",
+            service_type="imaging",
+            price="50.00",
+            is_active=True,
+        )
+        ServiceCatalog.objects.create(
+            hospital=self.hospital,
+            name="Inactive Lab Test",
+            service_type="lab",
+            price="10.00",
+            is_active=False,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        services_response = self.client.get("/api/v1/services/")
+        self.assertEqual(services_response.status_code, 200)
+        self.assertEqual(
+            {service["id"] for service in services_response.data},
+            {lab_service.id, imaging_service.id},
+        )
+
+        lab_response = self.client.post(
+            f"/api/v1/patients/{patient.mrn}/request_lab_test/",
+            {
+                "service_ids": [lab_service.id],
+                "lab_test_requested": "Ignored browser price",
+                "lab_fee": "0.01",
+            },
+            format="json",
+        )
+        self.assertEqual(lab_response.status_code, 200)
+        bill.refresh_from_db()
+        self.assertEqual(str(bill.lab_fee), "35.00")
+        self.assertTrue(
+            LabTest.objects.filter(
+                hospital=self.hospital,
+                patient=patient,
+                test_name="Full Blood Count",
+                price="35.00",
+            ).exists()
+        )
+
+        imaging_response = self.client.post(
+            f"/api/v1/patients/{patient.mrn}/request_imaging/",
+            {
+                "service_ids": [imaging_service.id],
+                "body_part": "Chest",
+                "imaging_requested": "Persistent cough",
+            },
+            format="json",
+        )
+        self.assertEqual(imaging_response.status_code, 200)
+        bill.refresh_from_db()
+        self.assertEqual(str(bill.imaging_fee), "50.00")
+        self.assertEqual(str(bill.total_amount), "105.00")
+        self.assertTrue(
+            ImagingTest.objects.filter(
+                hospital=self.hospital,
+                patient=patient,
+                test_type="xray",
+                body_part="Chest",
+                price="50.00",
+            ).exists()
+        )
 
     def test_subscription_payment_create_assigns_hospital_from_authenticated_user(self):
         login_response = self.client.post(

@@ -61,11 +61,13 @@ export default function DoctorQueuePage() {
   const [showImagingModal, setShowImagingModal] = useState(false);
   const [labServices, setLabServices] = useState([]);
   const [loadingLabServices, setLoadingLabServices] = useState(false);
+  const [imagingServices, setImagingServices] = useState([]);
+  const [loadingImagingServices, setLoadingImagingServices] = useState(false);
   const [medicineSearch, setMedicineSearch] = useState("");
   const [medicineResults, setMedicineResults] = useState([]);
   const [selectedMedicines, setSelectedMedicines] = useState([]);
   const [imagingForm, setImagingForm] = useState({
-    test_type: "xray",
+    imaging_service_ids: [],
     body_part: "",
     imaging_requested: "",
   });
@@ -123,6 +125,25 @@ export default function DoctorQueuePage() {
     }
   };
 
+  const fetchImagingServices = async () => {
+    if (imagingServices.length) return;
+    setLoadingImagingServices(true);
+    try {
+      const { data } = await apiClient.get("/services/");
+      const allServices = Array.isArray(data) ? data : data?.results || [];
+      setImagingServices(
+        allServices.filter(
+          (service) =>
+            service?.service_type === "imaging" && service?.is_active,
+        ),
+      );
+    } catch (err) {
+      toast.error("Failed to load imaging services");
+    } finally {
+      setLoadingImagingServices(false);
+    }
+  };
+
   const openLabModal = (patient) => {
     setSelectedPatient(patient);
     setShowLabModal(true);
@@ -152,6 +173,11 @@ export default function DoctorQueuePage() {
       labTest.lab_service_ids.includes(String(service.id)),
     );
 
+  const getSelectedImagingServices = () =>
+    imagingServices.filter((service) =>
+      imagingForm.imaging_service_ids.includes(String(service.id)),
+    );
+
   const toggleLabService = (serviceId) => {
     const id = String(serviceId);
     setLabTest((previous) => {
@@ -170,6 +196,27 @@ export default function DoctorQueuePage() {
         lab_fee: String(totalFee),
       };
     });
+  };
+
+  const toggleImagingService = (serviceId) => {
+    const id = String(serviceId);
+    setImagingForm((previous) => ({
+      ...previous,
+      imaging_service_ids: previous.imaging_service_ids.includes(id)
+        ? previous.imaging_service_ids.filter((value) => value !== id)
+        : [...previous.imaging_service_ids, id],
+    }));
+  };
+
+  const openImagingModal = (patient) => {
+    setSelectedPatient(patient);
+    setImagingForm({
+      imaging_service_ids: [],
+      body_part: "",
+      imaging_requested: "",
+    });
+    setShowImagingModal(true);
+    fetchImagingServices();
   };
 
   const handleStartConsultation = async (patient) => {
@@ -242,7 +289,7 @@ export default function DoctorQueuePage() {
         `/patients/${selectedPatient.mrn}/request_lab_test/`,
         {
           lab_test_requested: requestedTests,
-          lab_fee: parseFloat(labTest.lab_fee || 0),
+          service_ids: labTest.lab_service_ids,
         },
       );
       const targetMrn = selectedPatient.mrn;
@@ -262,20 +309,22 @@ export default function DoctorQueuePage() {
 
   const handleRequestImaging = async () => {
     if (!imagingForm.body_part) return toast.error("Specify body part");
+    if (!imagingForm.imaging_service_ids.length)
+      return toast.error("Select an imaging service");
     try {
       await apiClient.post(
         `/patients/${selectedPatient.mrn}/request_imaging/`,
         {
-          test_type: imagingForm.test_type,
+          service_ids: imagingForm.imaging_service_ids,
           body_part: imagingForm.body_part,
-          imaging_requested: `${imagingForm.test_type.toUpperCase()} - ${imagingForm.body_part}: ${imagingForm.imaging_requested}`,
+          imaging_requested: imagingForm.imaging_requested,
         },
       );
       toast.success("Imaging requested!");
       setShowImagingModal(false);
       setSelectedPatient(null);
       setImagingForm({
-        test_type: "xray",
+        imaging_service_ids: [],
         body_part: "",
         imaging_requested: "",
       });
@@ -640,10 +689,7 @@ export default function DoctorQueuePage() {
                               size="sm"
                               variant="secondary"
                               icon={Camera}
-                              onClick={() => {
-                                setSelectedPatient(patient);
-                                setShowImagingModal(true);
-                              }}
+                              onClick={() => openImagingModal(patient)}
                             >
                               Imaging
                             </Button>
@@ -1069,20 +1115,44 @@ export default function DoctorQueuePage() {
           }
         >
           <div className="space-y-4">
-            <Select
-              label="Imaging Type *"
-              value={imagingForm.test_type}
-              onChange={(e) =>
-                setImagingForm({ ...imagingForm, test_type: e.target.value })
-              }
-              options={[
-                { value: "xray", label: "X-Ray" },
-                { value: "mri", label: "MRI" },
-                { value: "ct", label: "CT Scan" },
-                { value: "ultrasound", label: "Ultrasound" },
-                { value: "mammogram", label: "Mammogram" },
-              ]}
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Imaging Services
+              </label>
+              <div className="max-h-48 overflow-y-auto rounded-lg border p-2 space-y-1">
+                {loadingImagingServices && (
+                  <p className="text-sm text-gray-500 px-2 py-1">
+                    Loading imaging services...
+                  </p>
+                )}
+                {!loadingImagingServices && !imagingServices.length && (
+                  <p className="text-sm text-gray-500 px-2 py-1">
+                    No imaging services configured
+                  </p>
+                )}
+                {imagingServices.map((service) => {
+                  const id = String(service.id);
+                  return (
+                    <label
+                      key={service.id}
+                      className="flex items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-gray-50"
+                    >
+                      <span className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={imagingForm.imaging_service_ids.includes(id)}
+                          onChange={() => toggleImagingService(service.id)}
+                        />
+                        <span>{getLabServiceLabel(service)}</span>
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        SSP {Number(service.price || 0).toLocaleString()}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
             <Input
               label="Body Part *"
               value={imagingForm.body_part}

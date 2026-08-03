@@ -168,6 +168,23 @@ class IsReceptionist(BasePermission):
         return role in self.allowed_roles
 
 
+class IsServiceRequester(BasePermission):
+    """Users who can read billable services needed for patient care."""
+    message = "Service requester permission required."
+
+    allowed_roles = {"admin", "receptionist", "doctor"}
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        if user.is_superuser:
+            return True
+
+        return get_staff_role(user) in self.allowed_roles
+
+
 # ============================================================================
 # LABORATORY & IMAGING
 # ============================================================================
