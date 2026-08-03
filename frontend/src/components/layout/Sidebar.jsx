@@ -579,7 +579,7 @@ export default function Sidebar({
 
   const platformLogo = collapsed
     ? "/brand/medicorecloud-logo-mark.png"
-    : "/brand/medicorecloud-logo-compact.png";
+    : "/brand/medicorecloud-logo-sidebar.png";
   const logoSources = [
     branding?.logoUrl,
     platformLogo,
