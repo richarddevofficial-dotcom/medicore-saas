@@ -25,6 +25,7 @@ from .serializers import (
 )
 from pharmacy.models import Medicine, StockMovement
 from config.role_permissions import (
+    CanViewBillingStats,
     IsFinanceStaff,
     IsFinanceManager,
     IsReceptionist,
@@ -436,12 +437,13 @@ class BillViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsFinanceStaff]
 
     def get_permissions(self):
+        if self.action == 'stats':
+            return [IsAuthenticated(), CanViewBillingStats()]
         if self.action in {
             'list',
             'retrieve',
             'create',
             'make_payment',
-            'stats',
         }:
             return [IsAuthenticated(), IsReceptionist()]
         return [IsAuthenticated(), IsFinanceStaff()]
