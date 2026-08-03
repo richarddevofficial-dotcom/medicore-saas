@@ -206,7 +206,14 @@ class CanViewBillingStats(BasePermission):
     """Allow dashboard roles to read hospital-scoped billing summaries."""
     message = "Billing statistics permission required."
 
-    allowed_roles = {"admin", "receptionist", "doctor", "pharmacist", "accountant"}
+    allowed_roles = {
+        "admin",
+        "receptionist",
+        "doctor",
+        "lab_technician",
+        "pharmacist",
+        "accountant",
+    }
 
     def has_permission(self, request, view):
         user = request.user
