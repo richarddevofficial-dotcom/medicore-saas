@@ -64,11 +64,7 @@ export default function Header({ branding, onMenuToggle }) {
 
   const primaryColor = branding?.primaryColor || "#F97316";
   const secondaryColor = branding?.secondaryColor || "#1E3A5F";
-  const logoSources = [
-    branding?.logoUrl,
-    "/brand/medicorecloud-logo-compact.png",
-    "/brand/logo-icon.svg",
-  ].filter(Boolean);
+  const logoSources = [branding?.logoUrl].filter(Boolean);
   const activeLogo = logoSources[logoIndex] || "";
 
   const handleLogout = () => {
