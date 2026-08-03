@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Menu } from "lucide-react";
+import useAuthStore from "@/stores/auth-store";
 
 export default function Header({ branding, onMenuToggle }) {
   const router = useRouter();
+  const logout = useAuthStore((state) => state.logout);
   const [hospitalName, setHospitalName] = useState(
     branding?.name || "MediCore",
   );
@@ -63,9 +65,7 @@ export default function Header({ branding, onMenuToggle }) {
   const activeLogo = logoSources[logoIndex] || "";
 
   const handleLogout = () => {
-    ["token", "user", "hospital", "role"].forEach((k) =>
-      localStorage.removeItem(k),
-    );
+    logout();
     router.push("/login");
   };
 

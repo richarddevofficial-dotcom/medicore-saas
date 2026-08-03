@@ -22,20 +22,10 @@ const useAuthStore = create((set, get) => ({
   },
 
   logout: () => {
-    const trustedDeviceToken = localStorage.getItem("trusted_device_token");
-    if (trustedDeviceToken) {
-      apiClient
-        .post("/auth/trusted-device/revoke/", {
-          trusted_device_token: trustedDeviceToken,
-        })
-        .catch(() => {});
-    }
-
     localStorage.removeItem("token");
     localStorage.removeItem("refresh");
     localStorage.removeItem("user");
     localStorage.removeItem("hospital");
-    localStorage.removeItem("trusted_device_token");
     localStorage.removeItem("role");
     localStorage.removeItem("impersonating_hospital_id");
     sessionStorage.removeItem("impersonating_hospital_id");
