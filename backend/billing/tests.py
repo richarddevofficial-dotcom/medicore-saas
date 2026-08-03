@@ -832,6 +832,27 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertEqual(bill_response.data["status"], "pending")
         self.assertEqual(bill_response.data["amount_paid"], "0.00")
 
+    def test_patient_registration_truncates_long_hospital_slug_in_mrn(self):
+        self.hospital.slug = "medicore-hospital"
+        self.hospital.save(update_fields=["slug"])
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(
+            "/api/v1/patients/",
+            {
+                "first_name": "Long",
+                "last_name": "Slug",
+                "date_of_birth": "1995-01-01",
+                "gender": "F",
+                "phone": "555100201",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["mrn"], "MEDICORE-HOSPIT-0001")
+        self.assertLessEqual(len(response.data["mrn"]), 20)
+
     def test_subscription_payment_create_assigns_hospital_from_authenticated_user(self):
         login_response = self.client.post(
             reverse("login"),

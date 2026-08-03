@@ -97,6 +97,10 @@ class Patient(models.Model):
                     num = 1
             else:
                 num = 1
-            self.mrn = f"{self.hospital.slug.upper()}-{num:04d}"
+            mrn_field = self._meta.get_field('mrn')
+            sequence = str(num).zfill(4)
+            prefix_length = mrn_field.max_length - len(sequence) - 1
+            hospital_code = self.hospital.slug.upper()[:prefix_length]
+            self.mrn = f"{hospital_code}-{sequence}"
         super().save(*args, **kwargs)
     
