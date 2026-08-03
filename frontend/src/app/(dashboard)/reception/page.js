@@ -117,16 +117,18 @@ export default function ReceptionDashboard() {
     if (!form.consultation_service_id)
       return toast.error("Please select consultation type");
     setIsSubmitting(true);
+    let patient;
     try {
       const selectedConsultation = consultationServices.find(
         (service) =>
           String(service.id) === String(form.consultation_service_id),
       );
       const { consultation_service_id, ...patientPayload } = form;
-      const { data: patient } = await apiClient.post("/patients/", {
+      const patientResponse = await apiClient.post("/patients/", {
         ...patientPayload,
         date_of_birth: form.date_of_birth || "2000-01-01",
       });
+      patient = patientResponse.data;
 
       await apiClient.post("/bills/", {
         patient_name:
@@ -165,7 +167,26 @@ export default function ReceptionDashboard() {
       });
       fetchData();
     } catch (err) {
-      toast.error("Failed");
+      const errorData = err?.response?.data;
+      const errorMessage =
+        errorData?.error ||
+        errorData?.detail ||
+        errorData?.plan_limit ||
+        (errorData && typeof errorData === "object"
+          ? Object.values(errorData).flat().join(" ")
+          : "");
+
+      if (patient) {
+        toast.error(
+          `Patient ${patient.mrn} was registered, but the bill could not be created${errorMessage ? `: ${errorMessage}` : "."}`,
+        );
+        setSelectedPatient(patient);
+        setShowRegister(false);
+        setShowAssign(true);
+        fetchData();
+      } else {
+        toast.error(errorMessage || "Could not register patient");
+      }
     } finally {
       setIsSubmitting(false);
     }
