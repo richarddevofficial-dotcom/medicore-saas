@@ -24,7 +24,12 @@ from .serializers import (
     POSReceiptSerializer,
 )
 from pharmacy.models import Medicine, StockMovement
-from config.role_permissions import IsFinanceStaff, IsFinanceManager, IsReceptionist
+from config.role_permissions import (
+    IsFinanceStaff,
+    IsFinanceManager,
+    IsReceptionist,
+    get_staff_role,
+)
 
 
 def _sync_patient_prescription_payment_status(bill):
@@ -288,6 +293,11 @@ class ServiceCatalogViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'code', 'service_type']
     ordering = ['service_type', 'name']
 
+    def get_permissions(self):
+        if self.action == 'list':
+            return [IsAuthenticated(), IsReceptionist()]
+        return [IsAuthenticated(), IsFinanceStaff()]
+
     def get_queryset(self):
         user = self.request.user
         if user.is_superuser:
@@ -298,7 +308,15 @@ class ServiceCatalogViewSet(viewsets.ModelViewSet):
             return queryset
 
         if hasattr(user, 'staff_profile'):
-            return ServiceCatalog.objects.filter(hospital=user.staff_profile.hospital)
+            queryset = ServiceCatalog.objects.filter(
+                hospital=user.staff_profile.hospital,
+            )
+            if get_staff_role(user) == 'receptionist':
+                return queryset.filter(
+                    service_type='consultation',
+                    is_active=True,
+                )
+            return queryset
 
         return ServiceCatalog.objects.none()
 
@@ -412,7 +430,7 @@ class BillViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsFinanceStaff]
 
     def get_permissions(self):
-        if self.action == 'stats':
+        if self.action in {'create', 'stats'}:
             return [IsAuthenticated(), IsReceptionist()]
         return [IsAuthenticated(), IsFinanceStaff()]
     pagination_class = None
@@ -453,6 +471,14 @@ class BillViewSet(viewsets.ModelViewSet):
         else:
             from rest_framework.exceptions import ValidationError
             raise ValidationError({'error': 'User has no staff profile'})
+        if get_staff_role(user) == 'receptionist':
+            serializer.save(
+                hospital=hospital,
+                status='pending',
+                amount_paid=0,
+                payment_date=None,
+            )
+            return
         serializer.save(hospital=hospital)
     
     @action(detail=True, methods=['post'])

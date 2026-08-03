@@ -13,7 +13,7 @@ from calendar import monthrange
 from unittest.mock import patch
 from rest_framework.test import APIClient
 
-from billing.models import Bill
+from billing.models import Bill, ServiceCatalog
 from billing.models import ReceiptEmailJob, SubscriptionPayment
 from auditlog.models import AuditLog, NotificationEvent
 from config.services.brevo_email import BrevoEmailError
@@ -759,6 +759,78 @@ class AuthAndBillingSmokeTests(TestCase):
 
         self.assertEqual(patient_stats_response.status_code, 200)
         self.assertEqual(billing_stats_response.status_code, 200)
+
+    def test_receptionist_can_register_patient_with_consultation_service(self):
+        self.staff_profile.role = "receptionist"
+        self.staff_profile.save(update_fields=["role"])
+        consultation = ServiceCatalog.objects.create(
+            hospital=self.hospital,
+            name="General Consultation",
+            service_type="consultation",
+            price="25.00",
+            is_active=True,
+        )
+        ServiceCatalog.objects.create(
+            hospital=self.hospital,
+            name="Inactive Consultation",
+            service_type="consultation",
+            price="10.00",
+            is_active=False,
+        )
+        ServiceCatalog.objects.create(
+            hospital=self.hospital,
+            name="Laboratory Test",
+            service_type="lab",
+            price="15.00",
+            is_active=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        services_response = self.client.get("/api/v1/services/")
+        self.assertEqual(services_response.status_code, 200)
+        self.assertEqual(
+            [service["id"] for service in services_response.data],
+            [consultation.id],
+        )
+
+        create_service_response = self.client.post(
+            "/api/v1/services/",
+            {
+                "name": "Unauthorized Service",
+                "service_type": "consultation",
+                "price": "20.00",
+            },
+            format="json",
+        )
+        self.assertEqual(create_service_response.status_code, 403)
+
+        patient_response = self.client.post(
+            "/api/v1/patients/",
+            {
+                "first_name": "Reception",
+                "last_name": "Patient",
+                "date_of_birth": "1995-01-01",
+                "gender": "F",
+                "phone": "555100200",
+            },
+            format="json",
+        )
+        self.assertEqual(patient_response.status_code, 201)
+
+        bill_response = self.client.post(
+            "/api/v1/bills/",
+            {
+                "patient_name": "Reception Patient",
+                "patient_mrn": patient_response.data["mrn"],
+                "consultation_fee": "25.00",
+                "amount_paid": "25.00",
+                "status": "paid",
+            },
+            format="json",
+        )
+        self.assertEqual(bill_response.status_code, 201)
+        self.assertEqual(bill_response.data["status"], "pending")
+        self.assertEqual(bill_response.data["amount_paid"], "0.00")
 
     def test_subscription_payment_create_assigns_hospital_from_authenticated_user(self):
         login_response = self.client.post(

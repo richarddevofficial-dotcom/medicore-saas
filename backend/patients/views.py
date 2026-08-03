@@ -86,8 +86,8 @@ class PatientViewSet(viewsets.ModelViewSet):
     lookup_field = 'mrn'
 
     def get_permissions(self):
-        if self.action == 'stats':
-            return [IsAuthenticated(), IsReceptionist()]
+        if self.action in {'list', 'create', 'assign_doctor', 'stats'}:
+            return [IsAuthenticated(), CanManagePatients()]
         return [IsAuthenticated(), IsClinicalStaff()]
     
     def get_serializer_class(self):
