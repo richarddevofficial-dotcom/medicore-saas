@@ -379,6 +379,32 @@ class CanManagePatients(BasePermission):
         return role in self.allowed_roles
 
 
+class CanViewPatientStats(BasePermission):
+    """Allow dashboard roles to read hospital-scoped patient aggregates."""
+    message = "Patient statistics permission required."
+
+    allowed_roles = {
+        "admin",
+        "receptionist",
+        "doctor",
+        "nurse",
+        "lab_technician",
+        "radiographer",
+        "pharmacist",
+        "accountant",
+    }
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        if user.is_superuser:
+            return True
+
+        return get_staff_role(user) in self.allowed_roles
+
+
 class CanManageAppointments(BasePermission):
     """
     Can manage appointments:

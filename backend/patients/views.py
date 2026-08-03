@@ -12,7 +12,7 @@ from staff.models import StaffProfile
 from saas_billing.services import check_hospital_limit
 from .serializers import PatientListSerializer, PatientDetailSerializer
 from billing.models import Bill, ServiceCatalog
-from config.role_permissions import CanManagePatients, IsClinicalStaff, IsReceptionist
+from config.role_permissions import CanManagePatients, CanViewPatientStats, IsClinicalStaff, IsReceptionist
 
 
 def _resolve_request_hospital(request):
@@ -108,7 +108,9 @@ class PatientViewSet(viewsets.ModelViewSet):
     lookup_field = 'mrn'
 
     def get_permissions(self):
-        if self.action in {'list', 'create', 'assign_doctor', 'stats'}:
+        if self.action == 'stats':
+            return [IsAuthenticated(), CanViewPatientStats()]
+        if self.action in {'list', 'create', 'assign_doctor'}:
             return [IsAuthenticated(), CanManagePatients()]
         return [IsAuthenticated(), IsClinicalStaff()]
     
