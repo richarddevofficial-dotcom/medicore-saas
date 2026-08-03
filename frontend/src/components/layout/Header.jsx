@@ -6,7 +6,9 @@ import { Menu } from "lucide-react";
 
 export default function Header({ branding, onMenuToggle }) {
   const router = useRouter();
-  const [hospitalName, setHospitalName] = useState("MediCore");
+  const [hospitalName, setHospitalName] = useState(
+    branding?.name || "MediCore",
+  );
   const [userData, setUserData] = useState({});
   const [role, setRole] = useState("");
   const [logoIndex, setLogoIndex] = useState(0);
@@ -30,8 +32,8 @@ export default function Header({ branding, onMenuToggle }) {
     const storedRole = localStorage.getItem("role") || "";
     if (storedRole === "super_admin") {
       setHospitalName("MediCore");
-    } else if (parsedHospital?.name) {
-      setHospitalName(parsedHospital.name);
+    } else {
+      setHospitalName(parsedHospital?.name || branding?.name || "MediCore");
     }
     setUserData(parsedUser);
     setRole(storedRole);
@@ -49,7 +51,7 @@ export default function Header({ branding, onMenuToggle }) {
     return () => {
       window.removeEventListener("storage", handleStorageChange);
     };
-  }, []);
+  }, [branding?.name]);
 
   const primaryColor = branding?.primaryColor || "#F97316";
   const secondaryColor = branding?.secondaryColor || "#1E3A5F";
