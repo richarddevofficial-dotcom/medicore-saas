@@ -99,6 +99,39 @@ class StaffPermissionMatrixTests(TestCase):
 		)
 		self.assertEqual(response.status_code, 403)
 
+	def test_staff_stats_are_hospital_scoped_and_exclude_inactive_doctors(self):
+		doctor_user = User.objects.create_user(
+			username="doctor-matrix@example.com",
+			email="doctor-matrix@example.com",
+			password="Admin@1234",
+		)
+		inactive_doctor_user = User.objects.create_user(
+			username="inactive-doctor-matrix@example.com",
+			email="inactive-doctor-matrix@example.com",
+			password="Admin@1234",
+		)
+		StaffProfile.objects.create(
+			user=doctor_user,
+			hospital=self.hospital,
+			role="doctor",
+			phone="700005",
+		)
+		StaffProfile.objects.create(
+			user=inactive_doctor_user,
+			hospital=self.hospital,
+			role="doctor",
+			phone="700006",
+			is_active=False,
+		)
+
+		self.client.force_authenticate(user=self.admin_user)
+		response = self.client.get("/api/v1/staff/stats/")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["total_staff"], 5)
+		self.assertEqual(response.data["doctors"], 1)
+		self.assertEqual(response.data["active"], 4)
+
 	def test_admin_can_toggle_staff_status_and_audit_logged(self):
 		self.client.force_authenticate(user=self.admin_user)
 		response = self.client.post(

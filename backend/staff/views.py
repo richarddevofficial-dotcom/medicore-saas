@@ -88,6 +88,17 @@ class StaffViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(is_active=False)
 
         return queryset
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        staff = self.get_queryset()
+        return Response(
+            {
+                'total_staff': staff.count(),
+                'doctors': staff.filter(role='doctor', is_active=True).count(),
+                'active': staff.filter(is_active=True).count(),
+            }
+        )
     
     def perform_create(self, serializer):
         user = self.request.user

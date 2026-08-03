@@ -7,7 +7,9 @@ from billing.models import Bill
 from billing.models import SubscriptionPayment
 from staff.models import StaffProfile
 from pharmacy.models import Medicine
+from pharmacy.models import Prescription
 from appointments.models import Appointment
+from laboratory.models import LabTest
 from django.utils import timezone
 from django.db.models import Count, Sum, Q
 from datetime import timedelta, datetime
@@ -345,17 +347,29 @@ def dashboard_charts(request):
     hospital = _resolve_report_hospital(request)
     patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()
     bills_qs = Bill.objects.filter(hospital=hospital) if hospital else Bill.objects.none()
+    appointments_qs = Appointment.objects.filter(hospital=hospital) if hospital else Appointment.objects.none()
+    lab_tests_qs = LabTest.objects.filter(hospital=hospital) if hospital else LabTest.objects.none()
+    prescriptions_qs = Prescription.objects.filter(hospital=hospital) if hospital else Prescription.objects.none()
     
     # Monthly data (last 7 months)
     monthly_data = []
-    for i in range(6, -1, -1):
-        month_start = today.replace(day=1) - timedelta(days=i*30)
-        month_end = (month_start + timedelta(days=32)).replace(day=1)
+    current_month_start = today.replace(day=1)
+    for offset in range(6, -1, -1):
+        year = current_month_start.year
+        month = current_month_start.month - offset
+        while month <= 0:
+            month += 12
+            year -= 1
+        month_start = current_month_start.replace(year=year, month=month)
+        if month == 12:
+            month_end = month_start.replace(year=year + 1, month=1)
+        else:
+            month_end = month_start.replace(month=month + 1)
         month_name = month_start.strftime('%b')
         
         patients = patients_qs.filter(created_at__gte=month_start, created_at__lt=month_end).count()
         revenue = float(bills_qs.filter(
-            created_at__gte=month_start, created_at__lt=month_end, status='paid'
+            payment_date__gte=month_start, payment_date__lt=month_end, status='paid'
         ).aggregate(total=Sum('total_amount')).get('total') or 0)
         
         monthly_data.append({
@@ -370,12 +384,12 @@ def dashboard_charts(request):
         day = today - timedelta(days=i)
         day_name = day.strftime('%a')
         
-        consultations = patients_qs.filter(created_at__date=day).count()
-        lab_tests = patients_qs.filter(
-            status__in=['lab_requested', 'lab_in_progress', 'lab_completed'],
-            updated_at__date=day
+        consultations = appointments_qs.filter(
+            appointment_date=day,
+            status='completed',
         ).count()
-        pharmacy = bills_qs.filter(created_at__date=day).count()
+        lab_tests = lab_tests_qs.filter(created_at__date=day).count()
+        pharmacy = prescriptions_qs.filter(dispensed_at__date=day).count()
         
         weekly_data.append({
             'day': day_name,

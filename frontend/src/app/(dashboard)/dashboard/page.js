@@ -52,6 +52,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [trialInfo, setTrialInfo] = useState(null);
   const [isImpersonating, setIsImpersonating] = useState(false);
+  const [role, setRole] = useState("");
   const [endpointHealth, setEndpointHealth] = useState({
     patients: "idle",
     billing: "idle",
@@ -66,6 +67,7 @@ export default function DashboardPage() {
     if (hospitalId) {
       setIsImpersonating(true);
     }
+    setRole(localStorage.getItem("role") || "");
   }, []);
 
   useEffect(() => {
@@ -80,7 +82,7 @@ export default function DashboardPage() {
       const requests = [
         { key: "patients", path: "/patients/stats/" },
         { key: "billing", path: "/bills/stats/" },
-        { key: "staff", path: "/staff/" },
+        { key: "staff", path: "/staff/stats/" },
         { key: "charts", path: "/reports/dashboard-charts/" },
       ];
 
@@ -119,22 +121,10 @@ export default function DashboardPage() {
         setEndpointHealth(nextHealth);
         setFetchErrors(nextErrors);
 
-        const staffRows = Array.isArray(payload.staff)
-          ? payload.staff
-          : Array.isArray(payload.staff?.results)
-            ? payload.staff.results
-            : [];
-        const computedStaff = {
-          total_staff: staffRows.length,
-          doctors: staffRows.filter((member) => member?.role === "doctor")
-            .length,
-          active: staffRows.filter((member) => member?.is_active).length,
-        };
-
         setStats({
           patients: payload.patients,
           billing: payload.billing,
-          staff: computedStaff,
+          staff: payload.staff,
           charts: payload.charts,
         });
       } catch (err) {
@@ -257,26 +247,38 @@ export default function DashboardPage() {
       icon: Users,
       href: "/patients/add",
       color: "bg-blue-50 text-blue-600",
+      roles: ["admin", "super_admin", "receptionist"],
     },
     {
       name: "Book Appointment",
       icon: Calendar,
       href: "/appointments/book",
       color: "bg-green-50 text-green-600",
+      roles: ["admin", "super_admin", "receptionist"],
     },
     {
       name: "Doctor Queue",
       icon: Stethoscope,
       href: "/doctors/queue",
       color: "bg-purple-50 text-purple-600",
+      roles: ["admin", "super_admin", "doctor"],
     },
     {
       name: "Billing Desk",
       icon: DollarSign,
       href: "/billing",
       color: "bg-orange-50 text-orange-600",
+      roles: [
+        "admin",
+        "super_admin",
+        "receptionist",
+        "cashier",
+        "accountant",
+        "finance",
+        "finance_manager",
+      ],
     },
-  ];
+  ].filter((action) => action.roles.includes(role));
 
   if (loading)
     return (
@@ -447,25 +449,27 @@ export default function DashboardPage() {
         ) : null}
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-4 gap-3">
-          {quickActions.map((action) => {
-            const Icon = action.icon;
-            return (
-              <button
-                key={action.name}
-                onClick={() => router.push(action.href)}
-                className={`flex items-center gap-3 p-4 rounded-xl transition-all hover:shadow-md ${action.color}`}
-              >
-                <Icon className="h-6 w-6" />
-                <div className="text-left">
-                  <p className="text-sm font-semibold">{action.name}</p>
-                  <p className="text-xs opacity-70">Click to open</p>
-                </div>
-                <ArrowRight className="h-4 w-4 ml-auto opacity-50" />
-              </button>
-            );
-          })}
-        </div>
+        {quickActions.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <button
+                  key={action.name}
+                  onClick={() => router.push(action.href)}
+                  className={`flex items-center gap-3 p-4 rounded-xl transition-all hover:shadow-md ${action.color}`}
+                >
+                  <Icon className="h-6 w-6" />
+                  <div className="text-left">
+                    <p className="text-sm font-semibold">{action.name}</p>
+                    <p className="text-xs opacity-70">Click to open</p>
+                  </div>
+                  <ArrowRight className="h-4 w-4 ml-auto opacity-50" />
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

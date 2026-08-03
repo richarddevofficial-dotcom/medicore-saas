@@ -9,6 +9,8 @@ from staff.models import StaffProfile
 from patients.models import Patient
 from billing.models import Bill, SubscriptionPayment
 from appointments.models import Appointment
+from laboratory.models import LabTest
+from pharmacy.models import Prescription
 
 
 class ReportsPlanAccessTests(TestCase):
@@ -120,6 +122,20 @@ class ReportsPlanAccessTests(TestCase):
 			reason="Consult",
 			status="completed",
 		)
+		LabTest.objects.create(
+			hospital=self.hospital_pro,
+			patient=self.pro_patient,
+			test_name="Full Blood Count",
+			status="requested",
+		)
+		Prescription.objects.create(
+			hospital=self.hospital_pro,
+			patient=self.pro_patient,
+			medicine_name="Amoxicillin",
+			dosage="500mg",
+			status="dispensed",
+			dispensed_at=timezone.now(),
+		)
 
 		SubscriptionPayment.objects.create(
 			hospital=self.hospital_pro,
@@ -143,6 +159,21 @@ class ReportsPlanAccessTests(TestCase):
 		response = self.client.get("/api/v1/reports/detailed/?period=daily")
 
 		self.assertEqual(response.status_code, 403)
+
+	def test_dashboard_charts_use_core_module_records_and_scope_hospital(self):
+		self.client.force_authenticate(user=self.pro_user)
+
+		response = self.client.get("/api/v1/reports/dashboard-charts/")
+
+		self.assertEqual(response.status_code, 200)
+		today_row = next(
+			row
+			for row in response.data["weekly"]
+			if row["day"] == timezone.now().strftime("%a")
+		)
+		self.assertEqual(today_row["consultations"], 1)
+		self.assertEqual(today_row["lab"], 1)
+		self.assertEqual(today_row["pharmacy"], 1)
 
 	def test_pro_plan_can_access_detailed_reports(self):
 		self.client.force_authenticate(user=self.pro_user)
