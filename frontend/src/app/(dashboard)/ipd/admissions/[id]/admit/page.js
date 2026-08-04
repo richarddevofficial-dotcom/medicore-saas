@@ -35,7 +35,7 @@ export default function AdmitPatientPage() {
   useEffect(() => {
     if (formData.ward && lookups.rooms) {
       const rooms = lookups.rooms.filter(
-        (r) => r.ward.id === parseInt(formData.ward),
+        (room) => room.ward_id === Number(formData.ward),
       );
       setFilteredRooms(rooms);
       setFormData((prev) => ({ ...prev, room: "", bed: "" }));
@@ -46,7 +46,7 @@ export default function AdmitPatientPage() {
   useEffect(() => {
     if (formData.room && lookups.beds) {
       const beds = lookups.beds.filter(
-        (b) => b.room.id === parseInt(formData.room),
+        (bed) => bed.room_id === Number(formData.room),
       );
       setFilteredBeds(beds);
       setFormData((prev) => ({ ...prev, bed: "" }));
@@ -90,7 +90,7 @@ export default function AdmitPatientPage() {
     try {
       setSubmitting(true);
       await admitPatient(admissionId, {
-        bed: parseInt(formData.bed),
+        bed_id: Number(formData.bed),
       });
       toast.success("Patient admitted successfully");
       router.push(`/ipd/admissions/${admissionId}`);
@@ -203,7 +203,7 @@ export default function AdmitPatientPage() {
               </option>
               {filteredRooms.map((room) => (
                 <option key={room.id} value={room.id}>
-                  {room.name}
+                  {room.room_number}
                 </option>
               ))}
             </select>
@@ -232,15 +232,9 @@ export default function AdmitPatientPage() {
               {filteredBeds.map((bed) => (
                 <option key={bed.id} value={bed.id}>
                   {bed.bed_number} {bed.bed_type ? `(${bed.bed_type})` : ""}
-                  {bed.status === "occupied" ? " - OCCUPIED" : ""}
                 </option>
               ))}
             </select>
-            {filteredBeds.some((b) => b.status === "occupied") && (
-              <p className="text-xs text-gray-500 mt-1">
-                Occupied beds are shown for reference only
-              </p>
-            )}
           </div>
 
           {/* Admission Notes */}
