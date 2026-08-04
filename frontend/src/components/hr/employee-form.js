@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import apiClient from "@/lib/api-client";
 
 const initialForm = {
+  user: "",
   employee_number: "",
   first_name: "",
   middle_name: "",
@@ -29,6 +31,27 @@ export default function EmployeeForm({
   const [form, setForm] = useState(initialForm);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [staffAccounts, setStaffAccounts] = useState([]);
+
+  useEffect(() => {
+    async function loadStaffAccounts() {
+      try {
+        const response = await apiClient.get("/staff/?is_active=true");
+        const data = response.data;
+        setStaffAccounts(
+          Array.isArray(data)
+            ? data
+            : Array.isArray(data?.results)
+              ? data.results
+              : [],
+        );
+      } catch {
+        setStaffAccounts([]);
+      }
+    }
+
+    loadStaffAccounts();
+  }, []);
 
   useEffect(() => {
     if (!initialData) {
@@ -38,14 +61,9 @@ export default function EmployeeForm({
     setForm({
       ...initialForm,
       ...initialData,
-      department:
-        initialData.department?.id ??
-        initialData.department ??
-        "",
-      position:
-        initialData.position?.id ??
-        initialData.position ??
-        "",
+      department: initialData.department?.id ?? initialData.department ?? "",
+      position: initialData.position?.id ?? initialData.position ?? "",
+      user: initialData.user?.id ?? initialData.user ?? "",
     });
   }, [initialData]);
 
@@ -69,16 +87,12 @@ export default function EmployeeForm({
         Object.entries(form).map(([key, value]) => [
           key,
           value === "" ? null : value,
-        ])
+        ]),
       );
 
       await onSubmit(payload);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to save employee."
-      );
+      setError(err instanceof Error ? err.message : "Unable to save employee.");
     } finally {
       setSubmitting(false);
     }
@@ -223,6 +237,35 @@ export default function EmployeeForm({
         </h2>
 
         <div className="mt-4 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <label className={labelClass}>
+            Linked Staff Account
+            <select
+              name="user"
+              value={form.user || ""}
+              onChange={handleChange}
+              className={inputClass}
+            >
+              <option value="">No linked account</option>
+              {staffAccounts.map((staff) => {
+                const account = staff.user;
+                const name = [account?.first_name, account?.last_name]
+                  .filter(Boolean)
+                  .join(" ");
+
+                return (
+                  <option
+                    key={staff.id}
+                    value={account?.id || ""}
+                    disabled={!account?.id}
+                  >
+                    {name || account?.email || "Unnamed staff"}
+                    {staff.role ? ` (${staff.role})` : ""}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+
           <label className={labelClass}>
             Hire Date
             <input
