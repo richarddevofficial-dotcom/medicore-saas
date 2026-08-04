@@ -505,7 +505,7 @@ def admit_patient(
 
     admission = (
         admission_queryset(request)
-        .select_for_update()
+        .select_for_update(of=("self",))
         .filter(
             id=admission_id
         )
@@ -1139,7 +1139,7 @@ def discharge_patient(
 
     admission = (
         admission_queryset(request)
-        .select_for_update()
+        .select_for_update(of=("self",))
         .filter(
             id=admission_id
         )

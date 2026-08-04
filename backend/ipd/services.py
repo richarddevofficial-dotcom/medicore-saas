@@ -95,7 +95,7 @@ def assign_bed_to_admission(
 ):
     admission = (
         Admission.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .select_related(
             "hospital",
             "patient",
@@ -108,7 +108,7 @@ def assign_bed_to_admission(
 
     bed = (
         Bed.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .select_related(
             "hospital",
             "room",
@@ -184,7 +184,7 @@ def transfer_admission_bed(
 ):
     admission = (
         Admission.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .select_related(
             "hospital",
             "patient",
@@ -206,7 +206,7 @@ def transfer_admission_bed(
 
     target_bed = (
         Bed.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .select_related(
             "hospital",
             "room",
@@ -228,7 +228,7 @@ def transfer_admission_bed(
 
     current_assignment = (
         BedAssignment.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .filter(
             patient=admission.patient,
             released_at__isnull=True,
@@ -349,7 +349,7 @@ def release_admission_bed(
 
     admission = (
         Admission.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .select_related(
             "patient",
             "bed",
@@ -361,7 +361,7 @@ def release_admission_bed(
 
     assignment = (
         BedAssignment.objects
-        .select_for_update()
+        .select_for_update(of=("self",))
         .filter(
             patient=admission.patient,
             released_at__isnull=True,
