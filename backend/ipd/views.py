@@ -115,6 +115,16 @@ def role_allowed(user, roles):
     )
 
 
+def is_active_inpatient(admission):
+    return (
+        admission.is_active
+        and admission.status in {
+            Admission.STATUS_ADMITTED,
+            Admission.STATUS_TRANSFERRED,
+        }
+    )
+
+
 def admission_queryset(request):
     queryset = (
         Admission.objects
@@ -543,12 +553,14 @@ def admit_patient(
             status=404,
         )
 
+    profile = get_user_profile(request.user)
+
     try:
         admission, assignment = (
             assign_bed_to_admission(
                 admission=admission,
                 bed=bed,
-                assigned_by=request.user,
+                assigned_by=profile,
                 notes=str(
                     request.data.get(
                         "notes",
@@ -678,12 +690,15 @@ def transfer_patient(
             status=404,
         )
 
+    profile = get_user_profile(request.user)
+
     try:
         admission, transfer, assignment = (
             transfer_admission_bed(
                 admission=admission,
                 target_bed=target_bed,
-                transferred_by=request.user,
+                transferred_by_profile=profile,
+                transferred_by_user=request.user,
                 reason=reason,
             )
         )
@@ -771,6 +786,17 @@ def nursing_observations(
                 )
             },
             status=403,
+        )
+
+    if not is_active_inpatient(admission):
+        return Response(
+            {
+                "error": (
+                    "Nursing observations can only be recorded "
+                    "for admitted patients."
+                )
+            },
+            status=400,
         )
 
     profile = get_user_profile(
@@ -869,6 +895,17 @@ def medication_orders(
                 )
             },
             status=403,
+        )
+
+    if not is_active_inpatient(admission):
+        return Response(
+            {
+                "error": (
+                    "Medication orders can only be created "
+                    "for admitted patients."
+                )
+            },
+            status=400,
         )
 
     profile = get_user_profile(
@@ -1001,6 +1038,17 @@ def administer_medication(
             status=400,
         )
 
+    if not is_active_inpatient(medication_order.admission):
+        return Response(
+            {
+                "error": (
+                    "Medication can only be administered "
+                    "to admitted patients."
+                )
+            },
+            status=400,
+        )
+
     profile = get_user_profile(
         request.user
     )
@@ -1100,6 +1148,35 @@ def discharge_patient(
             status=409,
         )
 
+    next_bed_status = str(
+        request.data.get(
+            "next_bed_status",
+            "cleaning",
+        )
+    ).strip()
+
+    if next_bed_status not in {
+        "available",
+        "cleaning",
+        "maintenance",
+    }:
+        return Response(
+            {
+                "error": (
+                    "next_bed_status must be available, "
+                    "cleaning, or maintenance."
+                )
+            },
+            status=400,
+        )
+
+    release_reason = str(
+        request.data.get(
+            "bed_release_reason",
+            "Patient discharged.",
+        )
+    ).strip()
+
     profile = get_user_profile(
         request.user
     )
@@ -1136,28 +1213,15 @@ def discharge_patient(
         ]
     )
 
-    next_bed_status = str(
-        request.data.get(
-            "next_bed_status",
-            "cleaning",
-        )
-    ).strip()
-
-    release_reason = str(
-        request.data.get(
-            "bed_release_reason",
-            "Patient discharged.",
-        )
-    ).strip()
-
     try:
         release_admission_bed(
             admission=admission,
-            released_by=request.user,
+            released_by=profile,
             release_reason=release_reason,
             next_status=next_bed_status,
         )
     except Exception as error:
+        transaction.set_rollback(True)
         return Response(
             {
                 "error": (

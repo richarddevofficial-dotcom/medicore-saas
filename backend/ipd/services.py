@@ -178,7 +178,8 @@ def transfer_admission_bed(
     *,
     admission,
     target_bed,
-    transferred_by,
+    transferred_by_profile,
+    transferred_by_user,
     reason,
 ):
     admission = (
@@ -257,7 +258,7 @@ def transfer_admission_bed(
         reason or "Patient transferred."
     )
     current_assignment.released_at = timezone.now()
-    current_assignment.released_by = transferred_by
+    current_assignment.released_by = transferred_by_profile
 
     current_assignment.save(
         update_fields=[
@@ -282,7 +283,7 @@ def transfer_admission_bed(
         transfer_from=current_assignment,
         status="active",
         notes=reason,
-        assigned_by=transferred_by,
+        assigned_by=transferred_by_profile,
         assigned_at=timezone.now(),
     )
 
@@ -302,7 +303,7 @@ def transfer_admission_bed(
         to_room=target_room,
         to_bed=target_bed,
         reason=reason,
-        transferred_by=transferred_by,
+        transferred_by=transferred_by_user,
         transferred_at=timezone.now(),
     )
 
