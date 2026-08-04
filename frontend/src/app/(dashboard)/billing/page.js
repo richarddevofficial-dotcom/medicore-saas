@@ -313,8 +313,8 @@ export default function BillingPage() {
           <h3 className="font-semibold mb-3">📊 My Shift Report</h3>
           <ReportGenerator
             role="cashier"
-            endpoint="/reports/cashier/"
-            title="Cashier Shift Report"
+            endpoint="/reports/my-shift/"
+            title="My Shift Report"
           />
         </Card>
 

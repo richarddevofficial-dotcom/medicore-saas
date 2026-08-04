@@ -16,6 +16,13 @@ class Appointment(models.Model):
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE)
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE)
     doctor = models.ForeignKey(StaffProfile, on_delete=models.SET_NULL, null=True, blank=True)
+    booked_by = models.ForeignKey(
+        StaffProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='booked_appointments',
+    )
     appointment_date = models.DateField()
     appointment_time = models.TimeField()
     reason = models.TextField()

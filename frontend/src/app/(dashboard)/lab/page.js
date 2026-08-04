@@ -154,8 +154,8 @@ export default function LabDashboard() {
         <Card>
           <h3 className="font-semibold mb-3">📊 My Shift Report</h3>
           <ReportGenerator
-            endpoint="/reports/lab/"
-            title="Lab Technician Shift Report"
+            endpoint="/reports/my-shift/"
+            title="My Shift Report"
           />
         </Card>
 

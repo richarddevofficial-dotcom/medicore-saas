@@ -36,7 +36,8 @@ from imaging.views import ImagingTestViewSet
 from reports.views import (
     dashboard_report, staff_report, reception_report, 
     cashier_report, pharmacy_report, lab_report, 
-    detailed_report, dashboard_charts, reconciliation_report
+    detailed_report, dashboard_charts, reconciliation_report,
+    personal_shift_report,
 )
 from hospitals.models import Hospital, LoginOTP, TrustedDevice
 from hospitals.serializers import HospitalSerializer
@@ -1094,6 +1095,7 @@ urlpatterns = [
     path('api/v1/reports/cashier/', cashier_report, name='cashier-report'),
     path('api/v1/reports/pharmacy/', pharmacy_report, name='pharmacy-report'),
     path('api/v1/reports/lab/', lab_report, name='lab-report'),
+    path('api/v1/reports/my-shift/', personal_shift_report, name='personal-shift-report'),
     path('api/v1/reports/reconciliation/', reconciliation_report, name='reconciliation-report'),
     path('api/v1/reports/dashboard-charts/', dashboard_charts, name='dashboard-charts'),
     

@@ -147,7 +147,15 @@ class PatientViewSet(viewsets.ModelViewSet):
                 }
             )
 
-        serializer.save(hospital=hospital, status='registered')
+        serializer.save(
+            hospital=hospital,
+            status='registered',
+            registered_by=getattr(
+                self.request.user,
+                'staff_profile',
+                None,
+            ),
+        )
     
     @action(detail=True, methods=['post'])
     def assign_doctor(self, request, mrn=None):

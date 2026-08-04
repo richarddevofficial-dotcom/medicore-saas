@@ -6,11 +6,13 @@ from config.plan_permissions import RequiresProPlan
 from patients.models import Patient
 from billing.models import Bill
 from billing.models import SubscriptionPayment
+from billing.models import POSReceipt
 from staff.models import StaffProfile
 from pharmacy.models import Medicine
 from pharmacy.models import Prescription
 from appointments.models import Appointment
 from laboratory.models import LabTest
+from human_resources.models import Attendance, Employee, ShiftAssignment
 from django.utils import timezone
 from django.db.models import Count, Sum, Q
 from datetime import timedelta, datetime
@@ -76,6 +78,157 @@ def _build_date_filters(request):
 
     start_date, end_date = _date_range_for_period(period, today)
     return start_date, end_date, period, None
+
+
+def _shift_hours(shift, attendance):
+    if not shift:
+        return 0.0, 0.0
+
+    scheduled_start = datetime.combine(
+        timezone.localdate(),
+        shift.start_time,
+    )
+    scheduled_end = datetime.combine(
+        timezone.localdate(),
+        shift.end_time,
+    )
+    if scheduled_end <= scheduled_start:
+        scheduled_end += timedelta(days=1)
+
+    scheduled_hours = max(
+        (scheduled_end - scheduled_start).total_seconds() / 3600
+        - shift.break_minutes / 60,
+        0,
+    )
+
+    if not attendance or not attendance.clock_in or not attendance.clock_out:
+        return round(scheduled_hours, 2), 0.0
+
+    worked_hours = max(
+        (attendance.clock_out - attendance.clock_in).total_seconds() / 3600
+        - shift.break_minutes / 60,
+        0,
+    )
+    return round(scheduled_hours, 2), round(worked_hours, 2)
+
+
+def _personal_role_metrics(profile, user, report_date):
+    start_of_day = timezone.make_aware(
+        datetime.combine(report_date, datetime.min.time()),
+    )
+    end_of_day = start_of_day + timedelta(days=1)
+
+    if profile.role == 'doctor':
+        appointments = Appointment.objects.filter(
+            doctor=profile,
+            appointment_date=report_date,
+        )
+        return {
+            'appointments_completed': appointments.filter(status='completed').count(),
+            'appointments_pending': appointments.exclude(
+                status__in=['completed', 'cancelled', 'no_show'],
+            ).count(),
+            'prescriptions_issued': Prescription.objects.filter(
+                doctor=profile,
+                created_at__gte=start_of_day,
+                created_at__lt=end_of_day,
+            ).count(),
+        }
+
+    if profile.role == 'cashier':
+        receipts = POSReceipt.objects.filter(
+            created_by=user,
+            created_at__gte=start_of_day,
+            created_at__lt=end_of_day,
+        )
+        total = receipts.aggregate(total=Sum('total_amount'))['total'] or 0
+        count = receipts.count()
+        return {
+            'transactions_processed': count,
+            'amount_collected': float(total),
+            'average_transaction_value': round(float(total) / count, 2) if count else 0,
+        }
+
+    if profile.role == 'receptionist':
+        return {
+            'patients_registered': Patient.objects.filter(
+                registered_by=profile,
+                created_at__gte=start_of_day,
+                created_at__lt=end_of_day,
+            ).count(),
+            'appointments_booked': Appointment.objects.filter(
+                booked_by=profile,
+                created_at__gte=start_of_day,
+                created_at__lt=end_of_day,
+            ).count(),
+        }
+
+    if profile.role == 'lab_technician':
+        tests = LabTest.objects.filter(
+            performed_by=profile,
+            completed_at__gte=start_of_day,
+            completed_at__lt=end_of_day,
+        )
+        return {
+            'tests_completed': tests.count(),
+            'lab_revenue_processed': float(
+                tests.aggregate(total=Sum('price'))['total'] or 0,
+            ),
+        }
+
+    return {'actions_recorded': 0}
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def personal_shift_report(request):
+    profile = StaffProfile.objects.filter(
+        user=request.user,
+        is_active=True,
+    ).select_related('hospital', 'user').first()
+
+    if not profile:
+        raise PermissionDenied('Your account is not assigned to active staff.')
+
+    report_date = timezone.localdate()
+    employee = Employee.objects.filter(
+        user=request.user,
+        hospital=profile.hospital,
+    ).first()
+    assignment = None
+    attendance = None
+
+    if employee:
+        assignment = ShiftAssignment.objects.filter(
+            employee=employee,
+            is_active=True,
+            start_date__lte=report_date,
+        ).filter(
+            Q(end_date__isnull=True) | Q(end_date__gte=report_date),
+        ).select_related('shift').order_by('-start_date').first()
+        attendance = Attendance.objects.filter(
+            employee=employee,
+            attendance_date=report_date,
+        ).select_related('shift').first()
+
+    shift = attendance.shift if attendance and attendance.shift else (
+        assignment.shift if assignment else None
+    )
+    scheduled_hours, worked_hours = _shift_hours(shift, attendance)
+
+    return Response({
+        'staff_name': profile.user.get_full_name() or profile.user.username,
+        'role': profile.role,
+        'report_date': report_date.isoformat(),
+        'shift': shift.name if shift else 'No active shift assignment',
+        'attendance_status': attendance.status if attendance else 'NOT_RECORDED',
+        'clock_in': attendance.clock_in.isoformat() if attendance and attendance.clock_in else None,
+        'clock_out': attendance.clock_out.isoformat() if attendance and attendance.clock_out else None,
+        'scheduled_hours': scheduled_hours,
+        'hours_worked': worked_hours,
+        **_personal_role_metrics(profile, request.user, report_date),
+        'generated_at': timezone.now().isoformat(),
+    })
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])

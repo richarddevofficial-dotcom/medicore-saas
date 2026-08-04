@@ -1,6 +1,7 @@
 from rest_framework import viewsets, filters
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError
+from django.utils import timezone
 from .models import LabTest
 from .serializers import LabTestSerializer
 from config.role_permissions import IsLabTechnician
@@ -40,3 +41,21 @@ class LabTestViewSet(viewsets.ModelViewSet):
         if not hospital:
             raise ValidationError('Hospital context is required')
         serializer.save(hospital=hospital)
+
+    def perform_update(self, serializer):
+        previous_status = serializer.instance.status
+        next_status = serializer.validated_data.get(
+            'status',
+            previous_status,
+        )
+        update_fields = {}
+
+        if next_status == 'completed' and previous_status != 'completed':
+            update_fields['performed_by'] = getattr(
+                self.request.user,
+                'staff_profile',
+                None,
+            )
+            update_fields['completed_at'] = timezone.now()
+
+        serializer.save(**update_fields)

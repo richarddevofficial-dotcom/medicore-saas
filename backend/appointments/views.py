@@ -35,6 +35,21 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         if not hospital:
             return Appointment.objects.none()
         return Appointment.objects.filter(hospital=hospital)
+
+    def perform_create(self, serializer):
+        hospital = _resolve_request_hospital(self.request)
+        if not hospital:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError('Hospital context is required')
+
+        serializer.save(
+            hospital=hospital,
+            booked_by=getattr(
+                self.request.user,
+                'staff_profile',
+                None,
+            ),
+        )
     
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):

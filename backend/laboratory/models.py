@@ -14,10 +14,18 @@ class LabTest(models.Model):
     test_name = models.CharField(max_length=200)
     category = models.CharField(max_length=100, default='General')
     status = models.CharField(max_length=20, choices=STATUS, default='requested')
+    performed_by = models.ForeignKey(
+        'staff.StaffProfile',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='performed_lab_tests',
+    )
     result = models.TextField(blank=True)
     notes = models.TextField(blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
         ordering = ['-created_at']

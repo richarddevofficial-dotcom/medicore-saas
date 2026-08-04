@@ -374,8 +374,8 @@ export default function ReceptionDashboard() {
           <h3 className="font-semibold mb-3">📊 My Shift Report</h3>
           <ReportGenerator
             role="receptionist"
-            endpoint="/reports/reception/"
-            title="Receptionist Shift Report"
+            endpoint="/reports/my-shift/"
+            title="My Shift Report"
           />
         </Card>
 

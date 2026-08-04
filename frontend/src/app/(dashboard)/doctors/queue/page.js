@@ -448,8 +448,8 @@ export default function DoctorQueuePage() {
           <h3 className="font-semibold mb-3">📊 My Shift Report</h3>
           <ReportGenerator
             role="doctor"
-            endpoint="/reports/staff/"
-            title="Doctor Shift Report"
+            endpoint="/reports/my-shift/"
+            title="My Shift Report"
           />
         </Card>
 

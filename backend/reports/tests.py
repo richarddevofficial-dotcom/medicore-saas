@@ -1,9 +1,8 @@
 from django.contrib.auth.models import User
-from datetime import date
+from datetime import date, time, timedelta
 from django.test import TestCase
 from rest_framework.test import APIClient
 from django.utils import timezone
-from datetime import timedelta
 
 from hospitals.models import Hospital
 from staff.models import StaffProfile
@@ -11,6 +10,7 @@ from patients.models import Patient
 from billing.models import Bill, SubscriptionPayment
 from appointments.models import Appointment
 from laboratory.models import LabTest
+from human_resources.models import Attendance, Employee, Shift, ShiftAssignment
 from pharmacy.models import Prescription
 from saas_billing.models import HospitalSubscription, SubscriptionPlan
 from reports.views import _date_range_for_period
@@ -32,6 +32,122 @@ class ReportDateRangeTests(TestCase):
 			_date_range_for_period("quarterly", end_date),
 			(date(2026, 7, 1), end_date),
 		)
+
+
+class PersonalShiftReportTests(TestCase):
+	def setUp(self):
+		self.client = APIClient()
+		self.hospital = Hospital.objects.create(
+			name="Personal Shift Hospital",
+			slug="personal-shift-hospital",
+			hospital_type="general",
+			registration_number="REG-PERSONAL-SHIFT",
+			email="personal-shift@example.com",
+			phone="555000111",
+			address="Shift Road",
+			city="Juba",
+			state="Central",
+			country="South Sudan",
+		)
+		self.user = User.objects.create_user(
+			username="receptionist@example.com",
+			password="Password123!",
+			first_name="Reception",
+			last_name="One",
+		)
+		self.profile = StaffProfile.objects.create(
+			user=self.user,
+			hospital=self.hospital,
+			role="receptionist",
+			phone="555000112",
+		)
+		self.employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.user,
+			employee_number="SHIFT-001",
+			first_name="Reception",
+			last_name="One",
+			national_id="SHIFT-TEST-001",
+			passport_number="SHIFT-PASSPORT-001",
+			bank_account_number="SHIFT-BANK-001",
+			tax_number="SHIFT-TAX-001",
+		)
+		self.shift = Shift.objects.create(
+			hospital=self.hospital,
+			name="Morning",
+			code="MORN",
+			start_time=time(8, 0),
+			end_time=time(16, 0),
+			break_minutes=30,
+		)
+		ShiftAssignment.objects.create(
+			employee=self.employee,
+			shift=self.shift,
+			start_date=timezone.localdate(),
+		)
+		Attendance.objects.create(
+			employee=self.employee,
+			shift=self.shift,
+			attendance_date=timezone.localdate(),
+			status="PRESENT",
+			clock_in=timezone.now() - timedelta(hours=2),
+			clock_out=timezone.now(),
+		)
+		self.client.force_authenticate(self.user)
+
+	def test_receptionist_report_is_scoped_to_the_authenticated_staff_member(self):
+		other_user = User.objects.create_user(
+			username="other-receptionist@example.com",
+			password="Password123!",
+		)
+		other_profile = StaffProfile.objects.create(
+			user=other_user,
+			hospital=self.hospital,
+			role="receptionist",
+			phone="555000113",
+		)
+		patient = Patient.objects.create(
+			hospital=self.hospital,
+			registered_by=self.profile,
+			first_name="Registered",
+			last_name="Patient",
+			date_of_birth="1990-01-01",
+			gender="F",
+			phone="555000114",
+		)
+		other_patient = Patient.objects.create(
+			hospital=self.hospital,
+			registered_by=other_profile,
+			first_name="Other",
+			last_name="Patient",
+			date_of_birth="1991-01-01",
+			gender="M",
+			phone="555000115",
+		)
+		Appointment.objects.create(
+			hospital=self.hospital,
+			patient=patient,
+			booked_by=self.profile,
+			appointment_date=timezone.localdate(),
+			appointment_time="09:00",
+			reason="Review",
+		)
+		Appointment.objects.create(
+			hospital=self.hospital,
+			patient=other_patient,
+			booked_by=other_profile,
+			appointment_date=timezone.localdate(),
+			appointment_time="10:00",
+			reason="Review",
+		)
+
+		response = self.client.get("/api/v1/reports/my-shift/")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["shift"], "Morning")
+		self.assertEqual(response.data["attendance_status"], "PRESENT")
+		self.assertEqual(response.data["patients_registered"], 1)
+		self.assertEqual(response.data["appointments_booked"], 1)
 
 
 class ReportsPlanAccessTests(TestCase):
