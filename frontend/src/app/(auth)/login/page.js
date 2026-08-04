@@ -88,7 +88,7 @@ export default function LoginPage() {
         "/auth/login/initiate/",
         buildLoginPayload(),
       );
-      if (data.mfa_required === false && data.token) {
+      if (data.mfa_required === false) {
         toast.success("Trusted device recognized. Signed in.");
         finalizeLogin(data);
         return;
