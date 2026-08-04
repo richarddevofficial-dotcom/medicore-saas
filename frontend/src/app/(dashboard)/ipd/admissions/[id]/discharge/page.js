@@ -24,10 +24,10 @@ export default function DischargePage() {
   const [error, setError] = useState("");
 
   const [formData, setFormData] = useState({
-    discharge_summary: "",
-    discharge_diagnosis: "",
-    treatment_given: "",
-    medications_prescribed: "",
+    clinical_summary: "",
+    final_diagnosis: "",
+    treatment_summary: "",
+    discharge_medications: "",
     follow_up_instructions: "",
     next_bed_status: "cleaning",
     bed_release_reason: "Patient discharged",
@@ -82,10 +82,10 @@ export default function DischargePage() {
 
     // Validation
     const newErrors = {};
-    if (!formData.discharge_summary)
-      newErrors.discharge_summary = "Discharge summary is required";
-    if (!formData.discharge_diagnosis)
-      newErrors.discharge_diagnosis = "Discharge diagnosis is required";
+    if (!formData.clinical_summary)
+      newErrors.clinical_summary = "Discharge summary is required";
+    if (!formData.final_diagnosis)
+      newErrors.final_diagnosis = "Discharge diagnosis is required";
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -162,25 +162,25 @@ export default function DischargePage() {
           {/* Discharge Summary */}
           <div>
             <label
-              htmlFor="discharge_summary"
+              htmlFor="clinical_summary"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
               Discharge Summary *
             </label>
             <textarea
-              id="discharge_summary"
-              name="discharge_summary"
-              value={formData.discharge_summary}
+              id="clinical_summary"
+              name="clinical_summary"
+              value={formData.clinical_summary}
               onChange={handleChange}
               placeholder="Summary of patient's hospital stay..."
               rows="4"
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.discharge_summary ? "border-red-500" : "border-gray-300"
+                errors.clinical_summary ? "border-red-500" : "border-gray-300"
               }`}
             />
-            {errors.discharge_summary && (
+            {errors.clinical_summary && (
               <p className="text-red-600 text-sm mt-1">
-                {errors.discharge_summary}
+                {errors.clinical_summary}
               </p>
             )}
           </div>
@@ -188,27 +188,25 @@ export default function DischargePage() {
           {/* Discharge Diagnosis */}
           <div>
             <label
-              htmlFor="discharge_diagnosis"
+              htmlFor="final_diagnosis"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
               Final Diagnosis *
             </label>
             <textarea
-              id="discharge_diagnosis"
-              name="discharge_diagnosis"
-              value={formData.discharge_diagnosis}
+              id="final_diagnosis"
+              name="final_diagnosis"
+              value={formData.final_diagnosis}
               onChange={handleChange}
               placeholder="Final diagnosis at discharge..."
               rows="3"
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.discharge_diagnosis
-                  ? "border-red-500"
-                  : "border-gray-300"
+                errors.final_diagnosis ? "border-red-500" : "border-gray-300"
               }`}
             />
-            {errors.discharge_diagnosis && (
+            {errors.final_diagnosis && (
               <p className="text-red-600 text-sm mt-1">
-                {errors.discharge_diagnosis}
+                {errors.final_diagnosis}
               </p>
             )}
           </div>
@@ -216,15 +214,15 @@ export default function DischargePage() {
           {/* Treatment Given */}
           <div>
             <label
-              htmlFor="treatment_given"
+              htmlFor="treatment_summary"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
               Treatment Given
             </label>
             <textarea
-              id="treatment_given"
-              name="treatment_given"
-              value={formData.treatment_given}
+              id="treatment_summary"
+              name="treatment_summary"
+              value={formData.treatment_summary}
               onChange={handleChange}
               placeholder="Procedures, surgeries, therapies performed..."
               rows="3"
@@ -235,15 +233,15 @@ export default function DischargePage() {
           {/* Medications Prescribed */}
           <div>
             <label
-              htmlFor="medications_prescribed"
+              htmlFor="discharge_medications"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
               Medications at Discharge
             </label>
             <textarea
-              id="medications_prescribed"
-              name="medications_prescribed"
-              value={formData.medications_prescribed}
+              id="discharge_medications"
+              name="discharge_medications"
+              value={formData.discharge_medications}
               onChange={handleChange}
               placeholder="List of medications prescribed at discharge..."
               rows="3"

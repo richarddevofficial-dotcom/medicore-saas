@@ -1,5 +1,14 @@
 import apiClient from "@/lib/api-client";
 
+function ipdError(error, fallbackMessage) {
+  return new Error(
+    error?.response?.data?.error ||
+      error?.response?.data?.detail ||
+      error?.message ||
+      fallbackMessage,
+  );
+}
+
 // ==================== DASHBOARD ====================
 
 export async function getIpdDashboard() {
@@ -7,11 +16,7 @@ export async function getIpdDashboard() {
     const response = await apiClient.get("/ipd/dashboard/");
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(
-          error.response?.data?.detail || "Failed to load IPD dashboard",
-        );
+    throw ipdError(error, "Failed to load IPD dashboard");
   }
 }
 
@@ -22,9 +27,7 @@ export async function getIpdLookups() {
     const response = await apiClient.get("/ipd/lookups/");
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(error.response?.data?.detail || "Failed to load IPD lookups");
+    throw ipdError(error, "Failed to load IPD lookups");
   }
 }
 
@@ -35,9 +38,7 @@ export async function getAdmissions(params = {}) {
     const response = await apiClient.get("/ipd/admissions/", { params });
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(error.response?.data?.detail || "Failed to load admissions");
+    throw ipdError(error, "Failed to load admissions");
   }
 }
 
@@ -46,11 +47,7 @@ export async function getAdmissionDetail(admissionId) {
     const response = await apiClient.get(`/ipd/admissions/${admissionId}/`);
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(
-          error.response?.data?.detail || "Failed to load admission details",
-        );
+    throw ipdError(error, "Failed to load admission details");
   }
 }
 
@@ -59,9 +56,7 @@ export async function createAdmission(data) {
     const response = await apiClient.post("/ipd/admissions/", data);
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(error.response?.data?.detail || "Failed to create admission");
+    throw ipdError(error, "Failed to create admission");
   }
 }
 
@@ -73,9 +68,7 @@ export async function updateAdmission(admissionId, data) {
     );
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(error.response?.data?.detail || "Failed to update admission");
+    throw ipdError(error, "Failed to update admission");
   }
 }
 
@@ -89,11 +82,7 @@ export async function admitPatient(admissionId, data) {
     );
     return response.data;
   } catch (error) {
-    throw new Error(
-      error.response?.data?.error ||
-        error.response?.data?.detail ||
-        "Failed to admit patient",
-    );
+    throw ipdError(error, "Failed to admit patient");
   }
 }
 
@@ -105,9 +94,7 @@ export async function transferPatient(admissionId, data) {
     );
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(error.response?.data?.detail || "Failed to transfer patient");
+    throw ipdError(error, "Failed to transfer patient");
   }
 }
 
@@ -119,11 +106,7 @@ export async function dischargePatient(admissionId, data) {
     );
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(
-          error.response?.data?.detail || "Failed to discharge patient",
-        );
+    throw ipdError(error, "Failed to discharge patient");
   }
 }
 
@@ -136,11 +119,7 @@ export async function getNursingObservations(admissionId) {
     );
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(
-          error.response?.data?.detail || "Failed to load nursing observations",
-        );
+    throw ipdError(error, "Failed to load nursing observations");
   }
 }
 
@@ -152,12 +131,7 @@ export async function createNursingObservation(admissionId, data) {
     );
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(
-          error.response?.data?.detail ||
-            "Failed to create nursing observation",
-        );
+    throw ipdError(error, "Failed to create nursing observation");
   }
 }
 
@@ -170,11 +144,7 @@ export async function getMedicationOrders(admissionId) {
     );
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(
-          error.response?.data?.detail || "Failed to load medication orders",
-        );
+    throw ipdError(error, "Failed to load medication orders");
   }
 }
 
@@ -186,11 +156,7 @@ export async function createMedicationOrder(admissionId, data) {
     );
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(
-          error.response?.data?.detail || "Failed to create medication order",
-        );
+    throw ipdError(error, "Failed to create medication order");
   }
 }
 
@@ -202,10 +168,6 @@ export async function administerMedication(medicationId, data) {
     );
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(
-          error.response?.data?.detail || "Failed to administer medication",
-        );
+    throw ipdError(error, "Failed to administer medication");
   }
 }

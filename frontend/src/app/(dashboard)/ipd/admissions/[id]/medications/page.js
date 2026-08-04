@@ -34,8 +34,7 @@ export default function MedicationsPage() {
 
   const [formData, setFormData] = useState({
     medicine: "",
-    dose: "",
-    unit: "",
+    dosage: "",
     frequency: "",
     route: "oral",
     instructions: "",
@@ -94,8 +93,7 @@ export default function MedicationsPage() {
 
     const newErrors = {};
     if (!formData.medicine) newErrors.medicine = "Medicine is required";
-    if (!formData.dose) newErrors.dose = "Dose is required";
-    if (!formData.unit) newErrors.unit = "Unit is required";
+    if (!formData.dosage) newErrors.dosage = "Dosage is required";
     if (!formData.frequency) newErrors.frequency = "Frequency is required";
 
     if (Object.keys(newErrors).length > 0) {
@@ -107,11 +105,10 @@ export default function MedicationsPage() {
       setSubmitting(true);
       const result = await createMedicationOrder(admissionId, formData);
       toast.success("Medication order created successfully");
-      setMedications((prev) => [result, ...prev]);
+      setMedications((prev) => [result.medication_order, ...prev]);
       setFormData({
         medicine: "",
-        dose: "",
-        unit: "",
+        dosage: "",
         frequency: "",
         route: "oral",
         instructions: "",
@@ -128,18 +125,17 @@ export default function MedicationsPage() {
     }
   }
 
-  async function handleAdminister(medicationId) {
+  async function handleAdminister(medication) {
     try {
-      setAdministering(medicationId);
-      const result = await administerMedication(medicationId, {
+      setAdministering(medication.id);
+      await administerMedication(medication.id, {
         administered_at: new Date().toISOString(),
+        dosage_given: medication.dosage,
       });
       toast.success("Medication administration recorded");
 
-      // Update medication in list
-      setMedications((prev) =>
-        prev.map((med) => (med.id === medicationId ? result : med)),
-      );
+      const response = await getMedicationOrders(admissionId);
+      setMedications(response.results || []);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to administer medication",
@@ -267,55 +263,25 @@ export default function MedicationsPage() {
               {/* Dose */}
               <div>
                 <label
-                  htmlFor="dose"
+                  htmlFor="dosage"
                   className="block text-sm font-medium text-gray-700 mb-2"
                 >
                   Dose *
                 </label>
                 <input
                   type="number"
-                  id="dose"
-                  name="dose"
-                  value={formData.dose}
+                  id="dosage"
+                  name="dosage"
+                  value={formData.dosage}
                   onChange={handleChange}
                   placeholder="e.g., 500"
                   step="0.01"
                   className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.dose ? "border-red-500" : "border-gray-300"
+                    errors.dosage ? "border-red-500" : "border-gray-300"
                   }`}
                 />
-                {errors.dose && (
-                  <p className="text-red-600 text-sm mt-1">{errors.dose}</p>
-                )}
-              </div>
-
-              {/* Unit */}
-              <div>
-                <label
-                  htmlFor="unit"
-                  className="block text-sm font-medium text-gray-700 mb-2"
-                >
-                  Unit *
-                </label>
-                <select
-                  id="unit"
-                  name="unit"
-                  value={formData.unit}
-                  onChange={handleChange}
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.unit ? "border-red-500" : "border-gray-300"
-                  }`}
-                >
-                  <option value="">Select unit</option>
-                  <option value="mg">mg (Milligram)</option>
-                  <option value="g">g (Gram)</option>
-                  <option value="mcg">mcg (Microgram)</option>
-                  <option value="ml">ml (Milliliter)</option>
-                  <option value="unit">Unit</option>
-                  <option value="IU">IU (International Unit)</option>
-                </select>
-                {errors.unit && (
-                  <p className="text-red-600 text-sm mt-1">{errors.unit}</p>
+                {errors.dosage && (
+                  <p className="text-red-600 text-sm mt-1">{errors.dosage}</p>
                 )}
               </div>
 
@@ -425,10 +391,10 @@ export default function MedicationsPage() {
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <p className="font-semibold text-gray-900">
-                        {med.medicine?.name}
+                        {med.medicine_name}
                       </p>
                       <p className="text-sm text-gray-600">
-                        {med.dose} {med.unit} - {med.frequency}
+                        {med.dosage} - {med.frequency}
                       </p>
                     </div>
                     <span
@@ -453,7 +419,7 @@ export default function MedicationsPage() {
 
                   {med.status === "active" && (
                     <button
-                      onClick={() => handleAdminister(med.id)}
+                      onClick={() => handleAdminister(med)}
                       disabled={administering === med.id}
                       className="w-full px-4 py-2 border border-green-600 text-green-600 rounded-lg font-medium hover:bg-green-50 disabled:opacity-50 flex items-center justify-center gap-2"
                     >

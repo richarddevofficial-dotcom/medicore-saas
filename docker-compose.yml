@@ -20,7 +20,9 @@ services:
       context: ./backend
     container_name: medicore-backend
     restart: always
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
+    command: >-
+      gunicorn config.wsgi:application --bind 0.0.0.0:8000
+      --access-logfile - --error-logfile - --capture-output --log-level info
     volumes:
       - ./backend:/app
       - static_volume:/app/staticfiles

@@ -40,7 +40,7 @@ export default function TransferPatientPage() {
   useEffect(() => {
     if (formData.to_ward && lookups.rooms) {
       const rooms = lookups.rooms.filter(
-        (r) => r.ward.id === parseInt(formData.to_ward),
+        (room) => room.ward_id === Number(formData.to_ward),
       );
       setFilteredRooms(rooms);
       setFormData((prev) => ({ ...prev, to_room: "", to_bed: "" }));
@@ -51,8 +51,9 @@ export default function TransferPatientPage() {
   useEffect(() => {
     if (formData.to_room && lookups.beds) {
       const beds = lookups.beds.filter(
-        (b) =>
-          b.room.id === parseInt(formData.to_room) && b.status === "available",
+        (bed) =>
+          bed.room_id === Number(formData.to_room) &&
+          bed.status === "available",
       );
       setFilteredBeds(beds);
       setFormData((prev) => ({ ...prev, to_bed: "" }));
@@ -104,7 +105,7 @@ export default function TransferPatientPage() {
     try {
       setSubmitting(true);
       await transferPatient(admissionId, {
-        to_bed: parseInt(formData.to_bed),
+        target_bed_id: Number(formData.to_bed),
         reason: formData.reason,
       });
       toast.success("Patient transferred successfully");
@@ -250,7 +251,7 @@ export default function TransferPatientPage() {
               </option>
               {filteredRooms.map((room) => (
                 <option key={room.id} value={room.id}>
-                  {room.name}
+                  {room.room_number}
                 </option>
               ))}
             </select>

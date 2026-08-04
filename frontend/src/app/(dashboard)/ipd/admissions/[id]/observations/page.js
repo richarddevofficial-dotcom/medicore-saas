@@ -25,7 +25,7 @@ export default function NursingObservationsPage() {
   const [formData, setFormData] = useState({
     temperature: "",
     blood_pressure: "",
-    heart_rate: "",
+    pulse_rate: "",
     respiratory_rate: "",
     oxygen_saturation: "",
     notes: "",
@@ -84,7 +84,13 @@ export default function NursingObservationsPage() {
     if (!formData.temperature)
       newErrors.temperature = "Temperature is required";
     if (!formData.blood_pressure) newErrors.blood_pressure = "BP is required";
-    if (!formData.heart_rate) newErrors.heart_rate = "Heart rate is required";
+    if (!formData.pulse_rate) newErrors.pulse_rate = "Heart rate is required";
+    const bloodPressure = formData.blood_pressure
+      .trim()
+      .match(/^(\d{2,3})\s*\/\s*(\d{2,3})$/);
+    if (formData.blood_pressure && !bloodPressure) {
+      newErrors.blood_pressure = "Use the format 120/80";
+    }
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -93,17 +99,26 @@ export default function NursingObservationsPage() {
 
     try {
       setSubmitting(true);
-      const result = await createNursingObservation(admissionId, formData);
+      const [, systolicBp, diastolicBp] = bloodPressure;
+      const result = await createNursingObservation(admissionId, {
+        temperature: formData.temperature,
+        pulse_rate: formData.pulse_rate,
+        respiratory_rate: formData.respiratory_rate || null,
+        oxygen_saturation: formData.oxygen_saturation || null,
+        systolic_bp: Number(systolicBp),
+        diastolic_bp: Number(diastolicBp),
+        nursing_notes: formData.notes,
+      });
       toast.success("Observation recorded successfully");
 
       // Add to observations list
-      setObservations((prev) => [result, ...prev]);
+      setObservations((prev) => [result.observation, ...prev]);
 
       // Reset form
       setFormData({
         temperature: "",
         blood_pressure: "",
-        heart_rate: "",
+        pulse_rate: "",
         respiratory_rate: "",
         oxygen_saturation: "",
         notes: "",
@@ -224,26 +239,26 @@ export default function NursingObservationsPage() {
             {/* Heart Rate */}
             <div>
               <label
-                htmlFor="heart_rate"
+                htmlFor="pulse_rate"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
                 Heart Rate (bpm) *
               </label>
               <input
                 type="number"
-                id="heart_rate"
-                name="heart_rate"
-                value={formData.heart_rate}
+                id="pulse_rate"
+                name="pulse_rate"
+                value={formData.pulse_rate}
                 onChange={handleChange}
                 placeholder="72"
                 min="30"
                 max="200"
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.heart_rate ? "border-red-500" : "border-gray-300"
+                  errors.pulse_rate ? "border-red-500" : "border-gray-300"
                 }`}
               />
-              {errors.heart_rate && (
-                <p className="text-red-600 text-sm mt-1">{errors.heart_rate}</p>
+              {errors.pulse_rate && (
+                <p className="text-red-600 text-sm mt-1">{errors.pulse_rate}</p>
               )}
             </div>
 
@@ -363,13 +378,15 @@ export default function NursingObservationsPage() {
                     <div>
                       <p className="text-gray-600">BP</p>
                       <p className="font-semibold text-gray-900">
-                        {obs.blood_pressure}
+                        {obs.systolic_bp && obs.diastolic_bp
+                          ? `${obs.systolic_bp}/${obs.diastolic_bp}`
+                          : "-"}
                       </p>
                     </div>
                     <div>
                       <p className="text-gray-600">Heart Rate</p>
                       <p className="font-semibold text-gray-900">
-                        {obs.heart_rate} bpm
+                        {obs.pulse_rate} bpm
                       </p>
                     </div>
                     <div>
@@ -388,9 +405,9 @@ export default function NursingObservationsPage() {
                     </div>
                   </div>
 
-                  {obs.notes && (
+                  {obs.nursing_notes && (
                     <p className="text-sm text-gray-600 mt-3 pt-3 border-t">
-                      {obs.notes}
+                      {obs.nursing_notes}
                     </p>
                   )}
                 </div>
