@@ -1,6 +1,8 @@
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from rest_framework.test import APIClient
+from unittest.mock import patch
 
 from hospitals.models import Hospital
 from patients.models import Patient
@@ -125,6 +127,29 @@ class IPDLifecycleTests(TestCase):
 		self.assertEqual(discharge_response.status_code, 200)
 		second_assignment.refresh_from_db()
 		self.assertEqual(second_assignment.released_by, self.profile)
+
+	def test_admit_rolls_back_when_final_admission_save_fails(self):
+		original_save = Admission.save
+
+		def fail_final_save(instance, *args, **kwargs):
+			if "status" in kwargs.get("update_fields", []):
+				raise ValidationError("Admission data is invalid.")
+			return original_save(instance, *args, **kwargs)
+
+		with patch.object(Admission, "save", new=fail_final_save):
+			response = self.client.post(
+				f"/api/v1/ipd/admissions/{self.admission.id}/admit/",
+				{"bed_id": self.first_bed.id},
+				format="json",
+			)
+
+		self.assertEqual(response.status_code, 400)
+		self.admission.refresh_from_db()
+		self.first_bed.refresh_from_db()
+		self.assertEqual(self.admission.status, Admission.STATUS_PENDING)
+		self.assertIsNone(self.admission.bed_id)
+		self.assertEqual(self.first_bed.status, "available")
+		self.assertFalse(BedAssignment.objects.filter(bed=self.first_bed).exists())
 
 	def test_discharge_rejects_invalid_bed_status_without_partial_discharge(self):
 		self.client.post(

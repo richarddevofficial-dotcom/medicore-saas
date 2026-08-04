@@ -89,9 +89,11 @@ export async function admitPatient(admissionId, data) {
     );
     return response.data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error(error.response?.data?.detail || "Failed to admit patient");
+    throw new Error(
+      error.response?.data?.error ||
+        error.response?.data?.detail ||
+        "Failed to admit patient",
+    );
   }
 }
 

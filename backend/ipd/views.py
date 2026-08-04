@@ -1,4 +1,7 @@
-from django.db import transaction
+import logging
+
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework.decorators import (
@@ -36,6 +39,9 @@ from .serializers import (
     MedicationAdministrationSerializer,
     NursingObservationSerializer,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 READ_ROLES = {
@@ -556,41 +562,66 @@ def admit_patient(
     profile = get_user_profile(request.user)
 
     try:
-        admission, assignment = (
-            assign_bed_to_admission(
-                admission=admission,
-                bed=bed,
-                assigned_by=profile,
-                notes=str(
-                    request.data.get(
-                        "notes",
-                        "",
-                    )
-                ).strip(),
+        with transaction.atomic():
+            admission, assignment = (
+                assign_bed_to_admission(
+                    admission=admission,
+                    bed=bed,
+                    assigned_by=profile,
+                    notes=str(
+                        request.data.get(
+                            "notes",
+                            "",
+                        )
+                    ).strip(),
+                )
             )
-        )
-    except Exception as error:
+
+            admission.status = (
+                Admission.STATUS_ADMITTED
+            )
+            admission.admitted_at = timezone.now()
+            admission.is_active = True
+
+            admission.save(
+                update_fields=[
+                    "status",
+                    "admitted_at",
+                    "is_active",
+                    "updated_at",
+                ]
+            )
+    except ValidationError as error:
         return Response(
             {
                 "error": str(error),
             },
             status=400,
         )
-
-    admission.status = (
-        Admission.STATUS_ADMITTED
-    )
-    admission.admitted_at = timezone.now()
-    admission.is_active = True
-
-    admission.save(
-        update_fields=[
-            "status",
-            "admitted_at",
-            "is_active",
-            "updated_at",
-        ]
-    )
+    except IntegrityError:
+        return Response(
+            {
+                "error": (
+                    "The selected bed or patient already has "
+                    "an active assignment."
+                ),
+            },
+            status=409,
+        )
+    except Exception:
+        logger.exception(
+            "IPD admission failed for admission %s",
+            admission_id,
+        )
+        return Response(
+            {
+                "error": (
+                    "Unable to admit the patient. Please try again "
+                    "or contact support if the problem continues."
+                ),
+            },
+            status=500,
+        )
 
     return Response(
         {
