@@ -8,9 +8,9 @@ import { AlertTriangle } from "lucide-react";
 
 const planLimits = {
   trial: { maxStaff: 5, maxPatients: 500 },
-  basic: { maxStaff: 25, maxPatients: 2000 },
-  starter: { maxStaff: 25, maxPatients: 2000 },
-  pro: { maxStaff: 50, maxPatients: 20000 },
+  basic: { maxStaff: 20, maxPatients: 2000 },
+  starter: { maxStaff: 20, maxPatients: 2000 },
+  pro: { maxStaff: 100, maxPatients: 20000 },
   enterprise: { maxStaff: null, maxPatients: null },
 };
 
@@ -89,8 +89,8 @@ export default function SubscriptionGuard({ children }) {
             Trial Expired
           </h2>
           <p className="text-gray-500 mb-4">
-            Your 14-day free trial has ended. Upgrade to continue using
-            MediCore.
+            Your 14-day free trial has ended. Upgrade to continue using MediCore
+            HMS.
           </p>
           <Button>Upgrade Now</Button>
         </Card>

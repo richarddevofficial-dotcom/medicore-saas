@@ -21,6 +21,7 @@ from hospitals.models import Hospital, LoginOTP, TrustedDevice
 from imaging.models import ImagingTest
 from laboratory.models import LabTest
 from patients.models import Patient
+from saas_billing.models import HospitalSubscription, SubscriptionPlan
 from staff.models import StaffProfile
 
 
@@ -52,6 +53,22 @@ class AuthAndBillingSmokeTests(TestCase):
             hospital=self.hospital,
             role="admin",
             phone="1234567890",
+        )
+        self.starter_plan = SubscriptionPlan.objects.create(
+            code="starter",
+            name="Starter",
+            monthly_price="49.90",
+            service_fee="300.00",
+            max_staff=20,
+            max_patients=2000,
+        )
+        self.professional_plan = SubscriptionPlan.objects.create(
+            code="pro",
+            name="Professional",
+            monthly_price="89.90",
+            service_fee="500.00",
+            max_staff=100,
+            max_patients=20000,
         )
         Bill.objects.create(
             hospital=self.hospital,
@@ -1023,11 +1040,15 @@ class AuthAndBillingSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data.get("billing_cycle_months"), 6)
+        self.assertEqual(response.data.get("plan"), "starter")
+        self.assertEqual(response.data.get("amount"), "299.40")
         self.assertTrue(
             SubscriptionPayment.objects.filter(
                 transaction_id="TX-TEST-001",
                 hospital=self.hospital,
                 billing_cycle_months=6,
+                plan="starter",
+                amount="299.40",
             ).exists()
         )
 
@@ -1054,6 +1075,30 @@ class AuthAndBillingSmokeTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("billing_cycle_months", response.data)
+
+    def test_subscription_payment_create_rejects_unknown_plan(self):
+        login_response = self.client.post(
+            reverse("login"),
+            {"email": "richard@gmail.com", "password": "Admin@1234"},
+            format="json",
+        )
+        token = login_response.data["token"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+        response = self.client.post(
+            "/api/v1/subscription-payments/",
+            {
+                "plan": "unknown-plan",
+                "amount": "0.01",
+                "billing_cycle_months": 6,
+                "payment_method": "bank",
+                "transaction_id": "TX-TEST-UNKNOWN-PLAN",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("plan", response.data)
 
     def test_subscription_payment_create_is_idempotent_with_header_key(self):
         login_response = self.client.post(
@@ -1173,6 +1218,9 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertEqual(self.hospital.subscription_plan, "pro")
         self.assertTrue(self.user.is_active)
         self.assertEqual(payment.status, "paid")
+        subscription = HospitalSubscription.objects.get(hospital=self.hospital)
+        self.assertEqual(subscription.plan, self.professional_plan)
+        self.assertEqual(subscription.status, HospitalSubscription.STATUS_ACTIVE)
         self.assertIsNotNone(payment.subscription_start)
         self.assertIsNotNone(payment.subscription_end)
         self.assertEqual(

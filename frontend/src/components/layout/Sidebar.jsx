@@ -138,8 +138,6 @@ const navigationByRole = {
       section: "SYSTEM",
       items: (() => {
         const items = [
-          { name: "Subscription", href: "/admin/subscription", icon: Crown },
-          { name: "Payments", href: "/admin/payment", icon: CreditCard },
           {
             name: "Billing & Subscription",
             href: "/settings/billing",
@@ -286,8 +284,6 @@ const navigationByRole = {
     {
       section: "SYSTEM",
       items: [
-        { name: "Subscription", href: "/admin/subscription", icon: Crown },
-        { name: "Payments", href: "/admin/payment", icon: CreditCard },
         {
           name: "Billing Center",
           href: "/platform/billing",

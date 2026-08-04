@@ -33,6 +33,24 @@ from config.role_permissions import (
     IsServiceRequester,
     get_staff_role,
 )
+from saas_billing.models import HospitalSubscription, SubscriptionPlan
+
+
+LEGACY_PLAN_CODE_ALIASES = {
+    "basic": "starter",
+}
+
+
+def _get_active_subscription_plan(plan_code):
+    normalized_code = str(plan_code or "").strip().lower()
+    normalized_code = LEGACY_PLAN_CODE_ALIASES.get(
+        normalized_code,
+        normalized_code,
+    )
+    return SubscriptionPlan.objects.filter(
+        code=normalized_code,
+        is_active=True,
+    ).first()
 
 
 def _sync_patient_prescription_payment_status(bill):
@@ -746,6 +764,23 @@ class SubscriptionPaymentViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        subscription_plan = _get_active_subscription_plan(
+            serializer.validated_data.get("plan"),
+        )
+        if not subscription_plan:
+            return Response(
+                {"plan": "An active subscription plan is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        billing_cycle_months = serializer.validated_data[
+            "billing_cycle_months"
+        ]
+        amount = (
+            subscription_plan.monthly_price
+            * billing_cycle_months
+        )
+
         transaction_id = (serializer.validated_data.get('transaction_id') or '').strip()
         if transaction_id:
             duplicate_tx_exists = SubscriptionPayment.objects.filter(
@@ -762,6 +797,8 @@ class SubscriptionPaymentViewSet(viewsets.ModelViewSet):
         payment = serializer.save(
             hospital=hospital,
             idempotency_key=idempotency_key,
+            plan=subscription_plan.code,
+            amount=amount,
         )
         response_payload = self.get_serializer(payment).data
         headers = self.get_success_headers(response_payload)
@@ -853,6 +890,12 @@ class SubscriptionPaymentViewSet(viewsets.ModelViewSet):
         receipt_email_error = ''
         if next_status == 'paid':
             hospital = payment.hospital
+            subscription_plan = _get_active_subscription_plan(payment.plan)
+            if not subscription_plan:
+                return Response(
+                    {'error': 'The payment plan is no longer active.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if not hospital.email:
                 return Response(
                     {'error': 'Hospital email is not configured. Cannot approve payment without sending receipt.'},
@@ -871,7 +914,49 @@ class SubscriptionPaymentViewSet(viewsets.ModelViewSet):
                     payment.receipt_sent_at = None
                     payment.receipt_delivery_status = 'not_sent'
 
-                    hospital.subscription_plan = payment.plan
+                    subscription, created = HospitalSubscription.objects.get_or_create(
+                        hospital=hospital,
+                        defaults={
+                            'plan': subscription_plan,
+                            'status': HospitalSubscription.STATUS_ACTIVE,
+                            'started_at': timezone.now(),
+                            'activated_at': timezone.now(),
+                            'next_billing_date': payment.subscription_end,
+                            'current_monthly_price': subscription_plan.monthly_price,
+                            'current_service_fee': subscription_plan.service_fee,
+                            'currency': subscription_plan.currency,
+                        },
+                    )
+                    if not created:
+                        subscription.plan = subscription_plan
+                        subscription.status = HospitalSubscription.STATUS_ACTIVE
+                        subscription.activated_at = (
+                            subscription.activated_at or timezone.now()
+                        )
+                        subscription.next_billing_date = payment.subscription_end
+                        subscription.current_monthly_price = subscription_plan.monthly_price
+                        subscription.current_service_fee = subscription_plan.service_fee
+                        subscription.currency = subscription_plan.currency
+                        subscription.grace_period_ends_at = None
+                        subscription.save(
+                            update_fields=[
+                                'plan',
+                                'status',
+                                'activated_at',
+                                'next_billing_date',
+                                'current_monthly_price',
+                                'current_service_fee',
+                                'currency',
+                                'grace_period_ends_at',
+                                'updated_at',
+                            ],
+                        )
+
+                    hospital.subscription_plan = (
+                        'basic'
+                        if subscription_plan.code == 'starter'
+                        else subscription_plan.code
+                    )
                     hospital.subscription_status = 'active'
                     hospital.is_active = True
                     hospital.save(update_fields=['subscription_plan', 'subscription_status', 'is_active'])
