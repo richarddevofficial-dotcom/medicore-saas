@@ -221,6 +221,9 @@ export default function BillingPage() {
   const subscription = data?.subscription || {};
   const summary = data?.summary || {};
   const currency = subscription.currency || "USD";
+  const payableInvoice = data?.invoices?.find((invoice) =>
+    ["pending", "overdue"].includes(invoice.status),
+  );
 
   return (
     <div className="space-y-8 p-4 sm:p-6 lg:p-8">
@@ -374,7 +377,16 @@ export default function BillingPage() {
             </p>
           </div>
 
-          {!subscription.service_fee_paid &&
+          {payableInvoice ? (
+            <button
+              type="button"
+              onClick={() => setSelectedInvoice(payableInvoice)}
+              className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-800"
+            >
+              <CreditCard size={18} />
+              Make payment
+            </button>
+          ) : (
             Number(summary.pending_invoices || 0) === 0 && (
               <button
                 type="button"
@@ -387,7 +399,8 @@ export default function BillingPage() {
                 )}
                 Generate payment invoice
               </button>
-            )}
+            )
+          )}
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
