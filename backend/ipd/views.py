@@ -591,6 +591,10 @@ def admit_patient(
                     "updated_at",
                 ]
             )
+
+            response_admission_id = admission.id
+            response_status = admission.status
+            response_assignment_id = assignment.id
     except ValidationError as error:
         return Response(
             {
@@ -629,9 +633,9 @@ def admit_patient(
                 "Patient admitted and bed "
                 "assigned successfully."
             ),
-            "admission_id": admission.id,
-            "status": admission.status,
-            "bed_assignment_id": assignment.id,
+            "admission_id": response_admission_id,
+            "status": response_status,
+            "bed_assignment_id": response_assignment_id,
         }
     )
 
