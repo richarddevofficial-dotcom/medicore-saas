@@ -85,6 +85,9 @@ class IPDLifecycleTests(TestCase):
 		)
 
 		self.assertEqual(admit_response.status_code, 200)
+		self.assertEqual(admit_response.data["admission_id"], self.admission.id)
+		self.assertEqual(admit_response.data["status"], Admission.STATUS_ADMITTED)
+		self.assertNotIn("admission", admit_response.data)
 		first_assignment = BedAssignment.objects.get(
 			bed=self.first_bed,
 			released_at__isnull=True,

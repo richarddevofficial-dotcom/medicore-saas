@@ -598,12 +598,9 @@ def admit_patient(
                 "Patient admitted and bed "
                 "assigned successfully."
             ),
+            "admission_id": admission.id,
+            "status": admission.status,
             "bed_assignment_id": assignment.id,
-            "admission": (
-                AdmissionDetailSerializer(
-                    admission
-                ).data
-            ),
         }
     )
 
