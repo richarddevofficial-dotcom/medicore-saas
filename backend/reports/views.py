@@ -1,4 +1,5 @@
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from config.plan_permissions import RequiresProPlan
@@ -24,7 +25,7 @@ def _resolve_report_hospital(request):
             from hospitals.models import Hospital
             return Hospital.objects.filter(id=hospital_id).first()
         return None
-    return None
+    raise PermissionDenied('Your account is not assigned to a hospital.')
 
 
 def _date_range_for_period(period, end_date):
@@ -234,8 +235,12 @@ def detailed_report(request):
     completed_appointments = appointments_qs.filter(appointment_date__gte=start_date, appointment_date__lte=end_date, status='completed').count()
     
     # Gender distribution
-    male = patients_qs.filter(gender='M').count()
-    female = patients_qs.filter(gender='F').count()
+    gender_patients = patients_qs.filter(
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date,
+    )
+    male = gender_patients.filter(gender='M').count()
+    female = gender_patients.filter(gender='F').count()
     
     return Response({
         'period': filter_mode,

@@ -11,6 +11,7 @@ from billing.models import Bill, SubscriptionPayment
 from appointments.models import Appointment
 from laboratory.models import LabTest
 from pharmacy.models import Prescription
+from saas_billing.models import HospitalSubscription, SubscriptionPlan
 
 
 class ReportsPlanAccessTests(TestCase):
@@ -182,6 +183,41 @@ class ReportsPlanAccessTests(TestCase):
 
 		self.assertEqual(response.status_code, 200)
 
+	def test_saas_subscription_plan_takes_precedence_for_report_access(self):
+		plan = SubscriptionPlan.objects.create(
+			code="pro",
+			name="Professional",
+			monthly_price="89.90",
+			service_fee="500.00",
+			max_staff=100,
+			max_patients=20000,
+		)
+		HospitalSubscription.objects.create(
+			hospital=self.hospital_pro,
+			plan=plan,
+			current_monthly_price="89.90",
+			current_service_fee="500.00",
+		)
+		self.hospital_pro.subscription_plan = "basic"
+		self.hospital_pro.save(update_fields=["subscription_plan"])
+		self.client.force_authenticate(user=self.pro_user)
+
+		response = self.client.get("/api/v1/reports/detailed/?period=daily")
+
+		self.assertEqual(response.status_code, 200)
+
+	def test_user_without_hospital_cannot_access_dashboard_report(self):
+		user = User.objects.create_user(
+			username="no-hospital-user",
+			email="no-hospital@example.com",
+			password="Admin@1234",
+		)
+		self.client.force_authenticate(user=user)
+
+		response = self.client.get("/api/v1/reports/dashboard/")
+
+		self.assertEqual(response.status_code, 403)
+
 	def test_detailed_report_rejects_invalid_custom_date_range(self):
 		self.client.force_authenticate(user=self.pro_user)
 
@@ -199,6 +235,26 @@ class ReportsPlanAccessTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.data["patients"]["total"], 1)
 		self.assertEqual(response.data["billing"]["revenue"], 90.0)
+
+	def test_detailed_report_scopes_gender_counts_to_requested_dates(self):
+		old_patient = Patient.objects.create(
+			hospital=self.hospital_pro,
+			first_name="Historical",
+			last_name="Patient",
+			date_of_birth="1989-01-01",
+			gender="M",
+			phone="400500601",
+		)
+		Patient.objects.filter(pk=old_patient.pk).update(
+			created_at=timezone.now() - timedelta(days=31),
+		)
+		self.client.force_authenticate(user=self.pro_user)
+
+		response = self.client.get("/api/v1/reports/detailed/?period=daily")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["patients"]["male"], 0)
+		self.assertEqual(response.data["patients"]["female"], 1)
 
 	def test_pro_plan_can_access_reconciliation_report(self):
 		self.client.force_authenticate(user=self.pro_user)

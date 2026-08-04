@@ -14,7 +14,14 @@ class RequiresHospitalPlan(BasePermission):
         if not staff_profile or not staff_profile.hospital:
             return False
 
-        hospital_plan = (staff_profile.hospital.subscription_plan or "trial").lower()
+        hospital = staff_profile.hospital
+        subscription = getattr(hospital, "saas_subscription", None)
+        hospital_plan = (
+            subscription.plan.code
+            if subscription and subscription.plan_id
+            else hospital.subscription_plan
+        )
+        hospital_plan = (hospital_plan or "trial").lower()
         return hospital_plan in self.allowed_plans
 
 

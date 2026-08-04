@@ -802,14 +802,15 @@ class AccountingReportBaseView(APIView):
                 pk=hospital_id,
             )
 
-        hospital = get_request_hospital(request)
-
-        if hospital is None:
+        hospital_id = get_user_hospital_id(request.user)
+        if hospital_id is None:
             raise PermissionDenied(
                 "Your account is not assigned to a hospital."
             )
 
-        return hospital
+        from hospitals.models import Hospital
+
+        return get_object_or_404(Hospital, pk=hospital_id)
 
     def get_date_range(self, request):
         start_date = parse_date_param(
