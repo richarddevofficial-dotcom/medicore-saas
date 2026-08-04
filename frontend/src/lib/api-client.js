@@ -47,9 +47,9 @@ apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
     const method = String(config.method || "get").toLowerCase();
     const storedCsrfToken =
+      getCookie("csrftoken") ||
       csrfToken ||
-      sessionStorage.getItem("csrf_token") ||
-      getCookie("csrftoken");
+      sessionStorage.getItem("csrf_token");
     if (storedCsrfToken && !["get", "head", "options"].includes(method)) {
       config.headers["X-CSRFToken"] = storedCsrfToken;
     }
