@@ -25,9 +25,6 @@ import {
 } from "@/lib/subscription-plans";
 
 const BILLING_CYCLE_OPTIONS = [
-  { value: "1", label: "1 month" },
-  { value: "3", label: "3 months (Quarterly)" },
-  { value: "4", label: "4 months" },
   { value: "6", label: "6 months" },
   { value: "12", label: "12 months (Yearly)" },
 ];
@@ -45,8 +42,8 @@ export default function PaymentPage() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({
     plan: "basic",
-    billing_cycle_months: "1",
-    amount: computeAmount("basic", 1),
+    billing_cycle_months: "6",
+    amount: computeAmount("basic", 6),
     payment_method: "bank",
     transaction_id: "",
   });

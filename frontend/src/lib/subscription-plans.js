@@ -2,12 +2,12 @@ export const SUBSCRIPTION_PLANS = [
   {
     id: "basic",
     name: "Basic",
-    monthlyPrice: 99.9,
-    maxStaff: 10,
-    maxPatients: 1000,
+    monthlyPrice: 49.9,
+    maxStaff: 20,
+    maxPatients: 2000,
     features: [
-      "Up to 10 Staff",
-      "Up to 1,000 Patients",
+      "Up to 20 Staff",
+      "Up to 2,000 Patients",
       "All Core Features",
       "Email Support",
     ],
@@ -17,12 +17,12 @@ export const SUBSCRIPTION_PLANS = [
   {
     id: "pro",
     name: "Professional",
-    monthlyPrice: 149.9,
-    maxStaff: 25,
-    maxPatients: 5000,
+    monthlyPrice: 89.9,
+    maxStaff: 100,
+    maxPatients: 20000,
     features: [
-      "Up to 25 Staff",
-      "Up to 5,000 Patients",
+      "Up to 100 Staff",
+      "Up to 20,000 Patients",
       "Advanced Reports",
       "Priority Support",
       "Custom Branding",
@@ -33,9 +33,9 @@ export const SUBSCRIPTION_PLANS = [
   {
     id: "enterprise",
     name: "Enterprise",
-    monthlyPrice: 249.9,
-    maxStaff: 100,
-    maxPatients: 999999,
+    monthlyPrice: 129.9,
+    maxStaff: null,
+    maxPatients: null,
     features: [
       "Unlimited Staff",
       "Unlimited Patients",

@@ -18,10 +18,15 @@ class SubscriptionPaymentSerializer(serializers.ModelSerializer):
     hospital_name = serializers.CharField(source='hospital.name', read_only=True)
 
     def validate_billing_cycle_months(self, value):
+        request = self.context.get('request')
         allowed_cycles = {1, 3, 4, 6, 12}
+        if request and not request.user.is_superuser:
+            allowed_cycles = {6, 12}
         if value not in allowed_cycles:
             raise serializers.ValidationError(
-                "billing_cycle_months must be one of: 1, 3, 4, 6, 12"
+                "billing_cycle_months must be one of: 6, 12"
+                if request and not request.user.is_superuser
+                else "billing_cycle_months must be one of: 1, 3, 4, 6, 12"
             )
         return value
     

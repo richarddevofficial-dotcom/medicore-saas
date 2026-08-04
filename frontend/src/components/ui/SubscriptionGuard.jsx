@@ -8,9 +8,10 @@ import { AlertTriangle } from "lucide-react";
 
 const planLimits = {
   trial: { maxStaff: 5, maxPatients: 500 },
-  basic: { maxStaff: 10, maxPatients: 1000 },
-  pro: { maxStaff: 25, maxPatients: 5000 },
-  enterprise: { maxStaff: 100, maxPatients: 999999 },
+  basic: { maxStaff: 25, maxPatients: 2000 },
+  starter: { maxStaff: 25, maxPatients: 2000 },
+  pro: { maxStaff: 50, maxPatients: 20000 },
+  enterprise: { maxStaff: null, maxPatients: null },
 };
 
 export function useSubscription() {
@@ -47,13 +48,21 @@ export function checkLimit(subscription, type, currentCount) {
   const plan = subscription.subscription_plan || "trial";
   const limits = planLimits[plan];
 
-  if (type === "staff" && currentCount >= limits.maxStaff) {
+  if (
+    type === "staff" &&
+    limits.maxStaff !== null &&
+    currentCount >= limits.maxStaff
+  ) {
     return {
       allowed: false,
       message: `Staff limit reached (${limits.maxStaff}). Upgrade your plan.`,
     };
   }
-  if (type === "patients" && currentCount >= limits.maxPatients) {
+  if (
+    type === "patients" &&
+    limits.maxPatients !== null &&
+    currentCount >= limits.maxPatients
+  ) {
     return {
       allowed: false,
       message: `Patient limit reached (${limits.maxPatients}). Upgrade your plan.`,

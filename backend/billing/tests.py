@@ -1067,7 +1067,7 @@ class AuthAndBillingSmokeTests(TestCase):
         payload = {
             "plan": "basic",
             "amount": "50.00",
-            "billing_cycle_months": 3,
+            "billing_cycle_months": 6,
             "payment_method": "bank",
             "transaction_id": "TX-IDEMP-001",
         }
@@ -1083,7 +1083,7 @@ class AuthAndBillingSmokeTests(TestCase):
             {
                 "plan": "pro",
                 "amount": "149.90",
-                "billing_cycle_months": 6,
+                "billing_cycle_months": 12,
                 "payment_method": "bank",
                 "transaction_id": "TX-IDEMP-002",
             },
@@ -1125,7 +1125,7 @@ class AuthAndBillingSmokeTests(TestCase):
             {
                 "plan": "basic",
                 "amount": "99.90",
-                "billing_cycle_months": 1,
+                "billing_cycle_months": 6,
                 "payment_method": "bank",
                 "transaction_id": "TX-DUP-001",
             },
