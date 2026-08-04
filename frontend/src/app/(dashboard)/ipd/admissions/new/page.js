@@ -1,14 +1,9 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
-  Bed,
   Building2,
   CalendarDays,
   Loader2,
@@ -17,19 +12,13 @@ import {
   Stethoscope,
   User,
 } from "lucide-react";
-import {
-  useRouter,
-} from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import apiClient from "@/lib/api-client";
-
 
 const initialForm = {
   patient: "",
   admitting_doctor: "",
-  ward: "",
-  room: "",
-  bed: "",
   admission_type: "elective",
   provisional_diagnosis: "",
   reason_for_admission: "",
@@ -38,61 +27,43 @@ const initialForm = {
   expected_discharge_date: "",
 };
 
-
 export default function NewAdmissionPage() {
   const router = useRouter();
 
-  const [form, setForm] = useState(
-    initialForm,
-  );
+  const [form, setForm] = useState(initialForm);
 
-  const [lookups, setLookups] =
-    useState({
-      patients: [],
-      doctors: [],
-      wards: [],
-      rooms: [],
-      beds: [],
-    });
+  const [lookups, setLookups] = useState({
+    patients: [],
+    doctors: [],
+  });
 
-  const [
-    patientSearch,
-    setPatientSearch,
-  ] = useState("");
+  const [patientSearch, setPatientSearch] = useState("");
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [submitting, setSubmitting] =
-    useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const [error, setError] = useState("");
 
-  const [fieldErrors, setFieldErrors] =
-    useState({});
+  const [fieldErrors, setFieldErrors] = useState({});
 
   async function loadLookups() {
     try {
       setLoading(true);
       setError("");
 
-      const response = await apiClient.get(
-        "/ipd/lookups/",
-      );
+      const response = await apiClient.get("/ipd/lookups/");
 
       setLookups(response.data);
     } catch (requestError) {
-      const responseData =
-        requestError.response?.data;
+      const responseData = requestError.response?.data;
 
       setError(
         responseData?.error ||
           responseData?.detail ||
-          (
-            typeof responseData === "string"
-              ? responseData
-              : JSON.stringify(responseData)
-          ) ||
+          (typeof responseData === "string"
+            ? responseData
+            : JSON.stringify(responseData)) ||
           requestError.message ||
           "Unable to load admission form data.",
       );
@@ -105,97 +76,31 @@ export default function NewAdmissionPage() {
     loadLookups();
   }, []);
 
-  const filteredPatients = useMemo(
-    () => {
-      const query = patientSearch
-        .trim()
-        .toLowerCase();
+  const filteredPatients = useMemo(() => {
+    const query = patientSearch.trim().toLowerCase();
 
-      if (!query) {
-        return lookups.patients;
-      }
+    if (!query) {
+      return lookups.patients;
+    }
 
-      return lookups.patients.filter(
-        (patient) =>
-          patient.name
-            ?.toLowerCase()
-            .includes(query) ||
-          String(
-            patient.patient_number || "",
-          )
-            .toLowerCase()
-            .includes(query) ||
-          String(patient.phone || "")
-            .toLowerCase()
-            .includes(query),
-      );
-    },
-    [
-      patientSearch,
-      lookups.patients,
-    ],
-  );
+    return lookups.patients.filter(
+      (patient) =>
+        patient.name?.toLowerCase().includes(query) ||
+        String(patient.patient_number || "")
+          .toLowerCase()
+          .includes(query) ||
+        String(patient.phone || "")
+          .toLowerCase()
+          .includes(query),
+    );
+  }, [patientSearch, lookups.patients]);
 
-  const filteredRooms = useMemo(
-    () =>
-      lookups.rooms.filter(
-        (room) =>
-          !form.ward ||
-          String(room.ward_id) ===
-            String(form.ward),
-      ),
-    [
-      lookups.rooms,
-      form.ward,
-    ],
-  );
-
-  const filteredBeds = useMemo(
-    () =>
-      lookups.beds.filter((bed) => {
-        if (
-          form.ward &&
-          String(bed.ward_id) !==
-            String(form.ward)
-        ) {
-          return false;
-        }
-
-        if (
-          form.room &&
-          String(bed.room_id) !==
-            String(form.room)
-        ) {
-          return false;
-        }
-
-        return bed.status === "available";
-      }),
-    [
-      lookups.beds,
-      form.ward,
-      form.room,
-    ],
-  );
-
-  function updateField(
-    field,
-    value,
-  ) {
+  function updateField(field, value) {
     setForm((current) => {
       const next = {
         ...current,
         [field]: value,
       };
-
-      if (field === "ward") {
-        next.room = "";
-        next.bed = "";
-      }
-
-      if (field === "room") {
-        next.bed = "";
-      }
 
       return next;
     });
@@ -217,45 +122,21 @@ export default function NewAdmissionPage() {
       const payload = {
         ...form,
         patient: Number(form.patient),
-        admitting_doctor:
-          form.admitting_doctor
-            ? Number(
-                form.admitting_doctor,
-              )
-            : null,
-        ward: form.ward
-          ? Number(form.ward)
+        admitting_doctor: form.admitting_doctor
+          ? Number(form.admitting_doctor)
           : null,
-        room: form.room
-          ? Number(form.room)
-          : null,
-        bed: form.bed
-          ? Number(form.bed)
-          : null,
-        expected_discharge_date:
-          form.expected_discharge_date ||
-          null,
+        expected_discharge_date: form.expected_discharge_date || null,
       };
 
-      const response = await apiClient.post(
-        "/ipd/admissions/",
-        payload,
-      );
+      const response = await apiClient.post("/ipd/admissions/", payload);
 
-      const admission =
-        response.data.admission;
+      const admission = response.data.admission;
 
-      router.push(
-        `/ipd/admissions/${admission.id}`,
-      );
+      router.push(`/ipd/admissions/${admission.id}`);
     } catch (requestError) {
-      const responseData =
-        requestError.response?.data;
+      const responseData = requestError.response?.data;
 
-      if (
-        responseData &&
-        typeof responseData === "object"
-      ) {
+      if (responseData && typeof responseData === "object") {
         setFieldErrors(responseData);
       }
 
@@ -273,10 +154,7 @@ export default function NewAdmissionPage() {
     return (
       <div className="flex min-h-[65vh] items-center justify-center">
         <div className="text-center">
-          <Loader2
-            size={42}
-            className="mx-auto animate-spin text-orange-500"
-          />
+          <Loader2 size={42} className="mx-auto animate-spin text-orange-500" />
 
           <p className="mt-4 text-sm text-slate-500">
             Loading admission form...
@@ -306,9 +184,8 @@ export default function NewAdmissionPage() {
         </h1>
 
         <p className="mt-2 text-slate-600">
-          Create a pending inpatient admission
-          and reserve the intended ward, room,
-          and bed.
+          Create a pending inpatient admission and reserve the intended ward,
+          room, and bed.
         </p>
       </header>
 
@@ -318,18 +195,10 @@ export default function NewAdmissionPage() {
         </div>
       )}
 
-      <form
-        onSubmit={handleSubmit}
-        className="space-y-6"
-      >
-        <FormSection
-          title="Patient Information"
-          icon={User}
-        >
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <FormSection title="Patient Information" icon={User}>
           <div className="md:col-span-2">
-            <FormLabel>
-              Search Patient
-            </FormLabel>
+            <FormLabel>Search Patient</FormLabel>
 
             <div className="relative">
               <Search
@@ -339,11 +208,7 @@ export default function NewAdmissionPage() {
 
               <input
                 value={patientSearch}
-                onChange={(event) =>
-                  setPatientSearch(
-                    event.target.value,
-                  )
-                }
+                onChange={(event) => setPatientSearch(event.target.value)}
                 placeholder="Search by patient name, number, or phone..."
                 className="form-input pl-10"
               />
@@ -351,294 +216,67 @@ export default function NewAdmissionPage() {
           </div>
 
           <div className="md:col-span-2">
-            <FormLabel required>
-              Patient
-            </FormLabel>
+            <FormLabel required>Patient</FormLabel>
 
             <select
               required
               value={form.patient}
-              onChange={(event) =>
-                updateField(
-                  "patient",
-                  event.target.value,
-                )
-              }
+              onChange={(event) => updateField("patient", event.target.value)}
               className="form-input"
             >
-              <option value="">
-                Select patient
-              </option>
+              <option value="">Select patient</option>
 
-              {filteredPatients.map(
-                (patient) => (
-                  <option
-                    key={patient.id}
-                    value={patient.id}
-                  >
-                    {patient.name}
-                    {" — "}
-                    {patient.patient_number}
-                    {patient.phone
-                      ? ` — ${patient.phone}`
-                      : ""}
-                  </option>
-                ),
-              )}
+              {filteredPatients.map((patient) => (
+                <option key={patient.id} value={patient.id}>
+                  {patient.name}
+                  {" — "}
+                  {patient.patient_number}
+                  {patient.phone ? ` — ${patient.phone}` : ""}
+                </option>
+              ))}
             </select>
 
-            <FieldError
-              value={fieldErrors.patient}
-            />
+            <FieldError value={fieldErrors.patient} />
           </div>
         </FormSection>
 
-        <FormSection
-          title="Clinical Admission"
-          icon={Stethoscope}
-        >
-          <FormField
-            label="Admission Type"
-            required
-          >
+        <FormSection title="Clinical Admission" icon={Stethoscope}>
+          <FormField label="Admission Type" required>
             <select
               required
               value={form.admission_type}
               onChange={(event) =>
-                updateField(
-                  "admission_type",
-                  event.target.value,
-                )
+                updateField("admission_type", event.target.value)
               }
               className="form-input"
             >
-              <option value="elective">
-                Elective
-              </option>
-              <option value="emergency">
-                Emergency
-              </option>
-              <option value="transfer">
-                Transfer
-              </option>
-              <option value="observation">
-                Observation
-              </option>
+              <option value="elective">Elective</option>
+              <option value="emergency">Emergency</option>
+              <option value="transfer">Transfer</option>
+              <option value="observation">Observation</option>
             </select>
           </FormField>
 
           <FormField label="Admitting Doctor">
             <select
-              value={
-                form.admitting_doctor
-              }
+              value={form.admitting_doctor}
               onChange={(event) =>
-                updateField(
-                  "admitting_doctor",
-                  event.target.value,
-                )
+                updateField("admitting_doctor", event.target.value)
               }
               className="form-input"
             >
-              <option value="">
-                Select doctor
-              </option>
+              <option value="">Select doctor</option>
 
-              {lookups.doctors.map(
-                (doctor) => (
-                  <option
-                    key={doctor.id}
-                    value={doctor.id}
-                  >
-                    {doctor.name}
-                    {doctor.specialization
-                      ? ` — ${doctor.specialization}`
-                      : ""}
-                  </option>
-                ),
-              )}
+              {lookups.doctors.map((doctor) => (
+                <option key={doctor.id} value={doctor.id}>
+                  {doctor.name}
+                  {doctor.specialization ? ` — ${doctor.specialization}` : ""}
+                </option>
+              ))}
             </select>
           </FormField>
 
-          <div className="md:col-span-2">
-            <FormLabel required>
-              Provisional Diagnosis
-            </FormLabel>
-
-            <textarea
-              required
-              rows={3}
-              value={
-                form.provisional_diagnosis
-              }
-              onChange={(event) =>
-                updateField(
-                  "provisional_diagnosis",
-                  event.target.value,
-                )
-              }
-              className="form-input"
-              placeholder="Enter the initial diagnosis..."
-            />
-
-            <FieldError
-              value={
-                fieldErrors.provisional_diagnosis
-              }
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <FormLabel required>
-              Reason for Admission
-            </FormLabel>
-
-            <textarea
-              required
-              rows={3}
-              value={
-                form.reason_for_admission
-              }
-              onChange={(event) =>
-                updateField(
-                  "reason_for_admission",
-                  event.target.value,
-                )
-              }
-              className="form-input"
-              placeholder="Explain why inpatient care is required..."
-            />
-
-            <FieldError
-              value={
-                fieldErrors.reason_for_admission
-              }
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <FormLabel>
-              Presenting Complaint
-            </FormLabel>
-
-            <textarea
-              rows={3}
-              value={
-                form.presenting_complaint
-              }
-              onChange={(event) =>
-                updateField(
-                  "presenting_complaint",
-                  event.target.value,
-                )
-              }
-              className="form-input"
-              placeholder="Describe the patient's presenting complaint..."
-            />
-          </div>
-        </FormSection>
-
-        <FormSection
-          title="Bed Allocation"
-          icon={Bed}
-        >
-          <FormField label="Ward">
-            <select
-              value={form.ward}
-              onChange={(event) =>
-                updateField(
-                  "ward",
-                  event.target.value,
-                )
-              }
-              className="form-input"
-            >
-              <option value="">
-                Select ward
-              </option>
-
-              {lookups.wards.map(
-                (ward) => (
-                  <option
-                    key={ward.id}
-                    value={ward.id}
-                  >
-                    {ward.name}
-                    {" — "}
-                    {ward.ward_type}
-                  </option>
-                ),
-              )}
-            </select>
-          </FormField>
-
-          <FormField label="Room">
-            <select
-              value={form.room}
-              onChange={(event) =>
-                updateField(
-                  "room",
-                  event.target.value,
-                )
-              }
-              className="form-input"
-              disabled={!form.ward}
-            >
-              <option value="">
-                Select room
-              </option>
-
-              {filteredRooms.map(
-                (room) => (
-                  <option
-                    key={room.id}
-                    value={room.id}
-                  >
-                    Room {room.room_number}
-                    {" — "}
-                    {room.room_type}
-                  </option>
-                ),
-              )}
-            </select>
-          </FormField>
-
-          <FormField label="Available Bed">
-            <select
-              value={form.bed}
-              onChange={(event) =>
-                updateField(
-                  "bed",
-                  event.target.value,
-                )
-              }
-              className="form-input"
-              disabled={!form.room}
-            >
-              <option value="">
-                Select bed
-              </option>
-
-              {filteredBeds.map(
-                (bed) => (
-                  <option
-                    key={bed.id}
-                    value={bed.id}
-                  >
-                    Bed {bed.bed_number}
-                    {" — "}
-                    {bed.bed_type}
-                    {" — "}
-                    {bed.price_per_day}
-                  </option>
-                ),
-              )}
-            </select>
-          </FormField>
-
-          <FormField
-            label="Expected Discharge Date"
-          >
+          <FormField label="Expected Discharge Date">
             <div className="relative">
               <CalendarDays
                 size={18}
@@ -647,38 +285,73 @@ export default function NewAdmissionPage() {
 
               <input
                 type="date"
-                value={
-                  form.expected_discharge_date
-                }
+                value={form.expected_discharge_date}
                 onChange={(event) =>
-                  updateField(
-                    "expected_discharge_date",
-                    event.target.value,
-                  )
+                  updateField("expected_discharge_date", event.target.value)
                 }
                 className="form-input pl-10"
               />
             </div>
           </FormField>
+
+          <div className="md:col-span-2">
+            <FormLabel required>Provisional Diagnosis</FormLabel>
+
+            <textarea
+              required
+              rows={3}
+              value={form.provisional_diagnosis}
+              onChange={(event) =>
+                updateField("provisional_diagnosis", event.target.value)
+              }
+              className="form-input"
+              placeholder="Enter the initial diagnosis..."
+            />
+
+            <FieldError value={fieldErrors.provisional_diagnosis} />
+          </div>
+
+          <div className="md:col-span-2">
+            <FormLabel required>Reason for Admission</FormLabel>
+
+            <textarea
+              required
+              rows={3}
+              value={form.reason_for_admission}
+              onChange={(event) =>
+                updateField("reason_for_admission", event.target.value)
+              }
+              className="form-input"
+              placeholder="Explain why inpatient care is required..."
+            />
+
+            <FieldError value={fieldErrors.reason_for_admission} />
+          </div>
+
+          <div className="md:col-span-2">
+            <FormLabel>Presenting Complaint</FormLabel>
+
+            <textarea
+              rows={3}
+              value={form.presenting_complaint}
+              onChange={(event) =>
+                updateField("presenting_complaint", event.target.value)
+              }
+              className="form-input"
+              placeholder="Describe the patient's presenting complaint..."
+            />
+          </div>
         </FormSection>
 
-        <FormSection
-          title="Admission Notes"
-          icon={Building2}
-        >
+        <FormSection title="Admission Notes" icon={Building2}>
           <div className="md:col-span-2">
-            <FormLabel>
-              Additional Notes
-            </FormLabel>
+            <FormLabel>Additional Notes</FormLabel>
 
             <textarea
               rows={4}
               value={form.admission_notes}
               onChange={(event) =>
-                updateField(
-                  "admission_notes",
-                  event.target.value,
-                )
+                updateField("admission_notes", event.target.value)
               }
               className="form-input"
               placeholder="Enter additional admission instructions or notes..."
@@ -700,14 +373,10 @@ export default function NewAdmissionPage() {
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3 font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? (
-              <Loader2
-                size={18}
-                className="animate-spin"
-              />
+              <Loader2 size={18} className="animate-spin" />
             ) : (
               <Save size={18} />
             )}
-
             Create Admission
           </button>
         </div>
@@ -727,8 +396,7 @@ export default function NewAdmissionPage() {
 
         .form-input:focus {
           border-color: rgb(249 115 22);
-          box-shadow: 0 0 0 3px
-            rgb(255 237 213);
+          box-shadow: 0 0 0 3px rgb(255 237 213);
         }
 
         .form-input:disabled {
@@ -741,12 +409,7 @@ export default function NewAdmissionPage() {
   );
 }
 
-
-function FormSection({
-  title,
-  icon: Icon,
-  children,
-}) {
+function FormSection({ title, icon: Icon, children }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="mb-6 flex items-center gap-3">
@@ -754,66 +417,40 @@ function FormSection({
           <Icon size={22} />
         </div>
 
-        <h2 className="text-lg font-bold text-slate-900">
-          {title}
-        </h2>
+        <h2 className="text-lg font-bold text-slate-900">{title}</h2>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
-        {children}
-      </div>
+      <div className="grid gap-5 md:grid-cols-2">{children}</div>
     </section>
   );
 }
 
-
-function FormField({
-  label,
-  required = false,
-  children,
-}) {
+function FormField({ label, required = false, children }) {
   return (
     <div>
-      <FormLabel required={required}>
-        {label}
-      </FormLabel>
+      <FormLabel required={required}>{label}</FormLabel>
 
       {children}
     </div>
   );
 }
 
-
-function FormLabel({
-  children,
-  required = false,
-}) {
+function FormLabel({ children, required = false }) {
   return (
     <label className="mb-2 block text-sm font-semibold text-slate-700">
       {children}
 
-      {required && (
-        <span className="ml-1 text-red-500">
-          *
-        </span>
-      )}
+      {required && <span className="ml-1 text-red-500">*</span>}
     </label>
   );
 }
-
 
 function FieldError({ value }) {
   if (!value) {
     return null;
   }
 
-  const message = Array.isArray(value)
-    ? value.join(" ")
-    : String(value);
+  const message = Array.isArray(value) ? value.join(" ") : String(value);
 
-  return (
-    <p className="mt-2 text-sm text-red-600">
-      {message}
-    </p>
-  );
+  return <p className="mt-2 text-sm text-red-600">{message}</p>;
 }

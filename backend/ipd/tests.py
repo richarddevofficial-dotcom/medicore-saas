@@ -128,6 +128,35 @@ class IPDLifecycleTests(TestCase):
 		second_assignment.refresh_from_db()
 		self.assertEqual(second_assignment.released_by, self.profile)
 
+	def test_create_pending_admission_without_bed_allocation(self):
+		second_patient = Patient.objects.create(
+			hospital=self.hospital,
+			mrn="IPD-0002",
+			first_name="Pending",
+			last_name="Admission",
+			date_of_birth="1991-01-01",
+			gender="M",
+			phone="5550000002",
+		)
+
+		response = self.client.post(
+			"/api/v1/ipd/admissions/",
+			{
+				"patient": second_patient.id,
+				"admission_type": Admission.ADMISSION_ELECTIVE,
+				"provisional_diagnosis": "Observation",
+				"reason_for_admission": "Needs inpatient care",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 201)
+		admission = Admission.objects.get(patient=second_patient)
+		self.assertEqual(admission.status, Admission.STATUS_PENDING)
+		self.assertIsNone(admission.ward_id)
+		self.assertIsNone(admission.room_id)
+		self.assertIsNone(admission.bed_id)
+
 	def test_admit_rolls_back_when_final_admission_save_fails(self):
 		original_save = Admission.save
 
