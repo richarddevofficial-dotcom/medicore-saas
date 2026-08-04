@@ -33,11 +33,12 @@ def _date_range_for_period(period, end_date):
     if period == 'daily':
         return end_date, end_date
     if period == 'weekly':
-        return end_date - timedelta(days=6), end_date
+        return end_date - timedelta(days=end_date.weekday()), end_date
     if period == 'monthly':
-        return end_date - timedelta(days=29), end_date
+        return end_date.replace(day=1), end_date
     if period == 'quarterly':
-        return end_date - timedelta(days=89), end_date
+        quarter_start_month = ((end_date.month - 1) // 3) * 3 + 1
+        return end_date.replace(month=quarter_start_month, day=1), end_date
     return end_date, end_date
 
 

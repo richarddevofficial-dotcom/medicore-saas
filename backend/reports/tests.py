@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from datetime import date
 from django.test import TestCase
 from rest_framework.test import APIClient
 from django.utils import timezone
@@ -12,6 +13,25 @@ from appointments.models import Appointment
 from laboratory.models import LabTest
 from pharmacy.models import Prescription
 from saas_billing.models import HospitalSubscription, SubscriptionPlan
+from reports.views import _date_range_for_period
+
+
+class ReportDateRangeTests(TestCase):
+	def test_period_ranges_use_calendar_boundaries(self):
+		end_date = date(2026, 8, 4)
+
+		self.assertEqual(
+			_date_range_for_period("weekly", end_date),
+			(date(2026, 8, 3), end_date),
+		)
+		self.assertEqual(
+			_date_range_for_period("monthly", end_date),
+			(date(2026, 8, 1), end_date),
+		)
+		self.assertEqual(
+			_date_range_for_period("quarterly", end_date),
+			(date(2026, 7, 1), end_date),
+		)
 
 
 class ReportsPlanAccessTests(TestCase):
