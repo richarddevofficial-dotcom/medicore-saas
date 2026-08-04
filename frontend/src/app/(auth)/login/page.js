@@ -7,7 +7,7 @@ import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Alert from "@/components/ui/Alert";
 import toast from "react-hot-toast";
-import apiClient from "@/lib/api-client";
+import apiClient, { setCsrfToken } from "@/lib/api-client";
 import useAuthStore from "@/stores/auth-store";
 import { Mail, Phone, Lock } from "lucide-react";
 import Link from "next/link";
@@ -27,7 +27,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [resendCountdown, setResendCountdown] = useState(0);
-  const [rememberDevice, setRememberDevice] = useState(true);
+  const [rememberDevice, setRememberDevice] = useState(false);
 
   const justRegistered = searchParams.get("registered");
   const normalizedCredential = credential.trim();
@@ -36,16 +36,11 @@ export default function LoginPage() {
 
   const buildLoginPayload = () => {
     const payload = { password };
-    const trustedDeviceToken = localStorage.getItem("trusted_device_token");
 
     if (credentialType === "phone") {
       payload.phone = normalizedCredential.replace(/[\s()-]/g, "");
     } else {
       payload.email = normalizedCredential;
-    }
-
-    if (trustedDeviceToken) {
-      payload.trusted_device_token = trustedDeviceToken;
     }
 
     return payload;
@@ -62,17 +57,10 @@ export default function LoginPage() {
   const finalizeLogin = (data) => {
     sessionStorage.removeItem("impersonating_hospital_id");
     sessionStorage.removeItem("super_admin_state");
-    if (data.token) {
-      localStorage.setItem("token", data.token);
-    }
-    if (data.refresh) {
-      localStorage.setItem("refresh", data.refresh);
-    }
-    if (data.trusted_device_token) {
-      localStorage.setItem("trusted_device_token", data.trusted_device_token);
-    } else if (step === "otp" && !rememberDevice) {
-      localStorage.removeItem("trusted_device_token");
-    }
+    localStorage.removeItem("token");
+    localStorage.removeItem("refresh");
+    localStorage.removeItem("trusted_device_token");
+    setCsrfToken(data.csrf_token);
     localStorage.setItem("user", JSON.stringify(data.user));
     if (data.hospital) {
       localStorage.setItem("hospital", JSON.stringify(data.hospital));
@@ -204,6 +192,9 @@ export default function LoginPage() {
             placeholder="username, example@gmail.com, or 09XX XXX XXX"
             icon={credentialType === "phone" ? Phone : Mail}
             className="h-11 text-base sm:text-sm"
+            name="username"
+            autoComplete="username"
+            autoCapitalize="none"
             required
           />
           <Input
@@ -214,6 +205,8 @@ export default function LoginPage() {
             placeholder="••••••••"
             icon={Lock}
             className="h-11 text-base sm:text-sm"
+            name="password"
+            autoComplete="current-password"
             required
           />
 
@@ -252,6 +245,9 @@ export default function LoginPage() {
             placeholder="Enter 6-digit code"
             icon={Lock}
             className="h-11 text-base sm:text-sm"
+            name="otp"
+            inputMode="numeric"
+            autoComplete="one-time-code"
             required
           />
 

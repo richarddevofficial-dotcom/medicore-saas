@@ -3,7 +3,7 @@ from django.urls import path, include
 import secrets
 from datetime import timedelta
 from rest_framework.routers import DefaultRouter
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from django.contrib.auth import authenticate
@@ -12,6 +12,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils import timezone
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
+from django.middleware.csrf import get_token
 from django.core.mail import send_mail
 from django.core.cache import cache
 from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
@@ -73,7 +74,7 @@ TRUSTED_DEVICE_SIGNER = TimestampSigner(salt='trusted-device-login')
 
 def _get_client_ip(request):
     forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR', '')
-    if forwarded_for:
+    if forwarded_for and request.META.get('REMOTE_ADDR') in settings.TRUSTED_PROXY_IPS:
         return forwarded_for.split(',')[0].strip()
     return request.META.get('REMOTE_ADDR', 'unknown')
 
@@ -307,6 +308,75 @@ def _build_login_response_data(user):
     return response_data
 
 
+def _auth_cookie_options(max_age):
+    jwt_settings = settings.SIMPLE_JWT
+    return {
+        'max_age': max_age,
+        'secure': jwt_settings['AUTH_COOKIE_SECURE'],
+        'httponly': jwt_settings['AUTH_COOKIE_HTTP_ONLY'],
+        'samesite': jwt_settings['AUTH_COOKIE_SAMESITE'],
+        'domain': jwt_settings['AUTH_COOKIE_DOMAIN'],
+        'path': '/api/v1/',
+    }
+
+
+def _set_auth_cookies(response, response_data):
+    jwt_settings = settings.SIMPLE_JWT
+    access_token = response_data.pop('token', None)
+    if access_token is None:
+        access_token = response_data.pop('access', None)
+    refresh_token = response_data.pop('refresh', None)
+    trusted_device_token = response_data.pop('trusted_device_token', None)
+
+    if access_token:
+        response.set_cookie(
+            jwt_settings['AUTH_COOKIE'],
+            access_token,
+            **_auth_cookie_options(
+                int(jwt_settings['ACCESS_TOKEN_LIFETIME'].total_seconds())
+            ),
+        )
+    if refresh_token:
+        response.set_cookie(
+            jwt_settings['REFRESH_COOKIE'],
+            refresh_token,
+            **_auth_cookie_options(
+                int(jwt_settings['REFRESH_TOKEN_LIFETIME'].total_seconds())
+            ),
+        )
+    if trusted_device_token:
+        response.set_cookie(
+            jwt_settings['TRUSTED_DEVICE_COOKIE'],
+            trusted_device_token,
+            **_auth_cookie_options(TRUSTED_DEVICE_MAX_AGE_SECONDS),
+        )
+
+    return response
+
+
+def _clear_auth_cookies(response):
+    jwt_settings = settings.SIMPLE_JWT
+    cookie_options = {
+        'domain': jwt_settings['AUTH_COOKIE_DOMAIN'],
+        'path': '/api/v1/',
+        'samesite': jwt_settings['AUTH_COOKIE_SAMESITE'],
+    }
+    for cookie_name in (
+        jwt_settings['AUTH_COOKIE'],
+        jwt_settings['REFRESH_COOKIE'],
+        jwt_settings['TRUSTED_DEVICE_COOKIE'],
+    ):
+        response.delete_cookie(cookie_name, **cookie_options)
+    return response
+
+
+def _build_login_response(user, request):
+    response_data = _build_login_response_data(user)
+    response_data['csrf_token'] = get_token(request)
+    response = Response(response_data)
+    return _set_auth_cookies(response, response.data)
+
+
 def _mask_destination(destination):
     if not destination or '@' not in destination:
         return destination or ''
@@ -431,27 +501,47 @@ class ThrottledTokenObtainPairView(TokenObtainPairView):
     """Token endpoint with login rate limiting (5 attempts/minute per IP)"""
     throttle_classes = [LoginThrottle]
 
+    def post(self, request, *args, **kwargs):
+        get_token(request)
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            _set_auth_cookies(response, response.data)
+        return response
+
 
 class ThrottledTokenRefreshView(TokenRefreshView):
     """Token refresh endpoint with rate limiting (10 attempts/minute per user)"""
     throttle_classes = [RefreshTokenThrottle]
 
+    def post(self, request, *args, **kwargs):
+        refresh_token = (
+            request.data.get('refresh')
+            or request.COOKIES.get(settings.SIMPLE_JWT['REFRESH_COOKIE'])
+        )
+        serializer = self.get_serializer(data={'refresh': refresh_token})
+        serializer.is_valid(raise_exception=True)
+        response = Response(dict(serializer.validated_data))
+        _set_auth_cookies(response, response.data)
+        return response
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@authentication_classes([])
 def login_view(request):
     email = request.data.get('email', '')
     phone = request.data.get('phone', '')
     password = request.data.get('password', '')
     user = _authenticate_user_with_credential(email, phone, password)
     if user:
-        return Response(_build_login_response_data(user))
+        return _build_login_response(user, request)
     
     return Response({'error': 'Invalid credentials'}, status=401)
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@authentication_classes([])
 def login_initiate(request):
     email = request.data.get('email', '')
     phone = request.data.get('phone', '')
@@ -492,7 +582,10 @@ def login_initiate(request):
     if not user:
         return Response({'error': 'Invalid credentials'}, status=401)
 
-    trusted_device_token = request.data.get('trusted_device_token', '')
+    trusted_device_token = (
+        request.COOKIES.get(settings.SIMPLE_JWT['TRUSTED_DEVICE_COOKIE'])
+        or request.data.get('trusted_device_token', '')
+    )
     trusted_device, trusted_device_reason = _resolve_trusted_device_for_user(
         trusted_device_token,
         user,
@@ -509,7 +602,9 @@ def login_initiate(request):
         response_data['trusted_device_token'] = rotated_token
         response_data['trusted_device_expires_in_seconds'] = TRUSTED_DEVICE_MAX_AGE_SECONDS
         response_data['trusted_device_rotated'] = True
-        return Response(response_data)
+        response_data['csrf_token'] = get_token(request)
+        response = Response(response_data)
+        return _set_auth_cookies(response, response.data)
 
     if trusted_device_reason == 'ip_changed':
         _create_auth_audit_log(
@@ -658,7 +753,6 @@ def login_initiate(request):
                     'Unable to send the login code. '
                     'Please try again shortly.'
                 ),
-                'email_error': error_message,
             },
             status=502,
         )
@@ -680,6 +774,7 @@ def login_initiate(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@authentication_classes([])
 def login_verify(request):
     otp_session_id = request.data.get('otp_session_id', '')
     otp_code = str(request.data.get('otp', '')).strip()
@@ -759,7 +854,31 @@ def login_verify(request):
     if remember_device:
         response_data['trusted_device_token'] = _issue_trusted_device_token(otp.user, request)
         response_data['trusted_device_expires_in_seconds'] = TRUSTED_DEVICE_MAX_AGE_SECONDS
-    return Response(response_data)
+    response_data['csrf_token'] = get_token(request)
+    response = Response(response_data)
+    _set_auth_cookies(response, response.data)
+    if not remember_device:
+        response.delete_cookie(
+            settings.SIMPLE_JWT['TRUSTED_DEVICE_COOKIE'],
+            domain=settings.SIMPLE_JWT['AUTH_COOKIE_DOMAIN'],
+            path='/api/v1/',
+            samesite=settings.SIMPLE_JWT['AUTH_COOKIE_SAMESITE'],
+        )
+    return response
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    refresh_token = request.COOKIES.get(settings.SIMPLE_JWT['REFRESH_COOKIE'])
+    if refresh_token:
+        try:
+            RefreshToken(refresh_token).blacklist()
+        except Exception:
+            pass
+
+    _create_auth_audit_log(request.user, 'Logged out', request, target='logout')
+    return _clear_auth_cookies(Response({'success': True}))
 
 
 @api_view(['POST'])
@@ -946,6 +1065,7 @@ urlpatterns = [
     path('api/v1/hospitals/login/', login_view, name='login'),
     path('api/v1/auth/login/initiate/', login_initiate, name='login-initiate'),
     path('api/v1/auth/login/verify/', login_verify, name='login-verify'),
+    path('api/v1/auth/logout/', logout_view, name='logout'),
     path('api/v1/auth/password/setup-request/', password_setup_request, name='password-setup-request'),
     path('api/v1/auth/password/setup-confirm/', password_setup_confirm, name='password-setup-confirm'),
     path('api/v1/auth/password/change/', password_change, name='password-change'),

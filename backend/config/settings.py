@@ -71,6 +71,7 @@ if not SECRET_KEY:
 DEBUG = _env_bool('DEBUG', False)  # Default to False for security
 
 ALLOWED_HOSTS = _env_list('ALLOWED_HOSTS', '127.0.0.1,localhost')
+TRUSTED_PROXY_IPS = set(_env_list('TRUSTED_PROXY_IPS'))
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -250,7 +251,7 @@ if not DEBUG:
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'config.authentication.CookieJWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -280,6 +281,8 @@ SIMPLE_JWT = {
     
     # Store tokens in httpOnly cookies instead of localStorage
     'AUTH_COOKIE': 'access_token',
+    'REFRESH_COOKIE': 'refresh_token',
+    'TRUSTED_DEVICE_COOKIE': 'trusted_device_token',
     'AUTH_COOKIE_SECURE': not DEBUG,  # HTTPS only in production
     'AUTH_COOKIE_HTTP_ONLY': True,    # JS cannot access (prevents XSS theft)
     'AUTH_COOKIE_SAMESITE': 'Lax',    # CSRF protection

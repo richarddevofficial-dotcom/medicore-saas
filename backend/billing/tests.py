@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
@@ -88,7 +88,7 @@ class AuthAndBillingSmokeTests(TestCase):
         day = min(start_date.day, monthrange(year, month)[1])
         return start_date.replace(year=year, month=month, day=day)
 
-    def test_login_returns_token_and_user_payload(self):
+    def test_login_sets_auth_cookies_and_returns_user_payload(self):
         response = self.client.post(
             reverse("login"),
             {"email": "richard@gmail.com", "password": "Admin@1234"},
@@ -96,8 +96,65 @@ class AuthAndBillingSmokeTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("token", response.data)
+        self.assertNotIn("token", response.data)
+        self.assertIn("access_token", response.cookies)
+        self.assertIn("refresh_token", response.cookies)
+        self.assertTrue(response.cookies["access_token"]["httponly"])
+        self.assertIn("csrf_token", response.data)
         self.assertEqual(response.data["user"]["email"], "richard@gmail.com")
+
+    def test_cookie_authenticated_logout_requires_csrf(self):
+        csrf_client = APIClient(enforce_csrf_checks=True)
+        login_response = csrf_client.post(
+            reverse("login"),
+            {"email": "richard@gmail.com", "password": "Admin@1234"},
+            format="json",
+        )
+
+        self.assertEqual(login_response.status_code, 200)
+
+        missing_csrf_response = csrf_client.post(
+            "/api/v1/auth/logout/",
+            {},
+            format="json",
+        )
+        self.assertEqual(missing_csrf_response.status_code, 403)
+
+        logout_response = csrf_client.post(
+            "/api/v1/auth/logout/",
+            {},
+            format="json",
+            HTTP_X_CSRFTOKEN=login_response.data["csrf_token"],
+        )
+        self.assertEqual(logout_response.status_code, 200)
+        self.assertEqual(logout_response.data, {"success": True})
+
+    def test_client_ip_only_uses_forwarded_header_from_trusted_proxy(self):
+        from config.urls import _get_client_ip
+
+        request_factory = RequestFactory()
+        request = request_factory.post(
+            "/api/v1/auth/login/initiate/",
+            REMOTE_ADDR="10.0.0.5",
+            HTTP_X_FORWARDED_FOR="203.0.113.1",
+        )
+        self.assertEqual(_get_client_ip(request), "10.0.0.5")
+
+        with override_settings(TRUSTED_PROXY_IPS={"10.0.0.5"}):
+            self.assertEqual(_get_client_ip(request), "203.0.113.1")
+
+    def test_login_initiate_accepts_stale_access_cookie(self):
+        self.client.cookies["access_token"] = "expired-or-invalid-token"
+
+        with patch("config.urls.send_brevo_email"):
+            response = self.client.post(
+                "/api/v1/auth/login/initiate/",
+                {"email": "richard@gmail.com", "password": "Admin@1234"},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["mfa_required"])
 
     @patch("config.urls.send_password_setup_email")
     def test_password_setup_request_returns_success_and_triggers_email(self, mock_send_setup):
@@ -345,8 +402,8 @@ class AuthAndBillingSmokeTests(TestCase):
         )
 
         self.assertEqual(verify_response.status_code, 200)
-        self.assertIn("trusted_device_token", verify_response.data)
-        first_trusted_token = verify_response.data["trusted_device_token"]
+        self.assertIn("trusted_device_token", verify_response.cookies)
+        first_trusted_token = verify_response.cookies["trusted_device_token"].value
 
         trusted_login_response = self.client.post(
             "/api/v1/auth/login/initiate/",
@@ -363,11 +420,11 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertEqual(trusted_login_response.status_code, 200)
         self.assertFalse(trusted_login_response.data.get("mfa_required"))
         self.assertTrue(trusted_login_response.data.get("trusted_device"))
-        self.assertIn("token", trusted_login_response.data)
+        self.assertIn("access_token", trusted_login_response.cookies)
         self.assertNotIn("otp_session_id", trusted_login_response.data)
-        self.assertIn("trusted_device_token", trusted_login_response.data)
+        self.assertIn("trusted_device_token", trusted_login_response.cookies)
         self.assertNotEqual(
-            trusted_login_response.data["trusted_device_token"],
+            trusted_login_response.cookies["trusted_device_token"].value,
             first_trusted_token,
         )
 
@@ -400,7 +457,7 @@ class AuthAndBillingSmokeTests(TestCase):
             REMOTE_ADDR="10.10.10.1",
         )
         self.assertEqual(verify_response.status_code, 200)
-        trusted_token = verify_response.data["trusted_device_token"]
+        trusted_token = verify_response.cookies["trusted_device_token"].value
 
         trusted_login_response = self.client.post(
             "/api/v1/auth/login/initiate/",
@@ -445,10 +502,12 @@ class AuthAndBillingSmokeTests(TestCase):
             HTTP_USER_AGENT="pytest-browser-a",
         )
         self.assertEqual(verify_response.status_code, 200)
-        trusted_token = verify_response.data["trusted_device_token"]
+        trusted_token = verify_response.cookies["trusted_device_token"].value
 
         self.client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {verify_response.data['token']}"
+            HTTP_AUTHORIZATION=(
+                f"Bearer {verify_response.cookies['access_token'].value}"
+            )
         )
         revoke_response = self.client.post(
             "/api/v1/auth/trusted-device/revoke/",
@@ -504,7 +563,11 @@ class AuthAndBillingSmokeTests(TestCase):
         )
         self.assertEqual(verify_response.status_code, 200)
 
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {verify_response.data['token']}")
+        self.client.credentials(
+            HTTP_AUTHORIZATION=(
+                f"Bearer {verify_response.cookies['access_token'].value}"
+            )
+        )
         list_response = self.client.get("/api/v1/auth/trusted-devices/")
         self.assertEqual(list_response.status_code, 200)
         self.assertGreaterEqual(len(list_response.data.get("results", [])), 1)
@@ -523,7 +586,9 @@ class AuthAndBillingSmokeTests(TestCase):
             {
                 "email": "richard@gmail.com",
                 "password": "Admin@1234",
-                "trusted_device_token": verify_response.data["trusted_device_token"],
+                "trusted_device_token": verify_response.cookies[
+                    "trusted_device_token"
+                ].value,
             },
             format="json",
             HTTP_USER_AGENT="pytest-browser-list",
@@ -582,7 +647,7 @@ class AuthAndBillingSmokeTests(TestCase):
             HTTP_USER_AGENT="pytest-browser-a",
         )
         self.assertEqual(verify_response.status_code, 200)
-        trusted_token = verify_response.data["trusted_device_token"]
+        trusted_token = verify_response.cookies["trusted_device_token"].value
 
         token_hash = hashlib.sha256(trusted_token.encode("utf-8")).hexdigest()
         TrustedDevice.objects.filter(token_hash=token_hash).update(
@@ -679,7 +744,7 @@ class AuthAndBillingSmokeTests(TestCase):
 
     @patch("config.urls.send_brevo_email")
     @patch("config.urls.secrets.randbelow", return_value=23456)
-    def test_login_verify_returns_token_after_valid_otp(self, _mock_randint, _mock_send_mail):
+    def test_login_verify_sets_auth_cookies_after_valid_otp(self, _mock_randint, _mock_send_mail):
         initiate_response = self.client.post(
             "/api/v1/auth/login/initiate/",
             {"email": "richard@gmail.com", "password": "Admin@1234"},
@@ -696,7 +761,9 @@ class AuthAndBillingSmokeTests(TestCase):
         )
 
         self.assertEqual(verify_response.status_code, 200)
-        self.assertIn("token", verify_response.data)
+        self.assertNotIn("token", verify_response.data)
+        self.assertIn("access_token", verify_response.cookies)
+        self.assertIn("refresh_token", verify_response.cookies)
         self.assertEqual(verify_response.data["user"]["email"], "richard@gmail.com")
 
     @patch("config.urls.send_brevo_email")
@@ -745,8 +812,9 @@ class AuthAndBillingSmokeTests(TestCase):
             {"email": "richard@gmail.com", "password": "Admin@1234"},
             format="json",
         )
-        token = login_response.data["token"]
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.client.cookies["access_token"] = login_response.cookies[
+            "access_token"
+        ].value
 
         response = self.client.get(reverse("bill-stats"))
 
@@ -1023,7 +1091,7 @@ class AuthAndBillingSmokeTests(TestCase):
             {"email": "richard@gmail.com", "password": "Admin@1234"},
             format="json",
         )
-        token = login_response.data["token"]
+        token = login_response.cookies["access_token"].value
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
         response = self.client.post(
@@ -1058,7 +1126,7 @@ class AuthAndBillingSmokeTests(TestCase):
             {"email": "richard@gmail.com", "password": "Admin@1234"},
             format="json",
         )
-        token = login_response.data["token"]
+        token = login_response.cookies["access_token"].value
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
         response = self.client.post(
@@ -1082,7 +1150,7 @@ class AuthAndBillingSmokeTests(TestCase):
             {"email": "richard@gmail.com", "password": "Admin@1234"},
             format="json",
         )
-        token = login_response.data["token"]
+        token = login_response.cookies["access_token"].value
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
         response = self.client.post(
@@ -1106,7 +1174,7 @@ class AuthAndBillingSmokeTests(TestCase):
             {"email": "richard@gmail.com", "password": "Admin@1234"},
             format="json",
         )
-        token = login_response.data["token"]
+        token = login_response.cookies["access_token"].value
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
         payload = {
@@ -1154,7 +1222,7 @@ class AuthAndBillingSmokeTests(TestCase):
             {"email": "richard@gmail.com", "password": "Admin@1234"},
             format="json",
         )
-        token = login_response.data["token"]
+        token = login_response.cookies["access_token"].value
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
 
         SubscriptionPayment.objects.create(

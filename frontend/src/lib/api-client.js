@@ -23,24 +23,35 @@ const refreshClient = axios.create({
 });
 
 let refreshPromise = null;
+let csrfToken = null;
 
-// ✅ SECURITY: Tokens are now in httpOnly cookies (not localStorage)
-// This protects against XSS attacks - JS cannot read the token
-// Axios automatically sends cookies with requests when withCredentials: true
+export const setCsrfToken = (token) => {
+  csrfToken = token || null;
+  if (csrfToken) {
+    sessionStorage.setItem("csrf_token", csrfToken);
+  } else {
+    sessionStorage.removeItem("csrf_token");
+  }
+};
+
+const getCookie = (name) => {
+  const prefix = `${name}=`;
+  const cookie = document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith(prefix));
+  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
+};
 
 // Add custom headers for super admin impersonation
 apiClient.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
-    const requestUrl = String(config.url || "");
-    const isPublicAuthEndpoint =
-      requestUrl.includes("/auth/login/initiate/") ||
-      requestUrl.includes("/auth/login/verify/") ||
-      requestUrl.includes("/auth/register/") ||
-      requestUrl.includes("/auth/password-setup/");
-
-    const token = localStorage.getItem("token");
-    if (token && !isPublicAuthEndpoint) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const method = String(config.method || "get").toLowerCase();
+    const storedCsrfToken =
+      csrfToken ||
+      sessionStorage.getItem("csrf_token") ||
+      getCookie("csrftoken");
+    if (storedCsrfToken && !["get", "head", "options"].includes(method)) {
+      config.headers["X-CSRFToken"] = storedCsrfToken;
     }
 
     const impersonatingHospitalId = sessionStorage.getItem(
@@ -49,7 +60,6 @@ apiClient.interceptors.request.use((config) => {
     if (impersonatingHospitalId) {
       config.headers["X-Impersonating-Hospital-Id"] = impersonatingHospitalId;
 
-      const method = String(config.method || "get").toLowerCase();
       if (["get", "delete", "head", "options"].includes(method)) {
         config.params = {
           ...(config.params || {}),
@@ -80,13 +90,9 @@ apiClient.interceptors.response.use(
     if (
       requestUrl.includes("/token/refresh/") ||
       requestUrl.includes("/auth/login/initiate/") ||
-      requestUrl.includes("/auth/login/verify/")
+      requestUrl.includes("/auth/login/verify/") ||
+      requestUrl.includes("/auth/logout/")
     ) {
-      return Promise.reject(error);
-    }
-
-    const refreshToken = localStorage.getItem("refresh");
-    if (!refreshToken) {
       return Promise.reject(error);
     }
 
@@ -94,41 +100,19 @@ apiClient.interceptors.response.use(
 
     try {
       if (!refreshPromise) {
-        refreshPromise = refreshClient
-          .post("/token/refresh/", { refresh: refreshToken })
-          .then((response) => {
-            const nextAccess = response?.data?.access;
-            const nextRefresh = response?.data?.refresh;
-
-            if (nextAccess) {
-              localStorage.setItem("token", nextAccess);
-            }
-
-            if (nextRefresh) {
-              localStorage.setItem("refresh", nextRefresh);
-            }
-
-            return nextAccess;
-          })
-          .finally(() => {
-            refreshPromise = null;
-          });
+        refreshPromise = refreshClient.post("/token/refresh/").finally(() => {
+          refreshPromise = null;
+        });
       }
 
-      const nextAccess = await refreshPromise;
-      if (nextAccess) {
-        originalRequest.headers = originalRequest.headers || {};
-        originalRequest.headers.Authorization = `Bearer ${nextAccess}`;
-      }
-
+      await refreshPromise;
       return apiClient(originalRequest);
     } catch (refreshError) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("refresh");
       localStorage.removeItem("user");
       localStorage.removeItem("hospital");
       localStorage.removeItem("role");
       localStorage.removeItem("is_superuser");
+      setCsrfToken(null);
       sessionStorage.removeItem("impersonating_hospital_id");
       sessionStorage.removeItem("super_admin_state");
       return Promise.reject(refreshError);

@@ -17,11 +17,11 @@ export default function AuthProvider({ children }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const token = localStorage.getItem("token");
+    const user = localStorage.getItem("user");
     const pathname = window.location.pathname;
     const isPublicRoute = publicRoutes.includes(pathname);
 
-    if (!token && !isPublicRoute) {
+    if (!user && !isPublicRoute) {
       router.push("/login");
     } else {
       setChecking(false);

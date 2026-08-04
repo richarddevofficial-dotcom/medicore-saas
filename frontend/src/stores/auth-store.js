@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import apiClient from "@/lib/api-client";
+import apiClient, { setCsrfToken } from "@/lib/api-client";
 
 const useAuthStore = create((set, get) => ({
   user: null,
@@ -22,12 +22,15 @@ const useAuthStore = create((set, get) => ({
   },
 
   logout: () => {
+    void apiClient.post("/auth/logout/").catch(() => {});
     localStorage.removeItem("token");
     localStorage.removeItem("refresh");
+    localStorage.removeItem("trusted_device_token");
     localStorage.removeItem("user");
     localStorage.removeItem("hospital");
     localStorage.removeItem("role");
     localStorage.removeItem("impersonating_hospital_id");
+    setCsrfToken(null);
     sessionStorage.removeItem("impersonating_hospital_id");
     sessionStorage.removeItem("super_admin_state");
 
