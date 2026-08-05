@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hospital Wayfinding Board</title>
+    <style>
+        :root {
+            --ink: #13233a;
+            --muted: #617089;
+            --ground: #dce7e2;
+            --paper: #fffdf7;
+            --hall: #e7e2d7;
+            --wall: #93a6ac;
+            --teal: #087e78;
+            --blue: #2563ad;
+            --red: #be2942;
+            --purple: #7652a9;
+            --orange: #c06019;
+            --green: #2f8147;
+            --navy: #176880;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: var(--ground);
+            color: var(--ink);
+            font-family: Georgia, "Times New Roman", serif;
+        }
+
+        .page {
+            max-width: 1420px;
+            margin: 0 auto;
+            padding: 28px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: end;
+            gap: 22px;
+            margin-bottom: 22px;
+        }
+
+        .eyebrow {
+            color: var(--teal);
+            font: 700 12px "Trebuchet MS", sans-serif;
+            letter-spacing: .14em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            margin: 7px 0 0;
+            font-size: 38px;
+            line-height: 1;
+        }
+
+        .subhead {
+            max-width: 720px;
+            margin: 10px 0 0;
+            color: var(--muted);
+            font-size: 16px;
+            line-height: 1.45;
+        }
+
+        button {
+            border: 1px solid var(--ink);
+            background: white;
+            color: var(--ink);
+            cursor: pointer;
+            padding: 10px 14px;
+            font: 700 13px "Trebuchet MS", sans-serif;
+        }
+
+        .board {
+            padding: 18px;
+            border: 9px solid #f1eee5;
+            background: var(--paper);
+            box-shadow: 0 16px 38px rgba(19, 35, 58, .16);
+        }
+
+        .board-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            color: var(--muted);
+            font: 700 11px "Trebuchet MS", sans-serif;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+        }
+
+        .plan {
+            position: relative;
+            display: grid;
+            grid-template-columns: 1fr 1.18fr 1fr;
+            grid-template-rows: 140px 192px 140px;
+            gap: 0;
+            margin-top: 14px;
+            min-height: 500px;
+            border: 3px solid var(--wall);
+            background: var(--hall);
+            overflow: hidden;
+        }
+
+        .plan::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            opacity: .35;
+            background: repeating-linear-gradient(0deg, transparent 0 29px, #c6c0b2 30px), repeating-linear-gradient(90deg, transparent 0 29px, #c6c0b2 30px);
+            pointer-events: none;
+        }
+
+        .room {
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            border: 3px solid var(--wall);
+            border-top: 8px solid var(--accent);
+            background: white;
+            padding: 14px;
+            box-shadow: inset 0 0 0 5px color-mix(in srgb, var(--accent) 8%, white);
+        }
+
+        .room .label {
+            color: var(--accent);
+            font: 700 10px "Trebuchet MS", sans-serif;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+        }
+
+        .room h2 {
+            margin: 7px 0;
+            font-size: 20px;
+            line-height: 1.05;
+        }
+
+        .room p {
+            margin: 0;
+            color: #4d5d73;
+            font-size: 13px;
+            line-height: 1.35;
+        }
+
+        .room .role {
+            color: var(--accent);
+            font: 700 11px "Trebuchet MS", sans-serif;
+        }
+
+        .emergency {
+            --accent: var(--red);
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .laboratory {
+            --accent: var(--purple);
+            grid-column: 3;
+            grid-row: 1;
+        }
+
+        .opd {
+            --accent: var(--blue);
+            grid-column: 1;
+            grid-row: 3;
+        }
+
+        .pharmacy {
+            --accent: var(--green);
+            grid-column: 3;
+            grid-row: 3;
+        }
+
+        .hub {
+            z-index: 2;
+            grid-column: 2;
+            grid-row: 2;
+            align-self: center;
+            justify-self: center;
+            width: 86%;
+            padding: 17px 20px;
+            border: 4px solid var(--teal);
+            border-radius: 3px;
+            background: #d9f1ec;
+            text-align: center;
+            box-shadow: 0 6px 0 #9fcfc6;
+        }
+
+        .hub .label {
+            color: var(--teal);
+            font: 700 11px "Trebuchet MS", sans-serif;
+            letter-spacing: .12em;
+            text-transform: uppercase;
+        }
+
+        .hub h2 {
+            margin: 5px 0 7px;
+            font-size: 26px;
+        }
+
+        .hub p {
+            margin: 0;
+            color: #31635e;
+            font-size: 13px;
+            line-height: 1.35;
+        }
+
+        .desk {
+            z-index: 2;
+            position: absolute;
+            left: 50%;
+            bottom: 42px;
+            transform: translateX(-50%);
+            width: 250px;
+            border: 3px solid #165e5a;
+            background: #0a746f;
+            color: white;
+            text-align: center;
+            padding: 10px;
+            font: 700 14px "Trebuchet MS", sans-serif;
+            box-shadow: 0 5px 0 #074844;
+        }
+
+        .desk span {
+            display: block;
+            margin-top: 3px;
+            font-size: 11px;
+            font-weight: 400;
+            opacity: .85;
+        }
+
+        .entrance {
+            z-index: 2;
+            position: absolute;
+            left: 50%;
+            bottom: -2px;
+            transform: translateX(-50%);
+            width: 330px;
+            padding: 10px;
+            border: 3px solid #243d5a;
+            background: #e9eff8;
+            text-align: center;
+            font: 700 14px "Trebuchet MS", sans-serif;
+        }
+
+        .sign {
+            z-index: 3;
+            position: absolute;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 6px 8px;
+            border: 1px solid #aeb8bb;
+            background: rgba(255, 253, 247, .94);
+            box-shadow: 0 2px 5px rgba(19, 35, 58, .12);
+            color: var(--sign);
+            font: 700 11px "Trebuchet MS", sans-serif;
+        }
+
+        .sign b {
+            display: grid;
+            place-items: center;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--sign);
+            color: white;
+            font: 700 14px sans-serif;
+        }
+
+        .s-emergency {
+            --sign: var(--red);
+            left: 24%;
+            top: 31%;
+            transform: translateX(-50%);
+        }
+
+        .s-lab {
+            --sign: var(--purple);
+            right: 24%;
+            top: 31%;
+            transform: translateX(50%);
+        }
+
+        .s-opd {
+            --sign: var(--blue);
+            left: 24%;
+            bottom: 29%;
+            transform: translateX(-50%);
+        }
+
+        .s-ipd {
+            --sign: var(--navy);
+            left: 50%;
+            bottom: 29%;
+            transform: translateX(-50%);
+        }
+
+        .s-cashier {
+            --sign: var(--orange);
+            right: 23%;
+            top: 51%;
+            transform: translateX(50%);
+        }
+
+        .s-pharmacy {
+            --sign: var(--green);
+            right: 24%;
+            bottom: 29%;
+            transform: translateX(50%);
+        }
+
+        .s-imaging {
+            --sign: var(--purple);
+            right: 7%;
+            top: 42%;
+        }
+
+        .ipd-door {
+            z-index: 1;
+            grid-column: 2;
+            grid-row: 3;
+            align-self: start;
+            justify-self: center;
+            margin-top: 18px;
+            width: 75%;
+            border-top: 8px solid var(--navy);
+            border-left: 3px solid var(--wall);
+            border-right: 3px solid var(--wall);
+            border-bottom: 3px solid var(--wall);
+            background: #f0f8fa;
+            padding: 13px;
+            text-align: center;
+        }
+
+        .ipd-door strong {
+            color: var(--navy);
+            font: 700 17px "Trebuchet MS", sans-serif;
+        }
+
+        .ipd-door span {
+            display: block;
+            margin-top: 5px;
+            color: #4e6572;
+            font-size: 12px;
+        }
+
+        .service-key {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1px;
+            margin-top: 18px;
+            background: var(--wall);
+            border: 1px solid var(--wall);
+        }
+
+        .key {
+            padding: 12px;
+            background: white;
+            font: 12px/1.35 "Trebuchet MS", sans-serif;
+        }
+
+        .key strong {
+            display: block;
+            margin-bottom: 3px;
+            color: var(--accent);
+        }
+
+        .k-opd {
+            --accent: var(--blue);
+        }
+
+        .k-diagnostic {
+            --accent: var(--purple);
+        }
+
+        .k-ipd {
+            --accent: var(--navy);
+        }
+
+        .k-pharmacy {
+            --accent: var(--green);
+        }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 16px;
+            color: var(--muted);
+            font: 12px "Trebuchet MS", sans-serif;
+        }
+
+        .legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .dot {
+            width: 11px;
+            height: 11px;
+            display: inline-block;
+        }
+
+        @media (max-width:850px) {
+            header {
+                align-items: start;
+                flex-direction: column;
+            }
+
+            .board {
+                overflow-x: auto;
+            }
+
+            .plan {
+                min-width: 780px;
+            }
+
+            .service-key {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width:550px) {
+            .page {
+                padding: 15px;
+            }
+
+            h1 {
+                font-size: 30px;
+            }
+
+            .service-key {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+
+            .page {
+                max-width: none;
+                padding: 10mm;
+            }
+
+            button {
+                display: none;
+            }
+
+            .board {
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="page">
+        <header>
+            <div>
+                <div class="eyebrow">MediCore patient navigation</div>
+                <h1>Hospital Walk-In Wayfinding Board</h1>
+                <p class="subhead">A compact service map for directing patients. Routine walk-ins start at the reception
+                    desk; emergency patients go directly to triage.</p>
+            </div>
+            <button type="button" onclick="window.print()">Print map</button>
+        </header>
+
+        <section class="board" aria-label="Hospital service point wayfinding board">
+            <div class="board-head"><span>Ground floor patient services</span><span>Follow the color signs from
+                    reception</span></div>
+            <div class="plan">
+                <article class="room emergency">
+                    <div>
+                        <div class="label">Red route / immediate priority</div>
+                        <h2>Emergency & Triage</h2>
+                        <p>Urgent or unstable patients are assessed and treated without waiting for routine
+                            registration.</p>
+                    </div>
+                    <div class="role">Emergency team</div>
+                </article>
+                <article class="room laboratory">
+                    <div>
+                        <div class="label">Purple route / ordered tests</div>
+                        <h2>Laboratory</h2>
+                        <p>Sample collection, investigation processing, and verified results.</p>
+                    </div>
+                    <div class="role">Lab technician</div>
+                </article>
+                <article class="room opd">
+                    <div>
+                        <div class="label">Blue route / consultation</div>
+                        <h2>OPD & Appointments</h2>
+                        <p>Consultation queue, examination, prescription, referral, and follow-up.</p>
+                    </div>
+                    <div class="role">Doctor / Nurse</div>
+                </article>
+                <article class="room pharmacy">
+                    <div>
+                        <div class="label">Green route / medicines</div>
+                        <h2>Pharmacy</h2>
+                        <p>Prescription verification, dispensing, counseling, and stock issue.</p>
+                    </div>
+                    <div class="role">Pharmacist</div>
+                </article>
+
+                <section class="hub">
+                    <div class="label">Patient starting point</div>
+                    <h2>Reception Hub</h2>
+                    <p>Search or register the patient, verify details, open the visit, and point the patient to the
+                        right service.</p>
+                </section>
+                <section class="ipd-door"><strong>IPD Admission & Wards</strong><span>Pending admission, available bed
+                        allocation, ward care, transfer, and discharge.</span></section>
+                <div class="desk">Reception Desk<span>Registration · appointments · directions</span></div>
+                <div class="entrance">Patient Entrance / Main Doors</div>
+
+                <div class="sign s-emergency"><b>←</b> Emergency</div>
+                <div class="sign s-lab"><b>→</b> Laboratory</div>
+                <div class="sign s-opd"><b>←</b> OPD</div>
+                <div class="sign s-ipd"><b>↓</b> IPD & Wards</div>
+                <div class="sign s-cashier"><b>→</b> Cashier & Insurance</div>
+                <div class="sign s-pharmacy"><b>→</b> Pharmacy</div>
+                <div class="sign s-imaging"><b>→</b> Imaging</div>
+            </div>
+
+            <section class="service-key" aria-label="How patients move through services">
+                <div class="key k-opd"><strong>OPD route</strong>Reception → cashier if required → OPD → tests or
+                    pharmacy → follow-up or exit.</div>
+                <div class="key k-diagnostic"><strong>Diagnostic route</strong>Doctor order → cashier/insurance approval
+                    → laboratory or imaging → clinician reviews result.</div>
+                <div class="key k-ipd"><strong>IPD route</strong>Doctor decision → pending admission → active available
+                    bed → ward care → discharge.</div>
+                <div class="key k-pharmacy"><strong>Pharmacy route</strong>Prescription or inpatient order →
+                    payment/coverage check → pharmacist dispenses or supplies ward.</div>
+            </section>
+
+            <div class="legend"><span><i class="dot" style="background:var(--teal)"></i>Reception</span><span><i
+                        class="dot" style="background:var(--blue)"></i>OPD</span><span><i class="dot"
+                        style="background:var(--red)"></i>Emergency</span><span><i class="dot"
+                        style="background:var(--purple)"></i>Lab / imaging</span><span><i class="dot"
+                        style="background:var(--orange)"></i>Cashier / insurance</span><span><i class="dot"
+                        style="background:var(--navy)"></i>IPD</span><span><i class="dot"
+                        style="background:var(--green)"></i>Pharmacy</span></div>
+        </section>
+    </main>
+</body>
+
+</html>
