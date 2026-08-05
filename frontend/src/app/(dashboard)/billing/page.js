@@ -301,7 +301,7 @@ export default function BillingPage() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-gray-600 bg-gray-100 px-3 py-1.5 rounded-lg">
-              🇸🇸 SSP
+              SSP
             </span>
             <Button icon={Plus} onClick={() => setShowModal(true)}>
               Create Bill
@@ -310,7 +310,7 @@ export default function BillingPage() {
         </div>
 
         <Card>
-          <h3 className="font-semibold mb-3">📊 My Shift Report</h3>
+          <h3 className="font-semibold mb-3">My Shift Report</h3>
           <ReportGenerator
             role="cashier"
             endpoint="/reports/my-shift/"
@@ -350,19 +350,19 @@ export default function BillingPage() {
             onClick={() => setActiveTab("pending")}
             className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === "pending" ? "bg-white shadow-sm" : "text-gray-500"}`}
           >
-            ⏳ Pending ({pendingBills.length})
+            Pending ({pendingBills.length})
           </button>
           <button
             onClick={() => setActiveTab("unbilled")}
             className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === "unbilled" ? "bg-white shadow-sm" : "text-gray-500"}`}
           >
-            👥 Patients ({unbilledPatients.length})
+            Patients ({unbilledPatients.length})
           </button>
           <button
             onClick={() => setActiveTab("billed")}
             className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === "billed" ? "bg-white shadow-sm" : "text-gray-500"}`}
           >
-            📋 Bills ({bills.length})
+            Bills ({bills.length})
           </button>
         </div>
 
@@ -421,7 +421,7 @@ export default function BillingPage() {
                           {p.workflow_status || p.status_display || p.status}
                         </Badge>
                         {p.diagnosis && (
-                          <p className="text-xs mt-1">📋 {p.diagnosis}</p>
+                          <p className="text-xs mt-1">{p.diagnosis}</p>
                         )}
                         <p className="text-xs text-gray-500 mt-1">
                           Medicine charge: SSP {p.medicine_fee_calculated || 0}
@@ -598,7 +598,7 @@ export default function BillingPage() {
                   MRN: {selectedPatient.mrn} | {selectedPatient.doctor_name}
                 </p>
                 {selectedPatient.diagnosis && (
-                  <p>📋 {selectedPatient.diagnosis}</p>
+                  <p>{selectedPatient.diagnosis}</p>
                 )}
                 <p className="text-xs text-gray-600">
                   Medicine charge: SSP{" "}
