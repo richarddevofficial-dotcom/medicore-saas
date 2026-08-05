@@ -25,7 +25,7 @@ export default function PatientDetailPage({ params }) {
     try {
       await apiClient.post(`/patients/${patient.mrn}/reactivate/`);
       toast.success("Patient reactivated for new visit!");
-      router.push("/reception");
+      router.push(`/billing?focus=pending&mrn=${patient.mrn}`);
     } catch (err) {
       toast.error("Failed to reactivate");
     } finally {

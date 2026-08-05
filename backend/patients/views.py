@@ -200,8 +200,35 @@ class PatientViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Doctor not found'}, status=404)
     
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def reactivate(self, request, mrn=None):
-        patient = self.get_object()
+        patient = Patient.objects.select_for_update().get(pk=self.get_object().pk)
+        if patient.status != 'treated':
+            return Response(
+                {'error': 'Only a completed treatment can be reactivated.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        previous_consultation_bill = Bill.objects.filter(
+            hospital=patient.hospital,
+            patient_mrn=patient.mrn,
+            consultation_fee__gt=0,
+        ).order_by('-created_at').first()
+        if not previous_consultation_bill:
+            return Response(
+                {'error': 'A consultation fee is required before this patient can be reactivated.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        Bill.objects.create(
+            hospital=patient.hospital,
+            patient_name=f'{patient.first_name} {patient.last_name}'.strip(),
+            patient_mrn=patient.mrn,
+            consultation_fee=previous_consultation_bill.consultation_fee,
+            payment_method='cash',
+            status='pending',
+            notes=f'Reactivated visit; consultation fee based on {previous_consultation_bill.bill_number}.',
+        )
         patient.status = 'waiting'
         patient.diagnosis = ''
         patient.treatment_plan = ''

@@ -124,6 +124,62 @@ class DoctorAccessControlTests(TestCase):
 		self.other_patient.refresh_from_db()
 		self.assertEqual(self.other_patient.status, "lab_in_progress")
 
+	def test_reactivation_creates_a_new_unpaid_consultation_bill(self):
+		self.other_patient.assigned_doctor = self.doctor
+		self.other_patient.status = "treated"
+		self.other_patient.save(update_fields=["assigned_doctor", "status"])
+		previous_bill = Bill.objects.create(
+			hospital=self.hospital,
+			patient_name="Other Patient",
+			patient_mrn=self.other_patient.mrn,
+			consultation_fee="20.00",
+			lab_fee="10.00",
+			amount_paid="30.00",
+			status="paid",
+		)
+
+		self.client.force_authenticate(user=self.admin.user)
+		reactivate_response = self.client.post(
+			f"/api/v1/patients/{self.other_patient.mrn}/reactivate/"
+		)
+
+		self.assertEqual(reactivate_response.status_code, 200)
+		self.other_patient.refresh_from_db()
+		self.assertEqual(self.other_patient.status, "waiting")
+		self.assertEqual(
+			Bill.objects.filter(
+				hospital=self.hospital,
+				patient_mrn=self.other_patient.mrn,
+			).count(),
+			2,
+		)
+		new_bill = Bill.objects.exclude(pk=previous_bill.pk).get(
+			hospital=self.hospital,
+			patient_mrn=self.other_patient.mrn,
+		)
+		self.assertEqual(str(previous_bill.consultation_fee), "20.00")
+		self.assertEqual(str(new_bill.consultation_fee), "20.00")
+		self.assertEqual(str(new_bill.amount_paid), "0.00")
+		self.assertEqual(new_bill.status, "pending")
+
+		self.client.force_authenticate(user=self.doctor.user)
+		unpaid_response = self.client.post(
+			f"/api/v1/patients/{self.other_patient.mrn}/update_status/",
+			{"status": "in_consultation"},
+			format="json",
+		)
+		self.assertEqual(unpaid_response.status_code, 402)
+
+		new_bill.amount_paid = new_bill.consultation_fee
+		new_bill.status = "paid"
+		new_bill.save()
+		paid_response = self.client.post(
+			f"/api/v1/patients/{self.other_patient.mrn}/update_status/",
+			{"status": "in_consultation"},
+			format="json",
+		)
+		self.assertEqual(paid_response.status_code, 200)
+
 	def test_treatment_batch_rejects_invalid_medicine_without_partial_changes(self):
 		assigned_patient = Patient.objects.create(
 			hospital=self.hospital,
