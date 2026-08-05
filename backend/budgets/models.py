@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator
 from django.contrib.auth.models import User
+from django.utils.dateparse import parse_date
 from hospitals.models import Hospital
 from departments.models import Department
 from expenses.models import ExpenseCategory
@@ -217,7 +218,11 @@ class BudgetForecast(TimestampedModel):
         ]
     
     def __str__(self):
-        return f"{self.department.name} - ₹{self.forecasted_amount} ({self.month.strftime('%B %Y')})"
+        month = self.month
+        if isinstance(month, str):
+            month = parse_date(month)
+        month_label = month.strftime('%B %Y') if month else str(self.month)
+        return f"{self.department.name} - ₹{self.forecasted_amount} ({month_label})"
 
 
 class BudgetAlert(TimestampedModel):

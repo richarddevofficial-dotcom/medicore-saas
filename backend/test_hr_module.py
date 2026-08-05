@@ -64,12 +64,10 @@ class HRModuleSetUp(APITestCase):
         self.dept_hr = Department.objects.create(
             hospital=self.hospital1,
             name="Human Resources",
-            code="HR",
         )
         self.dept_finance = Department.objects.create(
             hospital=self.hospital1,
             name="Finance",
-            code="FIN",
         )
 
         # Create users with different roles
@@ -132,12 +130,16 @@ class HRModuleSetUp(APITestCase):
             employee_number="EMP001",
             first_name="John",
             last_name="Manager",
+            national_id="TEST-NATIONAL-ID-001",
+            passport_number="TEST-PASSPORT-001",
             email="john@test.com",
             department=self.dept_hr,
             position=self.position1,
             employment_type="PERMANENT",
             employment_status="ACTIVE",
             hire_date=date.today(),
+            bank_account_number="TEST-BANK-ACCOUNT-001",
+            tax_number="TEST-TAX-001",
         )
 
         self.employee2 = Employee.objects.create(
@@ -145,12 +147,16 @@ class HRModuleSetUp(APITestCase):
             employee_number="EMP002",
             first_name="Jane",
             last_name="Accountant",
+            national_id="TEST-NATIONAL-ID-002",
+            passport_number="TEST-PASSPORT-002",
             email="jane@test.com",
             department=self.dept_finance,
             position=self.position2,
             employment_type="PERMANENT",
             employment_status="ACTIVE",
             hire_date=date.today(),
+            bank_account_number="TEST-BANK-ACCOUNT-002",
+            tax_number="TEST-TAX-002",
         )
 
         # Create leave types
@@ -296,9 +302,13 @@ class TestHRHospitalScoping(HRModuleSetUp):
             employee_number="EMP-H2",
             first_name="Hospital2",
             last_name="Employee",
+            national_id="TEST-NATIONAL-ID-H2",
+            passport_number="TEST-PASSPORT-H2",
             email="h2emp@test.com",
             employment_status="ACTIVE",
             hire_date=date.today(),
+            bank_account_number="TEST-BANK-ACCOUNT-H2",
+            tax_number="TEST-TAX-H2",
         )
 
         self.client.force_authenticate(user=self.hr_user)

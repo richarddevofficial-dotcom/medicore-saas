@@ -52,9 +52,7 @@ export default function LabDashboard() {
 
   const handleStartTest = async (patient) => {
     try {
-      await apiClient.post(`/patients/${patient.mrn}/update_status/`, {
-        status: "lab_in_progress",
-      });
+      await apiClient.post(`/patients/${patient.mrn}/start_lab_test/`);
       toast.success("Test started!");
       fetchLabQueue();
     } catch (err) {

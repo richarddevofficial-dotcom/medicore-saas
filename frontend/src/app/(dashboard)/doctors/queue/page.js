@@ -238,25 +238,22 @@ export default function DoctorQueuePage() {
     if (!treatment.diagnosis.trim())
       return toast.error("Please enter a diagnosis");
     try {
-      if (selectedMedicines.length > 0) {
-        for (const med of selectedMedicines) {
-          await apiClient.post("/prescriptions/", {
-            patient: selectedPatient.id,
+      await apiClient.post(
+        `/patients/${selectedPatient.mrn}/complete_treatment/`,
+        {
+          status: "treated",
+          diagnosis: treatment.diagnosis,
+          treatment_plan: treatment.treatment_plan,
+          prescription: treatment.prescription,
+          doctor_notes: treatment.doctor_notes,
+          prescriptions: selectedMedicines.map((med) => ({
             medicine_name: med.name,
             dosage: `${med.dosage} ${med.frequency} x ${med.duration}`,
-            quantity_prescribed: parseInt(med.quantity) || 1,
-            status: "pending",
+            quantity_prescribed: parseInt(med.quantity, 10) || 1,
             notes: `Patient: ${selectedPatient.first_name} ${selectedPatient.last_name} | MRN: ${selectedPatient.mrn}`,
-          });
-        }
-      }
-      await apiClient.post(`/patients/${selectedPatient.mrn}/update_status/`, {
-        status: "treated",
-        diagnosis: treatment.diagnosis,
-        treatment_plan: treatment.treatment_plan,
-        prescription: treatment.prescription,
-        doctor_notes: treatment.doctor_notes,
-      });
+          })),
+        },
+      );
       toast.success("Treatment completed");
       setShowTreatModal(false);
       setSelectedPatient(null);

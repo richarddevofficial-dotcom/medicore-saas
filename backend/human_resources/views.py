@@ -68,7 +68,7 @@ class HospitalScopedViewSet(viewsets.ModelViewSet):
             requested_hospital = self.request.data.get("hospital")
             hospital_id = requested_hospital or hospital_id
 
-        if not hospital_id:
+        if not hospital_id or self.hospital_lookup != "hospital_id":
             serializer.save()
             return
 

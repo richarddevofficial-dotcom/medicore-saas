@@ -101,12 +101,16 @@ class HRModuleSetUp:
             employee_number="EMP001",
             first_name="John",
             last_name="Manager",
+            national_id="TEST-NATIONAL-ID-001",
+            passport_number="TEST-PASSPORT-001",
             email="john@test.com",
             department=self.dept_hr,
             position=self.position,
             employment_type="PERMANENT",
             employment_status="ACTIVE",
             hire_date=date.today(),
+            bank_account_number="TEST-BANK-ACCOUNT-001",
+            tax_number="TEST-TAX-001",
         )
 
         # Create leave type
@@ -254,9 +258,13 @@ class TestHRAPIAccess(HRModuleSetUp, APITestCase):
             employee_number="EMP002",
             first_name="Jane",
             last_name="Employee",
+            national_id="TEST-NATIONAL-ID-002",
+            passport_number="TEST-PASSPORT-002",
             email="jane@test.com",
             employment_status="ACTIVE",
             hire_date=date.today(),
+            bank_account_number="TEST-BANK-ACCOUNT-002",
+            tax_number="TEST-TAX-002",
         )
 
         # Query employees from hospital1

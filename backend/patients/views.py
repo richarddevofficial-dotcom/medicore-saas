@@ -6,13 +6,22 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
+from django.db import transaction
 from datetime import timedelta
 from .models import Patient
 from staff.models import StaffProfile
 from saas_billing.services import check_hospital_limit
 from .serializers import PatientListSerializer, PatientDetailSerializer
 from billing.models import Bill, ServiceCatalog
-from config.role_permissions import CanManagePatients, CanViewPatientStats, IsClinicalStaff, IsReceptionist
+from config.role_permissions import (
+    CanManagePatients,
+    CanViewPatientStats,
+    IsClinicalStaff,
+    IsDoctor,
+    IsLabTechnician,
+    IsReceptionist,
+    get_staff_role,
+)
 
 
 def _resolve_request_hospital(request):
@@ -112,6 +121,16 @@ class PatientViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), CanViewPatientStats()]
         if self.action in {'list', 'create', 'assign_doctor'}:
             return [IsAuthenticated(), CanManagePatients()]
+        if self.action in {
+            'doctor_queue',
+            'request_lab_test',
+            'request_imaging',
+            'update_status',
+            'complete_treatment',
+        }:
+            return [IsAuthenticated(), IsDoctor()]
+        if self.action in {'lab_queue', 'start_lab_test', 'submit_lab_results'}:
+            return [IsAuthenticated(), IsLabTechnician()]
         return [IsAuthenticated(), IsClinicalStaff()]
     
     def get_serializer_class(self):
@@ -125,7 +144,12 @@ class PatientViewSet(viewsets.ModelViewSet):
             return Patient.objects.all()
         if not hospital:
             return Patient.objects.none()
-        return Patient.objects.filter(hospital=hospital)
+        queryset = Patient.objects.filter(hospital=hospital)
+        if get_staff_role(self.request.user) == 'doctor':
+            return queryset.filter(
+                assigned_doctor=getattr(self.request.user, 'staff_profile', None)
+            )
+        return queryset
     
     def perform_create(self, serializer):
         hospital = _resolve_request_hospital(self.request)
@@ -162,7 +186,12 @@ class PatientViewSet(viewsets.ModelViewSet):
         patient = self.get_object()
         doctor_id = request.data.get('assigned_doctor')
         try:
-            doctor = StaffProfile.objects.get(id=doctor_id, role='doctor', is_active=True)
+            doctor = StaffProfile.objects.get(
+                id=doctor_id,
+                hospital=patient.hospital,
+                role='doctor',
+                is_active=True,
+            )
             patient.assigned_doctor = doctor
             patient.status = 'waiting'
             patient.save()
@@ -334,6 +363,100 @@ class PatientViewSet(viewsets.ModelViewSet):
             patient.status = new_status
         patient.save()
         return Response(PatientDetailSerializer(patient).data)
+
+    @action(detail=True, methods=['post'])
+    def complete_treatment(self, request, mrn=None):
+        patient = self.get_object()
+        diagnosis = str(request.data.get('diagnosis', '')).strip()
+        if not diagnosis:
+            return Response(
+                {'diagnosis': 'Diagnosis is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        prescriptions = request.data.get('prescriptions', [])
+        if not isinstance(prescriptions, list):
+            return Response(
+                {'prescriptions': 'Prescriptions must be a list.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from pharmacy.models import Medicine, Prescription
+        prepared_prescriptions = []
+        for prescription in prescriptions:
+            medicine_name = str(prescription.get('medicine_name', '')).strip()
+            if not medicine_name:
+                return Response(
+                    {'prescriptions': 'Each prescription requires a medicine name.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            medicine = Medicine.objects.filter(
+                hospital=patient.hospital,
+                name__iexact=medicine_name,
+                is_active=True,
+            ).first()
+            if not medicine or medicine.is_expired:
+                return Response(
+                    {'prescriptions': f'Medicine "{medicine_name}" is unavailable.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                quantity = max(1, int(prescription.get('quantity_prescribed') or 1))
+            except (TypeError, ValueError):
+                return Response(
+                    {'prescriptions': 'Prescription quantity must be a whole number.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            prepared_prescriptions.append((
+                medicine,
+                quantity,
+                str(prescription.get('dosage', '')).strip(),
+                str(prescription.get('notes', '')).strip(),
+            ))
+
+        with transaction.atomic():
+            bill = _get_patient_bill(patient)
+            medicine_fee = sum(
+                (medicine.selling_price * quantity for medicine, quantity, _, _ in prepared_prescriptions),
+                Decimal('0'),
+            )
+            prescription_status = 'pending'
+            if prepared_prescriptions and bill:
+                bill.medicine_fee = Decimal(str(bill.medicine_fee or 0)) + medicine_fee
+                bill.save()
+                _refresh_bill_status(bill)
+                bill.save(update_fields=['status', 'updated_at'])
+                paid = Decimal(str(bill.amount_paid or 0))
+                required = (
+                    Decimal(str(bill.consultation_fee or 0))
+                    + Decimal(str(bill.lab_fee or 0))
+                    + Decimal(str(bill.medicine_fee or 0))
+                )
+                if paid >= required:
+                    prescription_status = 'ready'
+
+            for medicine, quantity, dosage, notes in prepared_prescriptions:
+                Prescription.objects.create(
+                    hospital=patient.hospital,
+                    patient=patient,
+                    doctor=request.user.staff_profile,
+                    medicine=medicine,
+                    medicine_name=medicine.name,
+                    dosage=dosage,
+                    quantity_prescribed=quantity,
+                    medicine_amount=medicine.selling_price * quantity,
+                    status=prescription_status,
+                    notes=notes,
+                )
+
+            patient.diagnosis = diagnosis
+            patient.treatment_plan = request.data.get('treatment_plan', '')
+            patient.prescription = request.data.get('prescription', '')
+            patient.doctor_notes = request.data.get('doctor_notes', '')
+            patient.status = 'treated'
+            patient.save()
+
+        return Response(PatientDetailSerializer(patient).data)
     
     @action(detail=False, methods=['get'])
     def doctor_queue(self, request):
@@ -343,13 +466,18 @@ class PatientViewSet(viewsets.ModelViewSet):
         else:
             queryset = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()
 
-        doctor_id = request.query_params.get('doctor_id')
+        staff_profile = getattr(request.user, 'staff_profile', None)
+        is_doctor = get_staff_role(request.user) == 'doctor'
         queryset = queryset.filter(
             status__in=['waiting', 'in_consultation', 'lab_requested', 'lab_in_progress', 
                        'lab_completed', 'imaging_requested', 'imaging_completed']
         )
-        if doctor_id:
-            queryset = queryset.filter(assigned_doctor_id=doctor_id)
+        if is_doctor:
+            queryset = queryset.filter(assigned_doctor=staff_profile)
+        else:
+            doctor_id = request.query_params.get('doctor_id')
+            if doctor_id:
+                queryset = queryset.filter(assigned_doctor_id=doctor_id)
         return Response(PatientListSerializer(queryset, many=True).data)
     
     @action(detail=False, methods=['get'])

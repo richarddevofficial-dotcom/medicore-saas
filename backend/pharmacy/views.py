@@ -283,6 +283,15 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
 
         if patient and patient.hospital_id != hospital.id:
             raise ValidationError({'patient': 'Patient does not belong to your hospital.'})
+        if (
+            patient
+            and hasattr(user, 'staff_profile')
+            and user.staff_profile.role == 'doctor'
+            and patient.assigned_doctor_id != user.staff_profile.id
+        ):
+            raise ValidationError(
+                {'patient': 'Patient is not assigned to the prescribing doctor.'}
+            )
         
         # Validate that medicine exists in this hospital
         if not Medicine.objects.filter(name__iexact=medicine_name, hospital=hospital).exists():

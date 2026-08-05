@@ -999,6 +999,7 @@ class AuthAndBillingSmokeTests(TestCase):
             date_of_birth="1995-01-01",
             gender="F",
             phone="555100202",
+            assigned_doctor=self.staff_profile,
             status="in_consultation",
         )
         bill = Bill.objects.create(

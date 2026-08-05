@@ -170,6 +170,8 @@ class PrescriptionDispenseFlowTests(TestCase):
 			phone="0911111112",
 		)
 		self.client.force_authenticate(user=doctor_user)
+		self.patient.assigned_doctor = doctor
+		self.patient.save(update_fields=["assigned_doctor"])
 
 		prescription_response = self.client.post(
 			"/api/v1/prescriptions/",

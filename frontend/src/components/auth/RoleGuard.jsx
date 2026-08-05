@@ -15,7 +15,6 @@ const roleAccess = {
     "/doctors/queue",
     "/patients",
     "/appointments",
-    "/admin/lab",
     "/admin/medicines",
   ],
   receptionist: [

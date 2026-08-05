@@ -25,6 +25,27 @@ class AppointmentSerializer(serializers.ModelSerializer):
     
     def get_patient_name(self, obj):
         return f"{obj.patient.first_name} {obj.patient.last_name}"
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        hospital = attrs.get('hospital') or getattr(self.instance, 'hospital', None)
+        if not hospital and request is not None:
+            hospital = _resolve_request_hospital(request)
+
+        patient = attrs.get('patient') or getattr(self.instance, 'patient', None)
+        doctor = attrs.get('doctor', getattr(self.instance, 'doctor', None))
+        errors = {}
+        if patient and patient.hospital_id != hospital.id:
+            errors['patient'] = 'Patient does not belong to this hospital.'
+        if doctor and (
+            doctor.hospital_id != hospital.id
+            or doctor.role != 'doctor'
+            or not doctor.is_active
+        ):
+            errors['doctor'] = 'Doctor must be an active doctor in this hospital.'
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
     
     def create(self, validated_data):
         hospital = validated_data.get('hospital')

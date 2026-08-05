@@ -55,6 +55,23 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     def confirm(self, request, pk=None):
         """Confirm appointment and send patient to doctor queue"""
         appointment = self.get_object()
+        if (
+            appointment.patient_id
+            and appointment.patient.hospital_id != appointment.hospital_id
+        ):
+            return Response(
+                {'error': 'Appointment patient does not belong to this hospital.'},
+                status=400,
+            )
+        if appointment.doctor_id and (
+            appointment.doctor.hospital_id != appointment.hospital_id
+            or appointment.doctor.role != 'doctor'
+            or not appointment.doctor.is_active
+        ):
+            return Response(
+                {'error': 'Appointment doctor must be an active doctor in this hospital.'},
+                status=400,
+            )
         appointment.status = 'confirmed'
         appointment.save()
         

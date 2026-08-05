@@ -20,8 +20,8 @@ class EncryptedCharField(models.CharField):
     
     def get_prep_value(self, value):
         """Encrypt value before saving to database."""
-        if value is None:
-            return None
+        if not value:
+            return None if self.null else ""
         return encrypt_value(value)
     
     def from_db_value(self, value, expression, connection):
@@ -43,8 +43,8 @@ class EncryptedTextField(models.TextField):
     
     def get_prep_value(self, value):
         """Encrypt value before saving to database."""
-        if value is None:
-            return None
+        if not value:
+            return None if self.null else ""
         return encrypt_value(value)
     
     def from_db_value(self, value, expression, connection):
@@ -70,8 +70,8 @@ class EncryptedEmailField(models.EmailField):
     
     def get_prep_value(self, value):
         """Encrypt value before saving to database."""
-        if value is None:
-            return None
+        if not value:
+            return None if self.null else ""
         return encrypt_value(value)
     
     def from_db_value(self, value, expression, connection):
