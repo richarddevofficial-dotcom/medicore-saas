@@ -23,7 +23,6 @@ const roleAccess = {
     "/patients",
     "/patients/add",
     "/appointments",
-    "/doctors",
     "/billing",
   ],
   nurse: ["/dashboard", "/patients", "/admin/rooms", "/admin/beds"],

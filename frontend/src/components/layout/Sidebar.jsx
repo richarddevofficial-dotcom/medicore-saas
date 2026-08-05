@@ -334,7 +334,6 @@ const navigationByRole = {
       section: "PATIENT FLOW",
       items: [
         { name: "All Patients", href: "/patients", icon: Users },
-        { name: "Doctors", href: "/doctors", icon: Stethoscope },
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       ],
     },
