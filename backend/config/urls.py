@@ -42,6 +42,7 @@ from reports.views import (
 from hospitals.models import Hospital, LoginOTP, TrustedDevice
 from hospitals.serializers import HospitalSerializer
 from auditlog.models import AuditLog, NotificationEvent
+from auditlog.views import AuditLogViewSet
 from config.password_links import send_password_setup_email
 from config.superadmin_views import (
     super_admin_stats, 
@@ -1045,6 +1046,7 @@ router.register(r'insurance-companies', InsuranceCompanyViewSet, basename='insur
 router.register(r'insurance-claims', InsuranceClaimViewSet, basename='insurance-claim')
 router.register(r'imaging-tests', ImagingTestViewSet, basename='imaging-test')
 router.register(r'subscription-payments', SubscriptionPaymentViewSet, basename='subscription-payment')
+router.register(r'audit-logs', AuditLogViewSet, basename='audit-log')
 
 urlpatterns = [
     path('api/v1/hr/', include('human_resources.urls')),
