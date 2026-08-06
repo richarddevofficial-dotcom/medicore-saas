@@ -67,7 +67,14 @@ export default function DashboardPage() {
     if (hospitalId) {
       setIsImpersonating(true);
     }
-    setRole(localStorage.getItem("role") || "");
+
+    const storedRole = localStorage.getItem("role") || "";
+    if (["hr", "hr_officer", "hr_manager"].includes(storedRole)) {
+      router.replace("/hr");
+      return;
+    }
+
+    setRole(storedRole);
   }, []);
 
   useEffect(() => {
@@ -78,6 +85,11 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    const storedRole = localStorage.getItem("role") || "";
+    if (["hr", "hr_officer", "hr_manager"].includes(storedRole)) {
+      return;
+    }
+
     const fetchStats = async () => {
       const requests = [
         { key: "patients", path: "/patients/stats/" },

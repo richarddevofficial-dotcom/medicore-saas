@@ -114,6 +114,8 @@ export default function LoginPage() {
       router.replace("/doctors/queue");
     } else if (data.user.role === "receptionist") {
       router.replace("/reception");
+    } else if (["hr", "hr_officer", "hr_manager"].includes(data.user.role)) {
+      router.replace("/hr");
     } else {
       router.replace("/dashboard");
     }
