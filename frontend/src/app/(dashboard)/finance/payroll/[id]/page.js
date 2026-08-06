@@ -5,7 +5,6 @@ import Link from "next/link";
 import { ArrowLeft, Printer, AlertCircle, Loader2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { getPayrollCycle } from "@/lib/api/finance";
-import toast from "react-hot-toast";
 
 export default function SalarySlipDetailPage() {
   const params = useParams();
@@ -63,16 +62,14 @@ export default function SalarySlipDetailPage() {
     );
   }
 
-  const basicSalary = slip.basic_salary || 0;
-  const totalAllowances = (slip.allowances || []).reduce(
-    (sum, a) => sum + (a.amount || 0),
-    0,
+  const basicSalary = Number(slip.base_salary || 0);
+  const grossSalary = Number(slip.gross_salary || 0);
+  const totalDeductions = Number(slip.total_deductions || 0);
+  const netSalary = Number(slip.net_salary || 0);
+  const salaryMonth = new Date(`${slip.month}T00:00:00`).toLocaleDateString(
+    undefined,
+    { month: "long", year: "numeric" },
   );
-  const totalDeductions = (slip.deductions || []).reduce(
-    (sum, d) => sum + (d.amount || 0),
-    0,
-  );
-  const netSalary = basicSalary + totalAllowances - totalDeductions;
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -97,9 +94,7 @@ export default function SalarySlipDetailPage() {
         {/* Header */}
         <div className="text-center border-b pb-6 mb-6">
           <h1 className="text-2xl font-bold text-gray-900">SALARY SLIP</h1>
-          <p className="text-gray-600 mt-1">
-            For the period: {slip.month}/{slip.year}
-          </p>
+          <p className="text-gray-600 mt-1">For the period: {salaryMonth}</p>
         </div>
 
         {/* Employee Info */}
@@ -107,25 +102,25 @@ export default function SalarySlipDetailPage() {
           <div>
             <p className="text-sm text-gray-600">Employee Name</p>
             <p className="text-lg font-semibold text-gray-900">
-              {slip.employee?.full_name || "—"}
+              {slip.employee_name || "—"}
             </p>
           </div>
           <div>
             <p className="text-sm text-gray-600">Employee ID</p>
             <p className="text-lg font-semibold text-gray-900">
-              {slip.employee?.employee_id || "—"}
+              {slip.employee_id_number || slip.employee || "—"}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600">Designation</p>
+            <p className="text-sm text-gray-600">Salary Structure</p>
             <p className="text-lg font-semibold text-gray-900">
-              {slip.employee?.designation || "—"}
+              {slip.salary_structure?.name || "—"}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600">Department</p>
+            <p className="text-sm text-gray-600">Generated</p>
             <p className="text-lg font-semibold text-gray-900">
-              {slip.employee?.department || "—"}
+              {new Date(slip.created_at).toLocaleDateString()}
             </p>
           </div>
         </div>
@@ -139,22 +134,27 @@ export default function SalarySlipDetailPage() {
             <div className="flex justify-between py-2 border-b">
               <span className="text-gray-700">Basic Salary</span>
               <span className="font-semibold">
-                ₹{basicSalary.toLocaleString()}
+                SSP {basicSalary.toLocaleString()}
               </span>
             </div>
-            {slip.allowances?.map((allowance, idx) => (
-              <div key={idx} className="flex justify-between py-2 border-b">
+            {slip.earnings?.map((earning) => (
+              <div
+                key={earning.id}
+                className="flex justify-between py-2 border-b"
+              >
                 <span className="text-gray-700">
-                  {allowance.type || "Allowance"}
+                  {earning.allowance_type?.name ||
+                    earning.allowance_type?.code ||
+                    "Allowance"}
                 </span>
                 <span className="font-semibold">
-                  ₹{(allowance.amount || 0).toLocaleString()}
+                  SSP {Number(earning.amount || 0).toLocaleString()}
                 </span>
               </div>
             ))}
             <div className="flex justify-between py-2 bg-green-50 px-2 rounded font-semibold">
               <span>Total Earnings</span>
-              <span>₹{(basicSalary + totalAllowances).toLocaleString()}</span>
+              <span>SSP {grossSalary.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -165,19 +165,24 @@ export default function SalarySlipDetailPage() {
             DEDUCTIONS
           </h2>
           <div className="space-y-2">
-            {slip.deductions?.map((deduction, idx) => (
-              <div key={idx} className="flex justify-between py-2 border-b">
+            {slip.deductions?.map((deduction) => (
+              <div
+                key={deduction.id}
+                className="flex justify-between py-2 border-b"
+              >
                 <span className="text-gray-700">
-                  {deduction.type || "Deduction"}
+                  {deduction.deduction_type?.name ||
+                    deduction.deduction_type?.code ||
+                    "Deduction"}
                 </span>
                 <span className="font-semibold">
-                  ₹{(deduction.amount || 0).toLocaleString()}
+                  SSP {Number(deduction.amount || 0).toLocaleString()}
                 </span>
               </div>
             ))}
             <div className="flex justify-between py-2 bg-red-50 px-2 rounded font-semibold">
               <span>Total Deductions</span>
-              <span>₹{totalDeductions.toLocaleString()}</span>
+              <span>SSP {totalDeductions.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -189,7 +194,7 @@ export default function SalarySlipDetailPage() {
               Net Salary
             </span>
             <span className="text-2xl font-bold text-blue-600">
-              ₹{netSalary.toLocaleString()}
+              SSP {netSalary.toLocaleString()}
             </span>
           </div>
         </div>
@@ -201,10 +206,10 @@ export default function SalarySlipDetailPage() {
             <p className="text-lg font-semibold text-gray-900 mt-1">
               <span
                 className={`px-3 py-1 rounded-full text-sm ${
-                  slip.status === "approved"
+                  slip.status === "paid"
                     ? "bg-green-100 text-green-800"
-                    : slip.status === "rejected"
-                      ? "bg-red-100 text-red-800"
+                    : slip.status === "approved" || slip.status === "processed"
+                      ? "bg-blue-100 text-blue-800"
                       : "bg-yellow-100 text-yellow-800"
                 }`}
               >

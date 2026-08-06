@@ -164,7 +164,7 @@ export async function createPayrollCycle(data) {
   }
 }
 
-export async function processPayroll(id) {
+export async function approveSalarySlip(id) {
   try {
     const response = await apiClient.post(
       `/finance/salary-slips/${id}/approve/`,
@@ -172,7 +172,7 @@ export async function processPayroll(id) {
     return response.data;
   } catch (error) {
     throw new Error(
-      error.response?.data?.detail || "Failed to process payroll",
+      error.response?.data?.detail || "Failed to approve salary slip",
     );
   }
 }

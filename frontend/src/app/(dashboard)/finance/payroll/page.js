@@ -2,19 +2,24 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, Plus, Trash2, Edit, Play } from "lucide-react";
-import { getPayroll, processPayroll } from "@/lib/api/finance";
+import { AlertCircle, ArrowLeft, Check, Eye } from "lucide-react";
+import { approveSalarySlip, getPayroll } from "@/lib/api/finance";
 import toast from "react-hot-toast";
 
 export default function PayrollPage() {
-  const [payrolls, setPayrolls] = useState([]);
+  const [salarySlips, setSalarySlips] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(null);
+  const [approving, setApproving] = useState(null);
+  const [canApprove, setCanApprove] = useState(false);
   const [filter, setFilter] = useState("all");
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    const role = (localStorage.getItem("role") || "").toLowerCase();
+    setCanApprove(
+      ["admin", "super_admin", "hospital_admin", "hr_manager"].includes(role),
+    );
     loadPayroll();
   }, [filter]);
 
@@ -29,7 +34,7 @@ export default function PayrollPage() {
       }
 
       const data = await getPayroll(params);
-      setPayrolls(Array.isArray(data) ? data : data.results || []);
+      setSalarySlips(Array.isArray(data) ? data : data.results || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load payroll.");
     } finally {
@@ -37,21 +42,20 @@ export default function PayrollPage() {
     }
   }
 
-  async function handleProcess(id) {
-    if (!confirm("Are you sure you want to process this payroll cycle?"))
-      return;
+  async function handleApprove(id) {
+    if (!confirm("Approve this generated salary slip?")) return;
 
     try {
-      setProcessing(id);
-      await processPayroll(id);
-      toast.success("Payroll processed successfully");
+      setApproving(id);
+      await approveSalarySlip(id);
+      toast.success("Salary slip approved successfully");
       await loadPayroll();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to process payroll",
+        err instanceof Error ? err.message : "Failed to approve salary slip",
       );
     } finally {
-      setProcessing(null);
+      setApproving(null);
     }
   }
 
@@ -75,31 +79,27 @@ export default function PayrollPage() {
             Back to Finance
           </Link>
           <h1 className="text-3xl font-bold text-gray-900">Payroll</h1>
-          <p className="mt-2 text-gray-600">Manage employee payroll cycles</p>
+          <p className="mt-2 text-gray-600">Review employee salary slips</p>
         </div>
-        <Link href="/finance/payroll/new">
-          <button className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-            <Plus size={18} />
-            New Payroll
-          </button>
-        </Link>
       </div>
 
       {/* Filters */}
       <div className="flex gap-2 border-b">
-        {["all", "draft", "processing", "completed"].map((status) => (
-          <button
-            key={status}
-            onClick={() => setFilter(status)}
-            className={`px-4 py-2 font-medium text-sm ${
-              filter === status
-                ? "border-b-2 border-blue-600 text-blue-600"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
-          >
-            {status.charAt(0).toUpperCase() + status.slice(1)}
-          </button>
-        ))}
+        {["all", "draft", "generated", "approved", "processed", "paid"].map(
+          (status) => (
+            <button
+              key={status}
+              onClick={() => setFilter(status)}
+              className={`px-4 py-2 font-medium text-sm ${
+                filter === status
+                  ? "border-b-2 border-blue-600 text-blue-600"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              {status.charAt(0).toUpperCase() + status.slice(1)}
+            </button>
+          ),
+        )}
       </div>
 
       {error && (
@@ -112,38 +112,37 @@ export default function PayrollPage() {
         </div>
       )}
 
-      {payrolls.length === 0 ? (
+      {salarySlips.length === 0 ? (
         <div className="rounded-lg border border-dashed bg-gray-50 p-12 text-center">
-          <p className="text-gray-600">No payroll cycles found</p>
-          <Link href="/finance/payroll/new">
-            <button className="mt-4 text-blue-600 hover:text-blue-700 font-medium">
-              Create your first payroll cycle
-            </button>
-          </Link>
+          <p className="text-gray-600">No salary slips found</p>
         </div>
       ) : (
         <div className="grid gap-4">
-          {payrolls.map((payroll) => (
+          {salarySlips.map((salarySlip) => (
             <div
-              key={payroll.id}
+              key={salarySlip.id}
               className="rounded-lg border bg-white p-6 hover:shadow-lg transition-shadow"
             >
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold text-gray-900">
-                      {payroll.cycle_name || `Payroll Cycle ${payroll.id}`}
+                      {salarySlip.employee_name ||
+                        `Employee #${salarySlip.employee}`}
                     </h3>
                     <span
                       className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${
-                        payroll.status === "completed"
+                        salarySlip.status === "paid"
                           ? "bg-green-100 text-green-800"
-                          : payroll.status === "processing"
+                          : salarySlip.status === "processed" ||
+                              salarySlip.status === "approved"
                             ? "bg-blue-100 text-blue-800"
-                            : "bg-gray-100 text-gray-800"
+                            : salarySlip.status === "generated"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-gray-100 text-gray-800"
                       }`}
                     >
-                      {payroll.status || "Draft"}
+                      {salarySlip.status || "draft"}
                     </span>
                   </div>
 
@@ -151,44 +150,53 @@ export default function PayrollPage() {
                     <div>
                       <p className="text-xs text-gray-500">Period</p>
                       <p className="font-semibold text-gray-900">
-                        {payroll.period}
+                        {new Date(
+                          `${salarySlip.month}T00:00:00`,
+                        ).toLocaleDateString(undefined, {
+                          month: "long",
+                          year: "numeric",
+                        })}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Employees</p>
+                      <p className="text-xs text-gray-500">Employee ID</p>
                       <p className="font-semibold text-gray-900">
-                        {payroll.employee_count || 0}
+                        {salarySlip.employee}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">Total Amount</p>
                       <p className="font-semibold text-gray-900">
-                        {payroll.total_amount || "SSP 0"}
+                        SSP{" "}
+                        {Number(salarySlip.net_salary || 0).toLocaleString()}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">Created</p>
                       <p className="font-semibold text-gray-900">
-                        {payroll.created_date}
+                        {new Date(salarySlip.created_at).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex gap-2 ml-4">
-                  <Link href={`/finance/payroll/${payroll.id}/view`}>
-                    <button className="p-2 text-gray-600 hover:text-blue-600">
-                      <Edit size={18} />
+                  <Link href={`/finance/payroll/${salarySlip.id}`}>
+                    <button
+                      className="p-2 text-gray-600 hover:text-blue-600"
+                      title="View salary slip"
+                    >
+                      <Eye size={18} />
                     </button>
                   </Link>
-                  {payroll.status === "draft" && (
+                  {canApprove && salarySlip.status === "generated" && (
                     <button
-                      onClick={() => handleProcess(payroll.id)}
-                      disabled={processing === payroll.id}
+                      onClick={() => handleApprove(salarySlip.id)}
+                      disabled={approving === salarySlip.id}
                       className="p-2 text-gray-600 hover:text-green-600 disabled:opacity-50"
-                      title="Process Payroll"
+                      title="Approve salary slip"
                     >
-                      <Play size={18} />
+                      <Check size={18} />
                     </button>
                   )}
                 </div>
