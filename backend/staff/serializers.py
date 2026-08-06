@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.db import transaction
 from django.utils.crypto import get_random_string
+from human_resources.models import Employee
 from .models import StaffProfile
 
 class UserSerializer(serializers.ModelSerializer):
@@ -38,6 +40,7 @@ class StaffCreateSerializer(serializers.ModelSerializer):
             'consultation_fee', 'max_patients_per_day', 'phone'
         ]
     
+    @transaction.atomic
     def create(self, validated_data):
         first_name = validated_data.pop('first_name')
         last_name = validated_data.pop('last_name')
@@ -61,6 +64,19 @@ class StaffCreateSerializer(serializers.ModelSerializer):
             user=user,
             department_id=department,
             **validated_data
+        )
+
+        Employee.objects.create(
+            hospital=staff.hospital,
+            user=user,
+            employee_number=(
+                f"EMP-{staff.hospital_id}-{user.id:06d}"
+            ),
+            first_name=user.first_name,
+            last_name=user.last_name,
+            email=user.email,
+            phone=staff.phone,
+            department=staff.department,
         )
         
         return staff

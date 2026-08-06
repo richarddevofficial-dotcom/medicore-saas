@@ -4,6 +4,7 @@ from rest_framework.test import APIClient
 
 from auditlog.models import AuditLog
 from hospitals.models import Hospital
+from human_resources.models import Employee
 from staff.models import StaffProfile
 
 
@@ -98,6 +99,31 @@ class StaffPermissionMatrixTests(TestCase):
 			format="json",
 		)
 		self.assertEqual(response.status_code, 403)
+
+	def test_admin_created_staff_is_added_to_hr_employees(self):
+		self.client.force_authenticate(user=self.admin_user)
+
+		response = self.client.post(
+			"/api/v1/staff/",
+			{
+				"first_name": "New",
+				"last_name": "Staff",
+				"email": "new-hr-staff@example.com",
+				"password": "Admin@1234",
+				"role": "nurse",
+				"phone": "700099",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 201)
+		staff_member = StaffProfile.objects.get(
+			user__email="new-hr-staff@example.com",
+		)
+		employee = Employee.objects.get(user=staff_member.user)
+		self.assertEqual(employee.hospital, self.hospital)
+		self.assertEqual(employee.department, staff_member.department)
+		self.assertTrue(employee.employee_number.startswith("EMP-"))
 
 	def test_staff_stats_are_hospital_scoped_and_exclude_inactive_doctors(self):
 		doctor_user = User.objects.create_user(
