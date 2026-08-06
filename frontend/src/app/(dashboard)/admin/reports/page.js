@@ -9,6 +9,20 @@ import { useHospitalSettings } from "@/hooks/useSettings";
 import { Printer, Users, DollarSign, Calendar, Activity } from "lucide-react";
 import toast from "react-hot-toast";
 import apiClient from "@/lib/api-client";
+import {
+  Bar,
+  BarChart,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+const chartColors = ["#2563eb", "#ec4899", "#16a34a", "#f97316"];
 
 export default function ReportsPage() {
   const [data, setData] = useState(null);
@@ -104,6 +118,24 @@ export default function ReportsPage() {
     custom: "Custom",
   };
   const activePeriodLabel = periodLabelMap[data?.period || period] || "Daily";
+  const genderData = [
+    { name: "Male", value: data?.patients?.male || 0 },
+    { name: "Female", value: data?.patients?.female || 0 },
+  ];
+  const billingData = [
+    { name: "Collected", amount: data?.billing?.revenue || 0 },
+    { name: "Outstanding", amount: data?.billing?.pending || 0 },
+  ];
+  const appointmentData = [
+    { name: "Completed", value: data?.appointments?.completed || 0 },
+    {
+      name: "Remaining",
+      value: Math.max(
+        (data?.appointments?.total || 0) - (data?.appointments?.completed || 0),
+        0,
+      ),
+    },
+  ];
 
   return (
     <DashboardLayout>
@@ -205,6 +237,97 @@ export default function ReportsPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <div className="mb-4">
+                  <h3 className="font-semibold">Patient Mix</h3>
+                  <p className="text-xs text-gray-500">
+                    New patient registrations in this period
+                  </p>
+                </div>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={genderData}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={58}
+                        outerRadius={88}
+                        paddingAngle={3}
+                      >
+                        {genderData.map((entry, index) => (
+                          <Cell key={entry.name} fill={chartColors[index]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+
+              <Card>
+                <div className="mb-4">
+                  <h3 className="font-semibold">Collection Position</h3>
+                  <p className="text-xs text-gray-500">
+                    Payments received and balances from period bills
+                  </p>
+                </div>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={billingData} margin={{ top: 8, right: 8 }}>
+                      <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                      <YAxis tickLine={false} axisLine={false} width={56} />
+                      <Tooltip
+                        formatter={(value) =>
+                          `SSP ${Number(value).toLocaleString()}`
+                        }
+                      />
+                      <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
+                        {billingData.map((entry, index) => (
+                          <Cell
+                            key={entry.name}
+                            fill={chartColors[index + 2]}
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+
+              <Card>
+                <div className="mb-4">
+                  <h3 className="font-semibold">Appointment Completion</h3>
+                  <p className="text-xs text-gray-500">
+                    Completed versus remaining appointments in this period
+                  </p>
+                </div>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={appointmentData}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={58}
+                        outerRadius={88}
+                        paddingAngle={3}
+                      >
+                        {appointmentData.map((entry, index) => (
+                          <Cell
+                            key={entry.name}
+                            fill={chartColors[index + 2]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+
               <Card>
                 <h3 className="font-semibold mb-4 flex items-center gap-2">
                   <Users className="h-5 w-5 text-blue-600" /> Patient Statistics
