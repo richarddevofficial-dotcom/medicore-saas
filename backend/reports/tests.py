@@ -326,6 +326,53 @@ class ReportsPlanAccessTests(TestCase):
 
 		self.assertEqual(response.status_code, 200)
 
+	def test_active_trial_can_access_detailed_reports(self):
+		trial_hospital = Hospital.objects.create(
+			name="Trial Reports Hospital",
+			slug="trial-reports-hospital",
+			hospital_type="general",
+			registration_number="REG-TRIAL-REP",
+			email="trial-reports@example.com",
+			phone="555000555",
+			address="Addr 3",
+			city="Juba",
+			state="Central",
+			country="South Sudan",
+			subscription_plan="trial",
+		)
+		trial_user = User.objects.create_user(
+			username="trial-reports-admin",
+			password="Admin@1234",
+		)
+		StaffProfile.objects.create(
+			user=trial_user,
+			hospital=trial_hospital,
+			role="admin",
+			phone="555000556",
+		)
+		starter_plan = SubscriptionPlan.objects.create(
+			code="starter",
+			name="Starter",
+			monthly_price="49.90",
+			service_fee="300.00",
+			max_staff=20,
+			max_patients=2000,
+		)
+		HospitalSubscription.objects.create(
+			hospital=trial_hospital,
+			plan=starter_plan,
+			status=HospitalSubscription.STATUS_TRIAL,
+			trial_started_at=timezone.now(),
+			trial_ends_at=timezone.now() + timedelta(days=7),
+			current_monthly_price="49.90",
+			current_service_fee="300.00",
+		)
+		self.client.force_authenticate(user=trial_user)
+
+		response = self.client.get("/api/v1/reports/detailed/?period=daily")
+
+		self.assertEqual(response.status_code, 200)
+
 	def test_saas_subscription_plan_takes_precedence_for_report_access(self):
 		plan = SubscriptionPlan.objects.create(
 			code="pro",
