@@ -13,6 +13,7 @@ from pharmacy.models import Prescription
 from config.role_permissions import IsHospitalAdmin
 from appointments.models import Appointment
 from laboratory.models import LabTest
+from imaging.models import ImagingTest
 from human_resources.models import (
     Attendance,
     Employee,
@@ -198,6 +199,20 @@ def _personal_role_metrics(profile, user, report_date):
         return {
             'tests_completed': tests.count(),
             'lab_revenue_processed': float(
+                tests.aggregate(total=Sum('price'))['total'] or 0,
+            ),
+        }
+
+    if profile.role == 'radiographer':
+        tests = ImagingTest.objects.filter(
+            hospital=profile.hospital,
+            completed_by=profile,
+            completed_at__gte=start_of_day,
+            completed_at__lt=end_of_day,
+        )
+        return {
+            'imaging_tests_completed': tests.count(),
+            'imaging_revenue_processed': float(
                 tests.aggregate(total=Sum('price'))['total'] or 0,
             ),
         }

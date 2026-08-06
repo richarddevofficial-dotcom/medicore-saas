@@ -9,7 +9,12 @@ class ImagingTestSerializer(serializers.ModelSerializer):
     class Meta:
         model = ImagingTest
         fields = '__all__'
-        read_only_fields = ['hospital', 'created_at', 'completed_at']
+        read_only_fields = [
+            'hospital',
+            'created_at',
+            'completed_at',
+            'completed_by',
+        ]
     
     def get_doctor_name(self, obj):
         return f"Dr. {obj.doctor.user.get_full_name()}" if obj.doctor else "N/A"

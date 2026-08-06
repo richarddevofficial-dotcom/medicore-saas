@@ -10,6 +10,7 @@ from patients.models import Patient
 from billing.models import Bill, BillPayment, SubscriptionPayment
 from appointments.models import Appointment
 from laboratory.models import LabTest
+from imaging.models import ImagingTest
 from human_resources.models import (
 	Attendance,
 	Employee,
@@ -424,6 +425,55 @@ class PersonalShiftReportTests(TestCase):
 		self.assertEqual(response.data["leave_requests_reviewed"], 2)
 		self.assertEqual(response.data["leave_requests_approved"], 1)
 		self.assertEqual(response.data["leave_requests_rejected"], 1)
+
+	def test_radiographer_report_only_includes_own_completed_tests(self):
+		radiographer_user = User.objects.create_user(
+			username="radiographer-shift@example.com",
+			password="Password123!",
+		)
+		other_radiographer_user = User.objects.create_user(
+			username="other-radiographer-shift@example.com",
+			password="Password123!",
+		)
+		radiographer = StaffProfile.objects.create(
+			user=radiographer_user,
+			hospital=self.hospital,
+			role="radiographer",
+			phone="555000124",
+		)
+		other_radiographer = StaffProfile.objects.create(
+			user=other_radiographer_user,
+			hospital=self.hospital,
+			role="radiographer",
+			phone="555000125",
+		)
+		ImagingTest.objects.create(
+			hospital=self.hospital,
+			patient_name="Own Imaging Patient",
+			test_type="xray",
+			body_part="Chest",
+			price="35.00",
+			status="completed",
+			completed_by=radiographer,
+			completed_at=timezone.now(),
+		)
+		ImagingTest.objects.create(
+			hospital=self.hospital,
+			patient_name="Other Imaging Patient",
+			test_type="ct",
+			body_part="Head",
+			price="60.00",
+			status="completed",
+			completed_by=other_radiographer,
+			completed_at=timezone.now(),
+		)
+		self.client.force_authenticate(radiographer_user)
+
+		response = self.client.get("/api/v1/reports/my-shift/")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["imaging_tests_completed"], 1)
+		self.assertEqual(response.data["imaging_revenue_processed"], 35.0)
 
 
 class ReportsPlanAccessTests(TestCase):

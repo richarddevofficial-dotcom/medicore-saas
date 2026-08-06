@@ -52,7 +52,13 @@ class ImagingTestViewSet(viewsets.ModelViewSet):
         test.result = request.data.get('result', '')
         test.status = 'completed'
         test.completed_at = timezone.now()
-        test.save()
+        test.completed_by = getattr(request.user, 'staff_profile', None)
+        test.save(update_fields=[
+            'result',
+            'status',
+            'completed_at',
+            'completed_by',
+        ])
         return Response(ImagingTestSerializer(test).data)
     
     @action(detail=False, methods=['get'])
