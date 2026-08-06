@@ -10,6 +10,7 @@ from billing.models import POSReceipt
 from staff.models import StaffProfile
 from pharmacy.models import Medicine
 from pharmacy.models import Prescription
+from config.role_permissions import IsHospitalAdmin
 from appointments.models import Appointment
 from laboratory.models import LabTest
 from human_resources.models import Attendance, Employee, ShiftAssignment
@@ -355,7 +356,7 @@ def lab_report(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated, RequiresProPlan])
+@permission_classes([IsAuthenticated, RequiresProPlan, IsHospitalAdmin])
 def detailed_report(request):
     """Generate detailed reports by period"""
     start_date, end_date, filter_mode, date_error = _build_date_filters(request)
@@ -423,7 +424,7 @@ def detailed_report(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated, RequiresProPlan])
+@permission_classes([IsAuthenticated, RequiresProPlan, IsHospitalAdmin])
 def reconciliation_report(request):
     """Reconciliation report for subscription payment and receipt delivery lifecycle."""
     hospital = _resolve_report_hospital(request)

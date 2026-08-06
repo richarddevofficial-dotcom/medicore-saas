@@ -408,3 +408,25 @@ class ReportsPlanAccessTests(TestCase):
 		response = self.client.get("/api/v1/reports/reconciliation/?period=daily")
 
 		self.assertEqual(response.status_code, 403)
+
+	def test_non_admin_pro_staff_cannot_access_hospital_admin_reports(self):
+		doctor_user = User.objects.create_user(
+			username="pro-reports-doctor",
+			email="pro-reports-doctor@example.com",
+			password="Doctor@1234",
+		)
+		StaffProfile.objects.create(
+			user=doctor_user,
+			hospital=self.hospital_pro,
+			role="doctor",
+			phone="555000445",
+		)
+		self.client.force_authenticate(user=doctor_user)
+
+		detailed_response = self.client.get("/api/v1/reports/detailed/?period=daily")
+		reconciliation_response = self.client.get(
+			"/api/v1/reports/reconciliation/?period=daily"
+		)
+
+		self.assertEqual(detailed_response.status_code, 403)
+		self.assertEqual(reconciliation_response.status_code, 403)
