@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Bill, SubscriptionPayment, ServiceCatalog, POSReceipt
+from .models import Bill, BillPayment, SubscriptionPayment, ServiceCatalog, POSReceipt
 
 
 class ServiceCatalogSerializer(serializers.ModelSerializer):
@@ -8,7 +8,29 @@ class ServiceCatalogSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['hospital', 'created_at', 'updated_at']
 
+class BillPaymentSerializer(serializers.ModelSerializer):
+    received_by_name = serializers.CharField(
+        source='received_by.get_full_name',
+        read_only=True,
+    )
+
+    class Meta:
+        model = BillPayment
+        fields = [
+            'id',
+            'amount',
+            'payment_method',
+            'received_by',
+            'received_by_name',
+            'received_at',
+            'created_at',
+        ]
+        read_only_fields = fields
+
+
 class BillSerializer(serializers.ModelSerializer):
+    payments = BillPaymentSerializer(many=True, read_only=True)
+
     class Meta:
         model = Bill
         fields = '__all__'

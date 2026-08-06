@@ -85,6 +85,37 @@ class Bill(models.Model):
         super().save(*args, **kwargs)
 
 
+class BillPayment(models.Model):
+    bill = models.ForeignKey(
+        Bill,
+        on_delete=models.CASCADE,
+        related_name='payments',
+    )
+    hospital = models.ForeignKey(
+        Hospital,
+        on_delete=models.CASCADE,
+        related_name='bill_payments',
+    )
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    payment_method = models.CharField(max_length=20, default='cash')
+    received_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='recorded_bill_payments',
+    )
+    received_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-received_at', '-id']
+        indexes = [
+            models.Index(fields=['hospital', 'received_at']),
+            models.Index(fields=['bill', 'received_at']),
+        ]
+
+
 class POSReceipt(models.Model):
     PAYMENT_METHODS = [
         ('cash', 'Cash'),

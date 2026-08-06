@@ -14,7 +14,7 @@ from decimal import Decimal
 from calendar import monthrange
 from .receipt_queue import enqueue_receipt_email_job
 from auditlog.models import AuditLog, NotificationEvent
-from .models import Bill
+from .models import Bill, BillPayment
 from .serializers import BillSerializer
 from .models import Bill, SubscriptionPayment, ServiceCatalog, POSReceipt
 from .serializers import (
@@ -516,44 +516,58 @@ class BillViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def make_payment(self, request, pk=None):
-        bill = self.get_object()
         amount = Decimal(str(request.data.get('amount', 0)))
         if amount <= 0:
             return Response({'error': 'Invalid amount'}, status=400)
 
-        total_amount = Decimal(str(bill.total_amount or 0))
-        current_paid = Decimal(str(bill.amount_paid or 0))
+        with transaction.atomic():
+            bill = Bill.objects.select_for_update().get(pk=self.get_object().pk)
+            total_amount = Decimal(str(bill.total_amount or 0))
+            current_paid = Decimal(str(bill.amount_paid or 0))
 
-        # Keep legacy overpaid bills safe and prevent any further payments.
-        if current_paid >= total_amount:
-            bill.amount_paid = total_amount
-            bill.status = 'paid'
-            bill.save(update_fields=['amount_paid', 'status', 'updated_at'])
-            return Response(
-                {
-                    'error': 'Bill is already fully paid.',
-                    'remaining_balance': '0.00',
-                },
-                status=400,
+            # Keep legacy overpaid bills safe and prevent any further payments.
+            if current_paid >= total_amount:
+                bill.amount_paid = total_amount
+                bill.status = 'paid'
+                bill.save(update_fields=['amount_paid', 'status', 'updated_at'])
+                return Response(
+                    {
+                        'error': 'Bill is already fully paid.',
+                        'remaining_balance': '0.00',
+                    },
+                    status=400,
+                )
+
+            remaining_balance = total_amount - current_paid
+            if amount > remaining_balance:
+                return Response(
+                    {
+                        'error': 'Payment exceeds remaining balance.',
+                        'remaining_balance': str(remaining_balance),
+                    },
+                    status=400,
+                )
+
+            payment_method = str(
+                request.data.get('method') or bill.payment_method or 'cash'
+            ).strip()[:20] or 'cash'
+            received_at = timezone.now()
+            BillPayment.objects.create(
+                bill=bill,
+                hospital=bill.hospital,
+                amount=amount,
+                payment_method=payment_method,
+                received_by=request.user,
+                received_at=received_at,
             )
-
-        remaining_balance = total_amount - current_paid
-        if amount > remaining_balance:
-            return Response(
-                {
-                    'error': 'Payment exceeds remaining balance.',
-                    'remaining_balance': str(remaining_balance),
-                },
-                status=400,
-            )
-
-        bill.amount_paid = current_paid + amount
-        bill.payment_date = timezone.now().date()
-        if bill.amount_paid >= total_amount:
-            bill.status = 'paid'
-        elif bill.amount_paid > 0:
-            bill.status = 'partial'
-        bill.save()
+            bill.amount_paid = current_paid + amount
+            bill.payment_method = payment_method
+            bill.payment_date = received_at.date()
+            if bill.amount_paid >= total_amount:
+                bill.status = 'paid'
+            else:
+                bill.status = 'partial'
+            bill.save()
         _sync_patient_prescription_payment_status(bill)
         return Response(BillSerializer(bill).data)
     

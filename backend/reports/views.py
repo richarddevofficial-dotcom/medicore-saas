@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from config.plan_permissions import RequiresProPlan
 from patients.models import Patient
-from billing.models import Bill
+from billing.models import Bill, BillPayment
 from billing.models import SubscriptionPayment
 from billing.models import POSReceipt
 from staff.models import StaffProfile
@@ -375,9 +375,14 @@ def detailed_report(request):
     
     # Revenue
     bills = bills_qs.filter(created_at__date__gte=start_date, created_at__date__lte=end_date)
+    payments = BillPayment.objects.filter(
+        hospital=hospital,
+        received_at__date__gte=start_date,
+        received_at__date__lte=end_date,
+    ) if hospital else BillPayment.objects.none()
     total_bills = bills.count()
-    paid_bills = bills.filter(status='paid').count()
-    revenue = float(bills.filter(status='paid').aggregate(total=Sum('total_amount')).get('total') or 0)
+    paid_bills = payments.values('bill_id').distinct().count()
+    revenue = float(payments.aggregate(total=Sum('amount')).get('total') or 0)
     pending_amount = float(
         bills.exclude(status__in=['paid', 'cancelled'])
         .aggregate(total=Sum('balance'))

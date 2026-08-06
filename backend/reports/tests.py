@@ -7,7 +7,7 @@ from django.utils import timezone
 from hospitals.models import Hospital
 from staff.models import StaffProfile
 from patients.models import Patient
-from billing.models import Bill, SubscriptionPayment
+from billing.models import Bill, BillPayment, SubscriptionPayment
 from appointments.models import Appointment
 from laboratory.models import LabTest
 from human_resources.models import Attendance, Employee, Shift, ShiftAssignment
@@ -224,7 +224,7 @@ class ReportsPlanAccessTests(TestCase):
 			status="treated",
 		)
 
-		Bill.objects.create(
+		self.basic_bill = Bill.objects.create(
 			hospital=self.hospital_basic,
 			patient_name="Basic Patient",
 			consultation_fee=40,
@@ -233,7 +233,7 @@ class ReportsPlanAccessTests(TestCase):
 			balance=0,
 			status="paid",
 		)
-		Bill.objects.create(
+		self.pro_bill = Bill.objects.create(
 			hospital=self.hospital_pro,
 			patient_name="Pro Patient",
 			consultation_fee=90,
@@ -241,6 +241,13 @@ class ReportsPlanAccessTests(TestCase):
 			amount_paid=90,
 			balance=0,
 			status="paid",
+		)
+		BillPayment.objects.create(
+			bill=self.pro_bill,
+			hospital=self.hospital_pro,
+			amount="90.00",
+			payment_method="cash",
+			received_at=timezone.now(),
 		)
 
 		Appointment.objects.create(
@@ -371,6 +378,70 @@ class ReportsPlanAccessTests(TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.data["patients"]["total"], 1)
 		self.assertEqual(response.data["billing"]["revenue"], 90.0)
+
+	def test_detailed_report_uses_payment_ledger_for_period_revenue(self):
+		today = timezone.localdate()
+		old_bill = Bill.objects.create(
+			hospital=self.hospital_pro,
+			patient_name="Paid Later",
+			consultation_fee="100.00",
+			amount_paid="100.00",
+			status="paid",
+			payment_date=today,
+		)
+		Bill.objects.filter(pk=old_bill.pk).update(
+			created_at=timezone.now() - timedelta(days=7),
+		)
+		BillPayment.objects.create(
+			bill=old_bill,
+			hospital=self.hospital_pro,
+			amount="100.00",
+			payment_method="cash",
+			received_at=timezone.now(),
+		)
+		partial_bill = Bill.objects.create(
+			hospital=self.hospital_pro,
+			patient_name="Partial Payments",
+			consultation_fee="60.00",
+			amount_paid="50.00",
+			status="partial",
+			payment_date=today,
+		)
+		BillPayment.objects.create(
+			bill=partial_bill,
+			hospital=self.hospital_pro,
+			amount="20.00",
+			payment_method="cash",
+			received_at=timezone.now() - timedelta(days=1),
+		)
+		BillPayment.objects.create(
+			bill=partial_bill,
+			hospital=self.hospital_pro,
+			amount="30.00",
+			payment_method="cash",
+			received_at=timezone.now(),
+		)
+		other_hospital_bill = Bill.objects.create(
+			hospital=self.hospital_basic,
+			patient_name="Other Hospital Payment",
+			consultation_fee="500.00",
+			amount_paid="500.00",
+			status="paid",
+		)
+		BillPayment.objects.create(
+			bill=other_hospital_bill,
+			hospital=self.hospital_basic,
+			amount="500.00",
+			payment_method="cash",
+			received_at=timezone.now(),
+		)
+		self.client.force_authenticate(user=self.pro_user)
+
+		response = self.client.get("/api/v1/reports/detailed/?period=daily")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["billing"]["revenue"], 220.0)
+		self.assertEqual(response.data["billing"]["paid_bills"], 3)
 
 	def test_detailed_report_scopes_gender_counts_to_requested_dates(self):
 		old_patient = Patient.objects.create(

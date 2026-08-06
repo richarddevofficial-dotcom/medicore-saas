@@ -13,7 +13,7 @@ from calendar import monthrange
 from unittest.mock import patch
 from rest_framework.test import APIClient
 
-from billing.models import Bill, ServiceCatalog
+from billing.models import Bill, BillPayment, ServiceCatalog
 from billing.models import ReceiptEmailJob, SubscriptionPayment
 from auditlog.models import AuditLog, NotificationEvent
 from config.services.brevo_email import BrevoEmailError
@@ -967,6 +967,9 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertEqual(paid_bill_response.status_code, 200)
         self.assertEqual(paid_bill_response.data["status"], "paid")
         self.assertEqual(paid_bill_response.data["amount_paid"], "25.00")
+        self.assertEqual(BillPayment.objects.filter(bill_id=bill_response.data["id"]).count(), 1)
+        self.assertEqual(payment_response.data["payments"][0]["amount"], "25.00")
+        self.assertEqual(payment_response.data["payments"][0]["received_by"], self.user.id)
 
     def test_patient_registration_truncates_long_hospital_slug_in_mrn(self):
         self.hospital.slug = "medicore-hospital"
