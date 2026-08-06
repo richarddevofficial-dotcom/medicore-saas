@@ -125,6 +125,31 @@ class StaffPermissionMatrixTests(TestCase):
 		self.assertEqual(employee.department, staff_member.department)
 		self.assertTrue(employee.employee_number.startswith("EMP-"))
 
+	def test_admin_can_create_finance_and_hr_staff_accounts(self):
+		self.client.force_authenticate(user=self.admin_user)
+
+		for role, email in (
+			("finance", "finance-staff@example.com"),
+			("hr_manager", "hr-staff@example.com"),
+		):
+			response = self.client.post(
+				"/api/v1/staff/",
+				{
+					"first_name": "Role",
+					"last_name": "Test",
+					"email": email,
+					"password": "Admin@1234",
+					"role": role,
+					"phone": "700099",
+				},
+				format="json",
+			)
+
+			self.assertEqual(response.status_code, 201)
+			self.assertTrue(
+				StaffProfile.objects.filter(user__email=email, role=role).exists(),
+			)
+
 	def test_staff_stats_are_hospital_scoped_and_exclude_inactive_doctors(self):
 		doctor_user = User.objects.create_user(
 			username="doctor-matrix@example.com",

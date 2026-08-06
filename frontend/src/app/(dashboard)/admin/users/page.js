@@ -50,6 +50,11 @@ const roleOptions = [
   { value: "lab_technician", label: "Lab Technician" },
   { value: "radiographer", label: "Radiographer" },
   { value: "accountant", label: "Accountant" },
+  { value: "cashier", label: "Cashier" },
+  { value: "finance", label: "Finance Officer" },
+  { value: "finance_manager", label: "Finance Manager" },
+  { value: "hr", label: "HR Officer" },
+  { value: "hr_manager", label: "HR Manager" },
 ];
 
 export default function ManageUsersPage() {
