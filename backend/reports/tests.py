@@ -149,6 +149,66 @@ class PersonalShiftReportTests(TestCase):
 		self.assertEqual(response.data["patients_registered"], 1)
 		self.assertEqual(response.data["appointments_booked"], 1)
 
+	def test_accountant_report_only_includes_own_recorded_payments(self):
+		accountant_user = User.objects.create_user(
+			username="accountant-shift@example.com",
+			password="Password123!",
+		)
+		other_accountant_user = User.objects.create_user(
+			username="other-accountant-shift@example.com",
+			password="Password123!",
+		)
+		StaffProfile.objects.create(
+			user=accountant_user,
+			hospital=self.hospital,
+			role="accountant",
+			phone="555000115",
+		)
+		StaffProfile.objects.create(
+			user=other_accountant_user,
+			hospital=self.hospital,
+			role="accountant",
+			phone="555000116",
+		)
+		own_bill = Bill.objects.create(
+			hospital=self.hospital,
+			patient_name="Own Payment",
+			consultation_fee="25.00",
+			amount_paid="25.00",
+			status="paid",
+		)
+		other_bill = Bill.objects.create(
+			hospital=self.hospital,
+			patient_name="Other Payment",
+			consultation_fee="40.00",
+			amount_paid="40.00",
+			status="paid",
+		)
+		BillPayment.objects.create(
+			bill=own_bill,
+			hospital=self.hospital,
+			amount="25.00",
+			payment_method="cash",
+			received_by=accountant_user,
+			received_at=timezone.now(),
+		)
+		BillPayment.objects.create(
+			bill=other_bill,
+			hospital=self.hospital,
+			amount="40.00",
+			payment_method="cash",
+			received_by=other_accountant_user,
+			received_at=timezone.now(),
+		)
+		self.client.force_authenticate(accountant_user)
+
+		response = self.client.get("/api/v1/reports/my-shift/")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["payments_recorded"], 1)
+		self.assertEqual(response.data["amount_collected"], 25.0)
+		self.assertEqual(response.data["average_payment_value"], 25.0)
+
 
 class ReportsPlanAccessTests(TestCase):
 	def setUp(self):

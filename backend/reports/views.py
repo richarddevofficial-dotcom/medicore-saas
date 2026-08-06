@@ -150,6 +150,25 @@ def _personal_role_metrics(profile, user, report_date):
             'average_transaction_value': round(float(total) / count, 2) if count else 0,
         }
 
+    if profile.role in {
+        'accountant',
+        'finance',
+        'finance_manager',
+    }:
+        payments = BillPayment.objects.filter(
+            hospital=profile.hospital,
+            received_by=user,
+            received_at__gte=start_of_day,
+            received_at__lt=end_of_day,
+        )
+        total = payments.aggregate(total=Sum('amount'))['total'] or 0
+        count = payments.count()
+        return {
+            'payments_recorded': count,
+            'amount_collected': float(total),
+            'average_payment_value': round(float(total) / count, 2) if count else 0,
+        }
+
     if profile.role == 'receptionist':
         return {
             'patients_registered': Patient.objects.filter(
