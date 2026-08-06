@@ -17,11 +17,12 @@ import {
 import { getApiError, hrApi } from "@/services/hr";
 
 const attendanceStatuses = [
-  { value: "present", label: "Present" },
-  { value: "absent", label: "Absent" },
-  { value: "late", label: "Late" },
-  { value: "half_day", label: "Half Day" },
-  { value: "leave", label: "On Leave" },
+  { value: "PRESENT", label: "Present" },
+  { value: "ABSENT", label: "Absent" },
+  { value: "LATE", label: "Late" },
+  { value: "HALF_DAY", label: "Half Day" },
+  { value: "ON_LEAVE", label: "On Leave" },
+  { value: "OFF_DUTY", label: "Off Duty" },
 ];
 
 function getToday() {
@@ -32,10 +33,10 @@ function createEmptyForm() {
   return {
     employee: "",
     shift: "",
-    date: getToday(),
-    check_in: "",
-    check_out: "",
-    status: "present",
+    attendance_date: getToday(),
+    clock_in: "",
+    clock_out: "",
+    status: "PRESENT",
     notes: "",
   };
 }
@@ -65,26 +66,19 @@ export default function AttendancePage() {
       setIsLoading(true);
       setError("");
 
-      const [attendanceData, employeeData, shiftData] =
-        await Promise.all([
-          hrApi.getAttendance(),
-          hrApi.getEmployees(),
-          hrApi.getShifts(),
-        ]);
+      const [attendanceData, employeeData, shiftData] = await Promise.all([
+        hrApi.getAttendance(),
+        hrApi.getEmployees(),
+        hrApi.getShifts(),
+      ]);
 
-      setAttendance(
-        Array.isArray(attendanceData) ? attendanceData : [],
-      );
+      setAttendance(Array.isArray(attendanceData) ? attendanceData : []);
 
-      setEmployees(
-        Array.isArray(employeeData) ? employeeData : [],
-      );
+      setEmployees(Array.isArray(employeeData) ? employeeData : []);
 
       setShifts(Array.isArray(shiftData) ? shiftData : []);
     } catch (err) {
-      setError(
-        getApiError(err, "Unable to load attendance records."),
-      );
+      setError(getApiError(err, "Unable to load attendance records."));
     } finally {
       setIsLoading(false);
     }
@@ -109,15 +103,16 @@ export default function AttendancePage() {
         !keyword ||
         employeeName.toLowerCase().includes(keyword) ||
         String(employeeNumber).toLowerCase().includes(keyword) ||
-        String(record.notes || "").toLowerCase().includes(keyword);
+        String(record.notes || "")
+          .toLowerCase()
+          .includes(keyword);
 
       const matchesStatus =
         !statusFilter ||
         String(record.status || "").toLowerCase() ===
           statusFilter.toLowerCase();
 
-      const matchesDate =
-        !dateFilter || record.date === dateFilter;
+      const matchesDate = !dateFilter || record.attendance_date === dateFilter;
 
       return matchesSearch && matchesStatus && matchesDate;
     });
@@ -127,16 +122,13 @@ export default function AttendancePage() {
     return {
       total: attendance.length,
       present: attendance.filter(
-        (record) =>
-          String(record.status).toLowerCase() === "present",
+        (record) => String(record.status).toLowerCase() === "present",
       ).length,
       absent: attendance.filter(
-        (record) =>
-          String(record.status).toLowerCase() === "absent",
+        (record) => String(record.status).toLowerCase() === "absent",
       ).length,
       late: attendance.filter(
-        (record) =>
-          String(record.status).toLowerCase() === "late",
+        (record) => String(record.status).toLowerCase() === "late",
       ).length,
     };
   }, [attendance]);
@@ -160,15 +152,12 @@ export default function AttendancePage() {
           "",
       ),
       shift: String(
-        record.shift?.id ||
-          record.shift_details?.id ||
-          record.shift ||
-          "",
+        record.shift?.id || record.shift_details?.id || record.shift || "",
       ),
-      date: record.date || getToday(),
-      check_in: formatTimeForInput(record.check_in),
-      check_out: formatTimeForInput(record.check_out),
-      status: record.status || "present",
+      attendance_date: record.attendance_date || getToday(),
+      clock_in: formatTimeForInput(record.clock_in),
+      clock_out: formatTimeForInput(record.clock_out),
+      status: record.status || "PRESENT",
       notes: record.notes || "",
     });
 
@@ -204,7 +193,7 @@ export default function AttendancePage() {
       return;
     }
 
-    if (!form.date) {
+    if (!form.attendance_date) {
       setError("Attendance date is required.");
       return;
     }
@@ -216,11 +205,11 @@ export default function AttendancePage() {
 
       const payload = {
         employee: Number(form.employee),
-        date: form.date,
+        attendance_date: form.attendance_date,
         status: form.status,
         notes: form.notes.trim(),
-        check_in: form.check_in || null,
-        check_out: form.check_out || null,
+        clock_in: combineDateAndTime(form.attendance_date, form.clock_in),
+        clock_out: combineDateAndTime(form.attendance_date, form.clock_out),
       };
 
       if (form.shift) {
@@ -230,10 +219,7 @@ export default function AttendancePage() {
       }
 
       if (editingRecord) {
-        await hrApi.updateAttendance(
-          editingRecord.id,
-          payload,
-        );
+        await hrApi.updateAttendance(editingRecord.id, payload);
 
         setSuccess("Attendance record updated successfully.");
       } else {
@@ -278,9 +264,7 @@ export default function AttendancePage() {
       setSuccess("Attendance record deleted successfully.");
       await loadData();
     } catch (err) {
-      setError(
-        getApiError(err, "Unable to delete attendance."),
-      );
+      setError(getApiError(err, "Unable to delete attendance."));
     } finally {
       setDeletingId(null);
     }
@@ -340,17 +324,9 @@ export default function AttendancePage() {
           icon={CheckCircle2}
         />
 
-        <SummaryCard
-          label="Absent"
-          value={summary.absent}
-          icon={UserX}
-        />
+        <SummaryCard label="Absent" value={summary.absent} icon={UserX} />
 
-        <SummaryCard
-          label="Late"
-          value={summary.late}
-          icon={Clock3}
-        />
+        <SummaryCard label="Late" value={summary.late} icon={Clock3} />
       </div>
 
       {error && (
@@ -374,9 +350,7 @@ export default function AttendancePage() {
               <input
                 type="search"
                 value={search}
-                onChange={(event) =>
-                  setSearch(event.target.value)
-                }
+                onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search employee..."
                 className="w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
               />
@@ -384,18 +358,13 @@ export default function AttendancePage() {
 
             <select
               value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(event.target.value)
-              }
+              onChange={(event) => setStatusFilter(event.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             >
               <option value="">All statuses</option>
 
               {attendanceStatuses.map((status) => (
-                <option
-                  key={status.value}
-                  value={status.value}
-                >
+                <option key={status.value} value={status.value}>
                   {status.label}
                 </option>
               ))}
@@ -404,9 +373,7 @@ export default function AttendancePage() {
             <input
               type="date"
               value={dateFilter}
-              onChange={(event) =>
-                setDateFilter(event.target.value)
-              }
+              onChange={(event) => setDateFilter(event.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             />
 
@@ -441,29 +408,17 @@ export default function AttendancePage() {
             <table className="w-full min-w-[1000px] text-left text-sm">
               <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                 <tr>
-                  <th className="px-5 py-3 font-semibold">
-                    Employee
-                  </th>
+                  <th className="px-5 py-3 font-semibold">Employee</th>
 
-                  <th className="px-5 py-3 font-semibold">
-                    Date
-                  </th>
+                  <th className="px-5 py-3 font-semibold">Date</th>
 
-                  <th className="px-5 py-3 font-semibold">
-                    Shift
-                  </th>
+                  <th className="px-5 py-3 font-semibold">Shift</th>
 
-                  <th className="px-5 py-3 font-semibold">
-                    Check In
-                  </th>
+                  <th className="px-5 py-3 font-semibold">Check In</th>
 
-                  <th className="px-5 py-3 font-semibold">
-                    Check Out
-                  </th>
+                  <th className="px-5 py-3 font-semibold">Check Out</th>
 
-                  <th className="px-5 py-3 font-semibold">
-                    Status
-                  </th>
+                  <th className="px-5 py-3 font-semibold">Status</th>
 
                   <th className="px-5 py-3 text-right font-semibold">
                     Actions
@@ -473,10 +428,7 @@ export default function AttendancePage() {
 
               <tbody className="divide-y">
                 {filteredAttendance.map((record) => (
-                  <tr
-                    key={record.id}
-                    className="transition hover:bg-gray-50"
-                  >
+                  <tr key={record.id} className="transition hover:bg-gray-50">
                     <td className="px-5 py-4">
                       <p className="font-semibold text-gray-900">
                         {getEmployeeName(record)}
@@ -488,7 +440,7 @@ export default function AttendancePage() {
                     </td>
 
                     <td className="px-5 py-4 text-gray-700">
-                      {formatDate(record.date)}
+                      {formatDate(record.attendance_date)}
                     </td>
 
                     <td className="px-5 py-4 text-gray-700">
@@ -496,11 +448,11 @@ export default function AttendancePage() {
                     </td>
 
                     <td className="px-5 py-4 text-gray-700">
-                      {formatTimeForDisplay(record.check_in)}
+                      {formatTimeForDisplay(record.clock_in)}
                     </td>
 
                     <td className="px-5 py-4 text-gray-700">
-                      {formatTimeForDisplay(record.check_out)}
+                      {formatTimeForDisplay(record.clock_out)}
                     </td>
 
                     <td className="px-5 py-4">
@@ -511,9 +463,7 @@ export default function AttendancePage() {
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"
-                          onClick={() =>
-                            openEditModal(record)
-                          }
+                          onClick={() => openEditModal(record)}
                           className="rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
                           title="Edit attendance"
                         >
@@ -549,9 +499,7 @@ export default function AttendancePage() {
             <div className="flex items-center justify-between border-b px-6 py-4">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">
-                  {editingRecord
-                    ? "Edit Attendance"
-                    : "Record Attendance"}
+                  {editingRecord ? "Edit Attendance" : "Record Attendance"}
                 </h2>
 
                 <p className="mt-1 text-sm text-gray-500">
@@ -587,15 +535,10 @@ export default function AttendancePage() {
                       required
                       className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                     >
-                      <option value="">
-                        Select employee
-                      </option>
+                      <option value="">Select employee</option>
 
                       {employees.map((employee) => (
-                        <option
-                          key={employee.id}
-                          value={employee.id}
-                        >
+                        <option key={employee.id} value={employee.id}>
                           {getEmployeeOptionLabel(employee)}
                         </option>
                       ))}
@@ -604,17 +547,17 @@ export default function AttendancePage() {
 
                   <div>
                     <label
-                      htmlFor="date"
+                      htmlFor="attendance_date"
                       className="mb-1.5 block text-sm font-medium text-gray-700"
                     >
                       Attendance Date
                     </label>
 
                     <input
-                      id="date"
-                      name="date"
+                      id="attendance_date"
+                      name="attendance_date"
                       type="date"
-                      value={form.date}
+                      value={form.attendance_date}
                       onChange={handleChange}
                       required
                       className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
@@ -641,15 +584,9 @@ export default function AttendancePage() {
                       <option value="">No shift selected</option>
 
                       {shifts
-                        .filter(
-                          (shift) =>
-                            shift.is_active !== false,
-                        )
+                        .filter((shift) => shift.is_active !== false)
                         .map((shift) => (
-                          <option
-                            key={shift.id}
-                            value={shift.id}
-                          >
+                          <option key={shift.id} value={shift.id}>
                             {shift.name}
                           </option>
                         ))}
@@ -673,10 +610,7 @@ export default function AttendancePage() {
                       className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                     >
                       {attendanceStatuses.map((status) => (
-                        <option
-                          key={status.value}
-                          value={status.value}
-                        >
+                        <option key={status.value} value={status.value}>
                           {status.label}
                         </option>
                       ))}
@@ -687,17 +621,17 @@ export default function AttendancePage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label
-                      htmlFor="check_in"
+                      htmlFor="clock_in"
                       className="mb-1.5 block text-sm font-medium text-gray-700"
                     >
                       Check-in Time
                     </label>
 
                     <input
-                      id="check_in"
-                      name="check_in"
+                      id="clock_in"
+                      name="clock_in"
                       type="time"
-                      value={form.check_in}
+                      value={form.clock_in}
                       onChange={handleChange}
                       className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                     />
@@ -705,17 +639,17 @@ export default function AttendancePage() {
 
                   <div>
                     <label
-                      htmlFor="check_out"
+                      htmlFor="clock_out"
                       className="mb-1.5 block text-sm font-medium text-gray-700"
                     >
                       Check-out Time
                     </label>
 
                     <input
-                      id="check_out"
-                      name="check_out"
+                      id="clock_out"
+                      name="clock_out"
                       type="time"
-                      value={form.check_out}
+                      value={form.clock_out}
                       onChange={handleChange}
                       className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                     />
@@ -757,13 +691,9 @@ export default function AttendancePage() {
                   disabled={isSaving}
                   className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isSaving && (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  )}
+                  {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
 
-                  {editingRecord
-                    ? "Update Attendance"
-                    : "Save Attendance"}
+                  {editingRecord ? "Update Attendance" : "Save Attendance"}
                 </button>
               </div>
             </form>
@@ -779,13 +709,9 @@ function SummaryCard({ label, value, icon: Icon }) {
     <div className="rounded-xl border bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-500">
-            {label}
-          </p>
+          <p className="text-sm font-medium text-gray-500">{label}</p>
 
-          <p className="mt-2 text-3xl font-bold text-gray-900">
-            {value}
-          </p>
+          <p className="mt-2 text-3xl font-bold text-gray-900">{value}</p>
         </div>
 
         <div className="rounded-xl bg-orange-50 p-3">
@@ -797,16 +723,15 @@ function SummaryCard({ label, value, icon: Icon }) {
 }
 
 function AttendanceBadge({ status }) {
-  const normalizedStatus = String(
-    status || "unknown",
-  ).toLowerCase();
+  const normalizedStatus = String(status || "unknown").toLowerCase();
 
   const labels = {
     present: "Present",
     absent: "Absent",
     late: "Late",
     half_day: "Half Day",
-    leave: "On Leave",
+    on_leave: "On Leave",
+    off_duty: "Off Duty",
   };
 
   const styles = {
@@ -814,14 +739,14 @@ function AttendanceBadge({ status }) {
     absent: "bg-red-100 text-red-700",
     late: "bg-yellow-100 text-yellow-700",
     half_day: "bg-blue-100 text-blue-700",
-    leave: "bg-purple-100 text-purple-700",
+    on_leave: "bg-purple-100 text-purple-700",
+    off_duty: "bg-gray-100 text-gray-700",
   };
 
   return (
     <span
       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-        styles[normalizedStatus] ||
-        "bg-gray-100 text-gray-700"
+        styles[normalizedStatus] || "bg-gray-100 text-gray-700"
       }`}
     >
       {labels[normalizedStatus] || status || "Unknown"}
@@ -833,9 +758,7 @@ function getEmployeeName(record) {
   const employee =
     record.employee_details ||
     record.employee_data ||
-    (typeof record.employee === "object"
-      ? record.employee
-      : null);
+    (typeof record.employee === "object" ? record.employee : null);
 
   if (record.employee_name) {
     return record.employee_name;
@@ -845,15 +768,9 @@ function getEmployeeName(record) {
     return employee.full_name;
   }
 
-  const firstName =
-    employee?.first_name ||
-    employee?.user?.first_name ||
-    "";
+  const firstName = employee?.first_name || employee?.user?.first_name || "";
 
-  const lastName =
-    employee?.last_name ||
-    employee?.user?.last_name ||
-    "";
+  const lastName = employee?.last_name || employee?.user?.last_name || "";
 
   const fullName = `${firstName} ${lastName}`.trim();
 
@@ -864,9 +781,7 @@ function getEmployeeNumber(record) {
   const employee =
     record.employee_details ||
     record.employee_data ||
-    (typeof record.employee === "object"
-      ? record.employee
-      : null);
+    (typeof record.employee === "object" ? record.employee : null);
 
   return (
     record.employee_number ||
@@ -886,12 +801,9 @@ function getEmployeeOptionLabel(employee) {
     employee.user?.username ||
     `Employee ${employee.id}`;
 
-  const employeeNumber =
-    employee.employee_number || employee.employee_code;
+  const employeeNumber = employee.employee_number || employee.employee_code;
 
-  return employeeNumber
-    ? `${name} (${employeeNumber})`
-    : name;
+  return employeeNumber ? `${name} (${employeeNumber})` : name;
 }
 
 function getShiftName(record) {
@@ -903,10 +815,7 @@ function getShiftName(record) {
     return record.shift_details.name;
   }
 
-  if (
-    typeof record.shift === "object" &&
-    record.shift?.name
-  ) {
+  if (typeof record.shift === "object" && record.shift?.name) {
     return record.shift.name;
   }
 
@@ -918,6 +827,12 @@ function formatTimeForInput(value) {
     return "";
   }
 
+  const date = new Date(value);
+
+  if (!Number.isNaN(date.getTime())) {
+    return date.toTimeString().slice(0, 5);
+  }
+
   return String(value).slice(0, 5);
 }
 
@@ -926,18 +841,24 @@ function formatTimeForDisplay(value) {
     return "—";
   }
 
-  const time = String(value).slice(0, 5);
-  const [hourValue, minute] = time.split(":");
-  const hour = Number(hourValue);
+  const date = new Date(value);
 
-  if (Number.isNaN(hour)) {
-    return time;
+  if (!Number.isNaN(date.getTime())) {
+    return date.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
   }
 
-  const period = hour >= 12 ? "PM" : "AM";
-  const displayHour = hour % 12 || 12;
+  return String(value).slice(0, 5);
+}
 
-  return `${displayHour}:${minute} ${period}`;
+function combineDateAndTime(date, time) {
+  if (!date || !time) {
+    return null;
+  }
+
+  return new Date(`${date}T${time}:00`).toISOString();
 }
 
 function formatDate(value) {

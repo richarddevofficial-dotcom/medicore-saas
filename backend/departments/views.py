@@ -1,5 +1,7 @@
 from rest_framework import viewsets, filters
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from human_resources.permissions import IsHRManager
 from .models import Department
 from .serializers import DepartmentSerializer, DepartmentDetailSerializer
 
@@ -19,6 +21,7 @@ def _resolve_request_hospital(request):
 
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.all()
+    permission_classes = [IsAuthenticated, IsHRManager]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
     ordering_fields = ['name', 'created_at']

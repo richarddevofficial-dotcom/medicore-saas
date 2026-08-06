@@ -16,6 +16,59 @@ from .models import (
 )
 
 
+def validate_related_hospitals(serializer, attrs, *field_names):
+    """Keep all related HR records in the same hospital tenant."""
+
+    related_hospital_id = None
+
+    for field_name in field_names:
+        related_object = attrs.get(
+            field_name,
+            getattr(serializer.instance, field_name, None),
+        )
+        object_hospital_id = getattr(
+            related_object,
+            "hospital_id",
+            None,
+        )
+
+        if object_hospital_id is None:
+            continue
+
+        if (
+            related_hospital_id is not None
+            and related_hospital_id != object_hospital_id
+        ):
+            raise serializers.ValidationError(
+                {
+                    field_name: (
+                        "The selected record belongs to another hospital."
+                    )
+                }
+            )
+
+        related_hospital_id = object_hospital_id
+
+    request = serializer.context.get("request")
+    user = getattr(request, "user", None)
+
+    if user and user.is_authenticated and not user.is_superuser:
+        user_hospital_id = get_user_hospital_id(user)
+
+        if user_hospital_id is None:
+            raise serializers.ValidationError(
+                "Hospital context is required."
+            )
+
+        if (
+            related_hospital_id is not None
+            and related_hospital_id != user_hospital_id
+        ):
+            raise serializers.ValidationError(
+                "The selected record belongs to another hospital."
+            )
+
+
 class JobPositionSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(
         source="department.name",
@@ -26,6 +79,10 @@ class JobPositionSerializer(serializers.ModelSerializer):
         model = JobPosition
         fields = "__all__"
         read_only_fields = ["hospital", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        validate_related_hospitals(self, attrs, "department")
+        return attrs
 
 
 class EmployeeSerializer(serializers.ModelSerializer):
@@ -47,6 +104,16 @@ class EmployeeSerializer(serializers.ModelSerializer):
         model = Employee
         fields = "__all__"
         read_only_fields = ["hospital", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        validate_related_hospitals(
+            self,
+            attrs,
+            "department",
+            "position",
+            "reports_to",
+        )
+        return attrs
 
 
 class EmploymentContractSerializer(serializers.ModelSerializer):
@@ -114,36 +181,10 @@ class EmploymentContractSerializer(serializers.ModelSerializer):
         return "ACTIVE"
 
     def validate_employee(self, employee):
-        request = self.context.get("request")
-
-        if not request or not request.user.is_authenticated:
-            return employee
-
-        user = request.user
-
-        if user.is_superuser:
-            return employee
-
-        staff_profile = getattr(user, "staff_profile", None)
-        hospital_id = getattr(
-            staff_profile,
-            "hospital_id",
-            None,
-        )
-
-        if not hospital_id:
-            raise serializers.ValidationError(
-                "Hospital context is required."
-            )
-
-        if employee.hospital_id != hospital_id:
-            raise serializers.ValidationError(
-                "The selected employee belongs to another hospital."
-            )
-
         return employee
 
     def validate(self, attrs):
+        validate_related_hospitals(self, attrs, "employee")
         start_date = attrs.get(
             "start_date",
             getattr(self.instance, "start_date", None),
@@ -212,6 +253,10 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["created_at", "updated_at"]
 
+    def validate(self, attrs):
+        validate_related_hospitals(self, attrs, "employee")
+        return attrs
+
 
 class ShiftSerializer(serializers.ModelSerializer):
     class Meta:
@@ -235,6 +280,10 @@ class ShiftAssignmentSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["created_at", "updated_at"]
 
+    def validate(self, attrs):
+        validate_related_hospitals(self, attrs, "employee", "shift")
+        return attrs
+
 
 class AttendanceSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(
@@ -252,6 +301,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at", "updated_at"]
 
     def validate(self, attrs):
+        validate_related_hospitals(self, attrs, "employee", "shift")
         clock_in = attrs.get(
             "clock_in",
             getattr(self.instance, "clock_in", None),
@@ -316,6 +366,7 @@ class LeaveBalanceSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
+        validate_related_hospitals(self, attrs, "employee", "leave_type")
         employee = attrs.get(
             "employee",
             getattr(self.instance, "employee", None),
@@ -371,6 +422,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
+        validate_related_hospitals(self, attrs, "employee", "leave_type")
         start_date = attrs.get(
             "start_date",
             getattr(self.instance, "start_date", None),
@@ -422,7 +474,16 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
                 year=year,
                 is_active=True,
             ).first()
-            if balance is not None and balance.available_days < total_days:
+            if balance is None:
+                raise serializers.ValidationError(
+                    {
+                        "leave_type": (
+                            "No active leave balance exists for this employee."
+                        )
+                    }
+                )
+
+            if balance.available_days < total_days:
                 raise serializers.ValidationError(
                     {
                         "total_days": (

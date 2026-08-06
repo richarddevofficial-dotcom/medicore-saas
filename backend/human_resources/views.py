@@ -75,7 +75,19 @@ class HospitalScopedViewSet(viewsets.ModelViewSet):
         serializer.save(hospital_id=hospital_id)
 
 
-class JobPositionViewSet(HospitalScopedViewSet):
+class HRManagerWriteViewSet(HospitalScopedViewSet):
+    """Allow HR staff to read records and HR managers to change them."""
+
+    def get_permissions(self):
+        if self.action in {"list", "retrieve"}:
+            permission_classes = [IsAuthenticated, IsHRUser]
+        else:
+            permission_classes = [IsAuthenticated, IsHRManager]
+
+        return [permission() for permission in permission_classes]
+
+
+class JobPositionViewSet(HRManagerWriteViewSet):
     queryset = JobPosition.objects.select_related(
         "hospital",
         "department",
@@ -86,7 +98,7 @@ class JobPositionViewSet(HospitalScopedViewSet):
     ordering_fields = ["title", "created_at"]
 
 
-class EmployeeViewSet(HospitalScopedViewSet):
+class EmployeeViewSet(HRManagerWriteViewSet):
     queryset = Employee.objects.select_related(
         "hospital",
         "user",
@@ -171,7 +183,7 @@ class EmployeeViewSet(HospitalScopedViewSet):
         )
 
 
-class EmploymentContractViewSet(HospitalScopedViewSet):
+class EmploymentContractViewSet(HRManagerWriteViewSet):
     queryset = EmploymentContract.objects.select_related(
         "employee",
         "employee__hospital",
@@ -270,7 +282,7 @@ class EmploymentContractViewSet(HospitalScopedViewSet):
         serializer.save()
 
 
-class EmployeeDocumentViewSet(HospitalScopedViewSet):
+class EmployeeDocumentViewSet(HRManagerWriteViewSet):
     queryset = EmployeeDocument.objects.select_related(
         "employee",
         "employee__hospital",
@@ -291,7 +303,7 @@ class EmployeeDocumentViewSet(HospitalScopedViewSet):
         serializer.save()
 
 
-class ShiftViewSet(HospitalScopedViewSet):
+class ShiftViewSet(HRManagerWriteViewSet):
     queryset = Shift.objects.select_related("hospital")
     serializer_class = ShiftSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -299,7 +311,7 @@ class ShiftViewSet(HospitalScopedViewSet):
     ordering_fields = ["start_time", "name"]
 
 
-class ShiftAssignmentViewSet(HospitalScopedViewSet):
+class ShiftAssignmentViewSet(HRManagerWriteViewSet):
     queryset = ShiftAssignment.objects.select_related(
         "employee",
         "employee__hospital",
@@ -320,7 +332,7 @@ class ShiftAssignmentViewSet(HospitalScopedViewSet):
         serializer.save()
 
 
-class AttendanceViewSet(HospitalScopedViewSet):
+class AttendanceViewSet(HRManagerWriteViewSet):
     queryset = Attendance.objects.select_related(
         "employee",
         "employee__hospital",
@@ -363,7 +375,7 @@ class AttendanceViewSet(HospitalScopedViewSet):
         return queryset
 
 
-class LeaveTypeViewSet(HospitalScopedViewSet):
+class LeaveTypeViewSet(HRManagerWriteViewSet):
     queryset = LeaveType.objects.select_related("hospital")
     serializer_class = LeaveTypeSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -373,7 +385,7 @@ class LeaveTypeViewSet(HospitalScopedViewSet):
 
 
 
-class LeaveBalanceViewSet(HospitalScopedViewSet):
+class LeaveBalanceViewSet(HRManagerWriteViewSet):
     queryset = LeaveBalance.objects.select_related(
         "employee",
         "employee__hospital",
@@ -552,6 +564,7 @@ class LeaveRequestViewSet(HospitalScopedViewSet):
     )
     serializer_class = LeaveRequestSerializer
     hospital_lookup = "employee__hospital_id"
+    http_method_names = ["get", "post", "head", "options"]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         "employee__employee_number",
@@ -560,6 +573,14 @@ class LeaveRequestViewSet(HospitalScopedViewSet):
         "reason",
     ]
     ordering_fields = ["start_date", "end_date", "created_at"]
+
+    def get_permissions(self):
+        if self.action in {"list", "retrieve", "create"}:
+            permission_classes = [IsAuthenticated, IsHRUser]
+        else:
+            permission_classes = [IsAuthenticated, IsHRManager]
+
+        return [permission() for permission in permission_classes]
 
     def get_queryset(self):
         queryset = super().get_queryset()
