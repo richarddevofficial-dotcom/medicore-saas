@@ -211,6 +211,7 @@ class PrescriptionDispenseFlowTests(TestCase):
 		self.medicine.refresh_from_db()
 		self.assertEqual(self.prescription.status, "dispensed")
 		self.assertEqual(self.prescription.quantity_dispensed, 5)
+		self.assertEqual(self.prescription.dispensed_by, self.staff_profile)
 		self.assertEqual(self.medicine.quantity, 45)
 		self.assertTrue(
 			StockMovement.objects.filter(

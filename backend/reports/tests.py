@@ -11,7 +11,13 @@ from billing.models import Bill, BillPayment, SubscriptionPayment
 from appointments.models import Appointment
 from laboratory.models import LabTest
 from human_resources.models import Attendance, Employee, Shift, ShiftAssignment
-from pharmacy.models import Prescription
+from pharmacy.models import Medicine, Prescription
+from ipd.models import (
+	Admission,
+	InpatientMedicationOrder,
+	MedicationAdministration,
+	NursingObservation,
+)
 from saas_billing.models import HospitalSubscription, SubscriptionPlan
 from reports.views import _date_range_for_period
 
@@ -208,6 +214,143 @@ class PersonalShiftReportTests(TestCase):
 		self.assertEqual(response.data["payments_recorded"], 1)
 		self.assertEqual(response.data["amount_collected"], 25.0)
 		self.assertEqual(response.data["average_payment_value"], 25.0)
+
+	def test_pharmacist_report_only_includes_own_dispensing_activity(self):
+		pharmacist_user = User.objects.create_user(
+			username="pharmacist-shift@example.com",
+			password="Password123!",
+		)
+		other_pharmacist_user = User.objects.create_user(
+			username="other-pharmacist-shift@example.com",
+			password="Password123!",
+		)
+		pharmacist = StaffProfile.objects.create(
+			user=pharmacist_user,
+			hospital=self.hospital,
+			role="pharmacist",
+			phone="555000117",
+		)
+		other_pharmacist = StaffProfile.objects.create(
+			user=other_pharmacist_user,
+			hospital=self.hospital,
+			role="pharmacist",
+			phone="555000118",
+		)
+		own_prescription = Prescription.objects.create(
+			hospital=self.hospital,
+			medicine_name="Own Medicine",
+			quantity_prescribed=1,
+			quantity_dispensed=1,
+			status="dispensed",
+			dispensed_by=pharmacist,
+			dispensed_at=timezone.now(),
+		)
+		Prescription.objects.create(
+			hospital=self.hospital,
+			medicine_name="Other Medicine",
+			quantity_prescribed=2,
+			quantity_dispensed=1,
+			status="partial",
+			dispensed_by=other_pharmacist,
+			dispensed_at=timezone.now(),
+		)
+		self.client.force_authenticate(pharmacist_user)
+
+		response = self.client.get("/api/v1/reports/my-shift/")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["prescriptions_dispensed"], 1)
+		self.assertEqual(response.data["fully_dispensed"], 1)
+		self.assertEqual(response.data["partially_dispensed"], 0)
+		self.assertEqual(own_prescription.dispensed_by, pharmacist)
+
+	def test_nurse_report_only_includes_own_clinical_activity(self):
+		nurse_user = User.objects.create_user(
+			username="nurse-shift@example.com",
+			password="Password123!",
+		)
+		other_nurse_user = User.objects.create_user(
+			username="other-nurse-shift@example.com",
+			password="Password123!",
+		)
+		nurse = StaffProfile.objects.create(
+			user=nurse_user,
+			hospital=self.hospital,
+			role="nurse",
+			phone="555000119",
+		)
+		other_nurse = StaffProfile.objects.create(
+			user=other_nurse_user,
+			hospital=self.hospital,
+			role="nurse",
+			phone="555000120",
+		)
+		patient = Patient.objects.create(
+			hospital=self.hospital,
+			first_name="Inpatient",
+			last_name="Report",
+			date_of_birth="1990-01-01",
+			gender="F",
+			phone="555000121",
+		)
+		admission = Admission.objects.create(
+			hospital=self.hospital,
+			patient=patient,
+			status=Admission.STATUS_ADMITTED,
+			provisional_diagnosis="Observation",
+			reason_for_admission="Clinical monitoring",
+		)
+		medicine = Medicine.objects.create(
+			hospital=self.hospital,
+			name="Nurse Report Medicine",
+			quantity=10,
+			selling_price="10.00",
+			reorder_level=1,
+		)
+		order = InpatientMedicationOrder.objects.create(
+			admission=admission,
+			medicine=medicine,
+			dosage="1 tablet",
+			frequency="daily",
+		)
+		NursingObservation.objects.create(
+			admission=admission,
+			recorded_by=nurse,
+			observed_at=timezone.now(),
+		)
+		NursingObservation.objects.create(
+			admission=admission,
+			recorded_by=other_nurse,
+			observed_at=timezone.now(),
+		)
+		MedicationAdministration.objects.create(
+			medication_order=order,
+			administered_by=nurse,
+			administered_at=timezone.now(),
+			dosage_given="1 tablet",
+		)
+		MedicationAdministration.objects.create(
+			medication_order=order,
+			administered_by=nurse,
+			administered_at=timezone.now(),
+			dosage_given="1 tablet",
+			was_refused=True,
+			refusal_reason="Patient declined",
+		)
+		MedicationAdministration.objects.create(
+			medication_order=order,
+			administered_by=other_nurse,
+			administered_at=timezone.now(),
+			dosage_given="1 tablet",
+		)
+		self.client.force_authenticate(nurse_user)
+
+		response = self.client.get("/api/v1/reports/my-shift/")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["observations_recorded"], 1)
+		self.assertEqual(response.data["medications_administered"], 1)
+		self.assertEqual(response.data["medications_refused"], 1)
 
 
 class ReportsPlanAccessTests(TestCase):

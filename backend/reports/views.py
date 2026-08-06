@@ -14,6 +14,7 @@ from config.role_permissions import IsHospitalAdmin
 from appointments.models import Appointment
 from laboratory.models import LabTest
 from human_resources.models import Attendance, Employee, ShiftAssignment
+from ipd.models import MedicationAdministration, NursingObservation
 from django.utils import timezone
 from django.db.models import Count, Sum, Q
 from datetime import timedelta, datetime
@@ -194,6 +195,40 @@ def _personal_role_metrics(profile, user, report_date):
             'lab_revenue_processed': float(
                 tests.aggregate(total=Sum('price'))['total'] or 0,
             ),
+        }
+
+    if profile.role == 'pharmacist':
+        prescriptions = Prescription.objects.filter(
+            hospital=profile.hospital,
+            dispensed_by=profile,
+            dispensed_at__gte=start_of_day,
+            dispensed_at__lt=end_of_day,
+        )
+        return {
+            'prescriptions_dispensed': prescriptions.count(),
+            'fully_dispensed': prescriptions.filter(status='dispensed').count(),
+            'partially_dispensed': prescriptions.filter(status='partial').count(),
+        }
+
+    if profile.role == 'nurse':
+        observations = NursingObservation.objects.filter(
+            recorded_by=profile,
+            observed_at__gte=start_of_day,
+            observed_at__lt=end_of_day,
+        )
+        administrations = MedicationAdministration.objects.filter(
+            administered_by=profile,
+            administered_at__gte=start_of_day,
+            administered_at__lt=end_of_day,
+        )
+        return {
+            'observations_recorded': observations.count(),
+            'medications_administered': administrations.filter(
+                was_refused=False,
+            ).count(),
+            'medications_refused': administrations.filter(
+                was_refused=True,
+            ).count(),
         }
 
     return {'actions_recorded': 0}

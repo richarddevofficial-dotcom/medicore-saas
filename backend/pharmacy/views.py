@@ -446,7 +446,15 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             prescription.quantity_dispensed += dispense_quantity
             prescription.status = 'dispensed' if prescription.quantity_dispensed >= prescription.quantity_prescribed else 'partial'
             prescription.dispensed_at = timezone.now()
-            prescription.save(update_fields=['quantity_dispensed', 'status', 'dispensed_at'])
+            prescription.dispensed_by = getattr(user, 'staff_profile', None)
+            prescription.save(
+                update_fields=[
+                    'quantity_dispensed',
+                    'status',
+                    'dispensed_at',
+                    'dispensed_by',
+                ]
+            )
         
         return Response(PrescriptionSerializer(prescription).data)
     
