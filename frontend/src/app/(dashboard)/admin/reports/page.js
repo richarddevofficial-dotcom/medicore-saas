@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -12,21 +11,27 @@ import toast from "react-hot-toast";
 import apiClient from "@/lib/api-client";
 
 export default function ReportsPage() {
-  const router = useRouter();
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState("daily");
   const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState("");
   const { data: hospitalSettings } = useHospitalSettings();
   const hospitalName = hospitalSettings?.name || "Medical Centre";
 
   const fetchReport = async (p) => {
     setGenerating(true);
+    setError("");
     try {
       const { data } = await apiClient.get(`/reports/detailed/?period=${p}`);
       setData(data);
     } catch (err) {
-      toast.error("Failed to generate report");
+      const message =
+        err?.response?.data?.detail ||
+        err?.response?.data?.error ||
+        "Unable to load this report. Please try again.";
+      setData(null);
+      setError(message);
+      toast.error(message);
     } finally {
       setGenerating(false);
     }
@@ -139,10 +144,26 @@ export default function ReportsPage() {
           ))}
         </div>
 
-        {generating || !data ? (
+        {generating ? (
           <Card>
             <div className="flex justify-center py-20">
               <Spinner size="lg" />
+            </div>
+          </Card>
+        ) : error ? (
+          <Card>
+            <div className="flex flex-col items-center gap-4 py-16 text-center">
+              <p className="max-w-md text-sm text-gray-600">{error}</p>
+              <Button onClick={() => fetchReport(period)}>Try again</Button>
+            </div>
+          </Card>
+        ) : !data ? (
+          <Card>
+            <div className="flex flex-col items-center gap-4 py-16 text-center">
+              <p className="text-sm text-gray-600">
+                No report data is available.
+              </p>
+              <Button onClick={() => fetchReport(period)}>Load report</Button>
             </div>
           </Card>
         ) : (
