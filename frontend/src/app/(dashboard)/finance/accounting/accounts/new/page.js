@@ -1,32 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { createAccount } from "@/lib/api/finance";
+import { createAccount, getAccountCategories } from "@/lib/api/finance";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
-
-const ACCOUNT_TYPES = [
-  { value: "ASSET", label: "Asset" },
-  { value: "LIABILITY", label: "Liability" },
-  { value: "EQUITY", label: "Equity" },
-  { value: "REVENUE", label: "Revenue" },
-  { value: "EXPENSE", label: "Expense" },
-];
 
 export default function NewAccountPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
-    account_number: "",
+    code: "",
     name: "",
-    account_type: "ASSET",
     category: "",
     description: "",
     is_active: true,
   });
+  const [categories, setCategories] = useState([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  useEffect(() => {
+    async function loadCategories() {
+      try {
+        const data = await getAccountCategories({ is_active: true });
+        setCategories(Array.isArray(data) ? data : data.results || []);
+      } catch (err) {
+        toast.error("Failed to load account categories");
+      } finally {
+        setLoadingCategories(false);
+      }
+    }
+
+    loadCategories();
+  }, []);
 
   function handleChange(e) {
     const { name, value, type, checked } = e.target;
@@ -48,11 +56,9 @@ export default function NewAccountPage() {
 
     // Validation
     const newErrors = {};
-    if (!formData.account_number.trim())
-      newErrors.account_number = "Account number is required";
+    if (!formData.code.trim()) newErrors.code = "Account code is required";
     if (!formData.name.trim()) newErrors.name = "Account name is required";
-    if (!formData.account_type)
-      newErrors.account_type = "Account type is required";
+    if (!formData.category) newErrors.category = "Category is required";
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -90,26 +96,24 @@ export default function NewAccountPage() {
           {/* Account Number */}
           <div>
             <label
-              htmlFor="account_number"
+              htmlFor="code"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
               Account Number *
             </label>
             <input
               type="text"
-              id="account_number"
-              name="account_number"
-              value={formData.account_number}
+              id="code"
+              name="code"
+              value={formData.code}
               onChange={handleChange}
               placeholder="e.g., 1001"
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.account_number ? "border-red-500" : "border-gray-300"
+                errors.code ? "border-red-500" : "border-gray-300"
               }`}
             />
-            {errors.account_number && (
-              <p className="text-red-600 text-sm mt-1">
-                {errors.account_number}
-              </p>
+            {errors.code && (
+              <p className="text-red-600 text-sm mt-1">{errors.code}</p>
             )}
           </div>
 
@@ -137,51 +141,34 @@ export default function NewAccountPage() {
             )}
           </div>
 
-          {/* Account Type */}
-          <div>
-            <label
-              htmlFor="account_type"
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
-              Account Type *
-            </label>
-            <select
-              id="account_type"
-              name="account_type"
-              value={formData.account_type}
-              onChange={handleChange}
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.account_type ? "border-red-500" : "border-gray-300"
-              }`}
-            >
-              {ACCOUNT_TYPES.map((type) => (
-                <option key={type.value} value={type.value}>
-                  {type.label}
-                </option>
-              ))}
-            </select>
-            {errors.account_type && (
-              <p className="text-red-600 text-sm mt-1">{errors.account_type}</p>
-            )}
-          </div>
-
           {/* Category */}
           <div>
             <label
               htmlFor="category"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
-              Category
+              Category *
             </label>
-            <input
-              type="text"
+            <select
               id="category"
               name="category"
               value={formData.category}
               onChange={handleChange}
-              placeholder="e.g., Current Asset, Operating Expense"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+              disabled={loadingCategories}
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                errors.category ? "border-red-500" : "border-gray-300"
+              }`}
+            >
+              <option value="">Select a category</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.code} - {category.name}
+                </option>
+              ))}
+            </select>
+            {errors.category && (
+              <p className="text-red-600 text-sm mt-1">{errors.category}</p>
+            )}
           </div>
 
           {/* Description */}

@@ -22,7 +22,6 @@ export default function AccountDetailPage() {
     name: "",
     code: "",
     description: "",
-    normal_balance: "",
     is_active: true,
   });
 
@@ -41,7 +40,6 @@ export default function AccountDetailPage() {
         name: data.name || "",
         code: data.code || "",
         description: data.description || "",
-        normal_balance: data.normal_balance || "debit",
         is_active: data.is_active !== false,
       });
     } catch (err) {
@@ -158,7 +156,7 @@ export default function AccountDetailPage() {
               <div className="rounded-lg bg-gray-50 p-4">
                 <p className="text-sm text-gray-600">Current Balance</p>
                 <p className="text-lg font-semibold text-gray-900 mt-1">
-                  ₹{(account.current_balance || 0).toLocaleString()}
+                  SSP {Number(account.current_balance || 0).toLocaleString()}
                 </p>
               </div>
             </div>
@@ -175,7 +173,9 @@ export default function AccountDetailPage() {
             {account.category && (
               <div className="rounded-lg bg-gray-50 p-4">
                 <p className="text-sm text-gray-600">Category</p>
-                <p className="text-gray-900 mt-1">{account.category?.name}</p>
+                <p className="text-gray-900 mt-1">
+                  {account.category_details?.name || "Not assigned"}
+                </p>
               </div>
             )}
           </div>
@@ -214,25 +214,6 @@ export default function AccountDetailPage() {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-            </div>
-
-            <div>
-              <label
-                htmlFor="normal_balance"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                Normal Balance
-              </label>
-              <select
-                id="normal_balance"
-                name="normal_balance"
-                value={formData.normal_balance}
-                onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="debit">Debit</option>
-                <option value="credit">Credit</option>
-              </select>
             </div>
 
             <div>

@@ -143,10 +143,9 @@ export default function JournalEntryDetailPage() {
   }
 
   const totalDebit =
-    entry.journal_lines?.reduce((sum, line) => sum + (line.debit || 0), 0) || 0;
+    entry.lines?.reduce((sum, line) => sum + Number(line.debit || 0), 0) || 0;
   const totalCredit =
-    entry.journal_lines?.reduce((sum, line) => sum + (line.credit || 0), 0) ||
-    0;
+    entry.lines?.reduce((sum, line) => sum + Number(line.credit || 0), 0) || 0;
 
   return (
     <div className="space-y-6">
@@ -163,15 +162,15 @@ export default function JournalEntryDetailPage() {
         <div className="flex items-start justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
-              {entry.reference_number}
+              {entry.reference || entry.journal_number}
             </h1>
             <p className="mt-2 text-gray-600">{entry.description}</p>
           </div>
           <span
             className={`inline-block px-3 py-1 rounded-lg text-sm font-medium ${
-              entry.status === "POSTED"
+              entry.status === "posted"
                 ? "bg-green-100 text-green-700"
-                : entry.status === "VOIDED"
+                : entry.status === "void"
                   ? "bg-red-100 text-red-700"
                   : "bg-yellow-100 text-yellow-700"
             }`}
@@ -196,8 +195,8 @@ export default function JournalEntryDetailPage() {
           <div>
             <p className="text-sm text-gray-600">Posted</p>
             <p className="text-lg font-semibold text-gray-900">
-              {entry.posted_date
-                ? new Date(entry.posted_date).toLocaleDateString()
+              {entry.posted_at
+                ? new Date(entry.posted_at).toLocaleDateString()
                 : "—"}
             </p>
           </div>
@@ -223,13 +222,13 @@ export default function JournalEntryDetailPage() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {entry.journal_lines?.map((line) => (
+              {entry.lines?.map((line) => (
                 <tr key={line.id}>
                   <td className="px-6 py-4 text-sm text-gray-900">
                     <div>
                       <p className="font-medium">{line.account_name}</p>
                       <p className="text-xs text-gray-600">
-                        {line.account_number}
+                        {line.account_details?.code}
                       </p>
                     </div>
                   </td>
@@ -270,13 +269,8 @@ export default function JournalEntryDetailPage() {
 
         {/* Actions */}
         <div className="flex gap-3 mt-6">
-          {entry.status === "DRAFT" && (
+          {entry.status === "draft" && (
             <>
-              <Link href={`/finance/accounting/journals/${entry.id}/edit`}>
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-                  Edit Entry
-                </button>
-              </Link>
               <button
                 onClick={handlePost}
                 disabled={updating}
@@ -287,7 +281,7 @@ export default function JournalEntryDetailPage() {
               </button>
             </>
           )}
-          {entry.status === "POSTED" && (
+          {entry.status === "posted" && (
             <>
               <button
                 onClick={handleReverse}

@@ -13,7 +13,7 @@ export default function NewJournalEntryPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    reference_number: "",
+    reference: "",
     description: "",
     entry_date: new Date().toISOString().split("T")[0],
     lines: [{ account: "", debit: 0, credit: 0, description: "" }],
@@ -85,8 +85,8 @@ export default function NewJournalEntryPage() {
 
     // Validation
     const newErrors = {};
-    if (!formData.reference_number.trim())
-      newErrors.reference_number = "Reference number is required";
+    if (!formData.reference.trim())
+      newErrors.reference = "Reference number is required";
     if (!formData.description.trim())
       newErrors.description = "Description is required";
     if (formData.lines.length < 2)
@@ -102,10 +102,10 @@ export default function NewJournalEntryPage() {
     try {
       setSubmitting(true);
       await createJournalEntry({
-        reference_number: formData.reference_number,
+        reference: formData.reference,
         description: formData.description,
         entry_date: formData.entry_date,
-        journal_lines: formData.lines.map((line) => ({
+        lines: formData.lines.map((line) => ({
           account: line.account,
           debit: parseFloat(line.debit) || 0,
           credit: parseFloat(line.credit) || 0,
@@ -152,26 +152,24 @@ export default function NewJournalEntryPage() {
             {/* Reference Number */}
             <div>
               <label
-                htmlFor="reference_number"
+                htmlFor="reference"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
                 Reference Number *
               </label>
               <input
                 type="text"
-                id="reference_number"
-                name="reference_number"
-                value={formData.reference_number}
+                id="reference"
+                name="reference"
+                value={formData.reference}
                 onChange={handleChange}
                 placeholder="e.g., JE-2024-001"
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.reference_number ? "border-red-500" : "border-gray-300"
+                  errors.reference ? "border-red-500" : "border-gray-300"
                 }`}
               />
-              {errors.reference_number && (
-                <p className="text-red-600 text-sm mt-1">
-                  {errors.reference_number}
-                </p>
+              {errors.reference && (
+                <p className="text-red-600 text-sm mt-1">{errors.reference}</p>
               )}
             </div>
 
@@ -265,7 +263,7 @@ export default function NewJournalEntryPage() {
                           <option value="">Select Account</option>
                           {accounts.map((acc) => (
                             <option key={acc.id} value={acc.id}>
-                              {acc.account_number} - {acc.name}
+                              {acc.code} - {acc.name}
                             </option>
                           ))}
                         </select>

@@ -214,7 +214,7 @@ export default function ChartOfAccountsPage() {
               {filteredAccounts.map((account) => (
                 <tr key={account.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm font-mono text-gray-900">
-                    {account.account_number}
+                    {account.code}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900">
                     {account.name}
@@ -225,11 +225,11 @@ export default function ChartOfAccountsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
-                    {account.category || "—"}
+                    {account.category_details?.name || "—"}
                   </td>
                   <td className="px-6 py-4 text-sm font-semibold text-gray-900">
-                    {account.balance
-                      ? `SSP ${account.balance.toLocaleString()}`
+                    {account.current_balance
+                      ? `SSP ${Number(account.current_balance).toLocaleString()}`
                       : "SSP 0"}
                   </td>
                   <td className="px-6 py-4 text-sm">

@@ -24,6 +24,17 @@ def get_user_hospital_id(user):
     return None
 
 
+def get_user_role_name(user):
+    if not user or not user.is_authenticated:
+        return ""
+
+    staff_profile = getattr(user, "staff_profile", None)
+    if staff_profile and staff_profile.role:
+        return str(staff_profile.role).strip().upper()
+
+    return str(getattr(user, "role", "") or "").strip().upper()
+
+
 class IsHRUser(BasePermission):
     message = "You do not have permission to access Human Resources."
 
@@ -45,7 +56,7 @@ class IsHRUser(BasePermission):
         if user.is_superuser:
             return True
 
-        role = str(getattr(user, "role", "") or "").upper()
+        role = get_user_role_name(user)
         return role in self.allowed_roles
 
 
@@ -68,5 +79,5 @@ class IsHRManager(BasePermission):
         if user.is_superuser:
             return True
 
-        role = str(getattr(user, "role", "") or "").upper()
+        role = get_user_role_name(user)
         return role in self.allowed_roles

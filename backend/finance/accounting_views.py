@@ -55,6 +55,15 @@ MONEY_FIELD = DecimalField(
 )
 
 
+def opening_debit_credit(account):
+    opening_balance = account.opening_balance or ZERO
+
+    if account.category.normal_balance == "credit":
+        return ZERO, opening_balance
+
+    return opening_balance, ZERO
+
+
 def validate_requested_hospital(request, hospital):
     """
     Prevent users from submitting records for another hospital.
@@ -866,14 +875,12 @@ class TrialBalanceView(AccountingReportBaseView):
                 journal_entry__entry_date__lte=end_date
             )
 
-        rows = (
+        line_totals = {
+            row["account_id"]: row
+            for row in (
             lines
             .values(
                 "account_id",
-                "account__code",
-                "account__name",
-                "account__category__account_type",
-                "account__category__normal_balance",
             )
             .annotate(
                 total_debit=Coalesce(
@@ -887,16 +894,21 @@ class TrialBalanceView(AccountingReportBaseView):
                     output_field=MONEY_FIELD,
                 ),
             )
-            .order_by("account__code")
-        )
+            )
+        }
+        accounts = ChartOfAccount.objects.filter(
+            hospital=hospital,
+        ).select_related("category").order_by("code")
 
         results = []
         grand_debit = ZERO
         grand_credit = ZERO
 
-        for row in rows:
-            debit = row["total_debit"] or ZERO
-            credit = row["total_credit"] or ZERO
+        for account in accounts:
+            totals = line_totals.get(account.id, {})
+            opening_debit, opening_credit = opening_debit_credit(account)
+            debit = (totals.get("total_debit") or ZERO) + opening_debit
+            credit = (totals.get("total_credit") or ZERO) + opening_credit
             balance = debit - credit
 
             grand_debit += debit
@@ -904,7 +916,17 @@ class TrialBalanceView(AccountingReportBaseView):
 
             results.append(
                 {
-                    **row,
+                    "account_id": account.id,
+                    "account__code": account.code,
+                    "account__name": account.name,
+                    "account__category__account_type": (
+                        account.category.account_type
+                    ),
+                    "account__category__normal_balance": (
+                        account.category.normal_balance
+                    ),
+                    "total_debit": debit,
+                    "total_credit": credit,
                     "balance": balance,
                 }
             )
@@ -1002,8 +1024,12 @@ class GeneralLedgerView(AccountingReportBaseView):
             ),
         )
 
+        opening_debit, opening_credit = opening_debit_credit(account)
         running_balance = (
-            opening["debit"] - opening["credit"]
+            opening_debit
+            - opening_credit
+            + opening["debit"]
+            - opening["credit"]
         )
 
         entries = []
@@ -1057,7 +1083,9 @@ class GeneralLedgerView(AccountingReportBaseView):
                 "start_date": start_date,
                 "end_date": end_date,
                 "opening_balance": (
-                    opening["debit"]
+                    opening_debit
+                    - opening_credit
+                    + opening["debit"]
                     - opening["credit"]
                 ),
                 "entries": entries,
@@ -1188,7 +1216,9 @@ class BalanceSheetView(AccountingReportBaseView):
             journal_entry__entry_date__lte=end_date
         )
 
-        rows = (
+        line_totals = {
+            row["account_id"]: row
+            for row in (
             lines
             .filter(
                 account__category__account_type__in=[
@@ -1199,9 +1229,6 @@ class BalanceSheetView(AccountingReportBaseView):
             )
             .values(
                 "account_id",
-                "account__code",
-                "account__name",
-                "account__category__account_type",
             )
             .annotate(
                 debit=Coalesce(
@@ -1215,8 +1242,16 @@ class BalanceSheetView(AccountingReportBaseView):
                     output_field=MONEY_FIELD,
                 ),
             )
-            .order_by("account__code")
-        )
+            )
+        }
+        accounts = ChartOfAccount.objects.filter(
+            hospital=hospital,
+            category__account_type__in=[
+                "asset",
+                "liability",
+                "equity",
+            ],
+        ).select_related("category").order_by("code")
 
         assets = []
         liabilities = []
@@ -1226,15 +1261,21 @@ class BalanceSheetView(AccountingReportBaseView):
         total_liabilities = ZERO
         total_equity = ZERO
 
-        for row in rows:
-            account_type = str(
-                row[
-                    "account__category__account_type"
-                ]
-            ).lower()
+        for account in accounts:
+            totals = line_totals.get(account.id, {})
+            opening_debit, opening_credit = opening_debit_credit(account)
+            debit = (totals.get("debit") or ZERO) + opening_debit
+            credit = (totals.get("credit") or ZERO) + opening_credit
+            account_type = account.category.account_type
 
-            debit = row["debit"] or ZERO
-            credit = row["credit"] or ZERO
+            row = {
+                "account_id": account.id,
+                "account__code": account.code,
+                "account__name": account.name,
+                "account__category__account_type": account_type,
+                "debit": debit,
+                "credit": credit,
+            }
 
             if account_type == "asset":
                 amount = debit - credit

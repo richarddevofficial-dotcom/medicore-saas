@@ -494,10 +494,9 @@ export async function getAccountCategories(params = {}) {
 
 export async function getChartOfAccounts(params = {}) {
   try {
-    const response = await apiClient.get(
-      "/finance/accounting/chart-of-accounts/",
-      { params },
-    );
+    const response = await apiClient.get("/finance/accounting/accounts/", {
+      params,
+    });
     return response.data;
   } catch (error) {
     throw new Error(
@@ -508,9 +507,7 @@ export async function getChartOfAccounts(params = {}) {
 
 export async function getAccount(id) {
   try {
-    const response = await apiClient.get(
-      `/finance/accounting/chart-of-accounts/${id}/`,
-    );
+    const response = await apiClient.get(`/finance/accounting/accounts/${id}/`);
     return response.data;
   } catch (error) {
     throw new Error(error.response?.data?.detail || "Failed to load account");
@@ -520,7 +517,7 @@ export async function getAccount(id) {
 export async function createAccount(data) {
   try {
     const response = await apiClient.post(
-      "/finance/accounting/chart-of-accounts/",
+      "/finance/accounting/accounts/",
       data,
     );
     return response.data;
@@ -532,7 +529,7 @@ export async function createAccount(data) {
 export async function updateAccount(id, data) {
   try {
     const response = await apiClient.put(
-      `/finance/accounting/chart-of-accounts/${id}/`,
+      `/finance/accounting/accounts/${id}/`,
       data,
     );
     return response.data;
@@ -544,7 +541,7 @@ export async function updateAccount(id, data) {
 export async function deleteAccount(id) {
   try {
     const response = await apiClient.delete(
-      `/finance/accounting/chart-of-accounts/${id}/`,
+      `/finance/accounting/accounts/${id}/`,
     );
     return response.data;
   } catch (error) {
@@ -555,7 +552,7 @@ export async function deleteAccount(id) {
 export async function activateAccount(id) {
   try {
     const response = await apiClient.post(
-      `/finance/accounting/chart-of-accounts/${id}/activate/`,
+      `/finance/accounting/accounts/${id}/activate/`,
     );
     return response.data;
   } catch (error) {
@@ -568,7 +565,7 @@ export async function activateAccount(id) {
 export async function deactivateAccount(id) {
   try {
     const response = await apiClient.post(
-      `/finance/accounting/chart-of-accounts/${id}/deactivate/`,
+      `/finance/accounting/accounts/${id}/deactivate/`,
     );
     return response.data;
   } catch (error) {
@@ -617,37 +614,11 @@ export async function createJournalEntry(data) {
   }
 }
 
-export async function updateJournalEntry(id, data) {
-  try {
-    const response = await apiClient.put(
-      `/finance/accounting/journals/${id}/`,
-      data,
-    );
-    return response.data;
-  } catch (error) {
-    throw new Error(
-      error.response?.data?.detail || "Failed to update journal entry",
-    );
-  }
-}
-
-export async function deleteJournalEntry(id) {
-  try {
-    const response = await apiClient.delete(
-      `/finance/accounting/journals/${id}/`,
-    );
-    return response.data;
-  } catch (error) {
-    throw new Error(
-      error.response?.data?.detail || "Failed to delete journal entry",
-    );
-  }
-}
-
 export async function postJournalEntry(id) {
   try {
     const response = await apiClient.post(
-      `/finance/accounting/journals/${id}/post_journal/`,
+      `/finance/accounting/journals/${id}/post/`,
+      { confirmation: true },
     );
     return response.data;
   } catch (error) {
@@ -660,7 +631,7 @@ export async function postJournalEntry(id) {
 export async function voidJournalEntry(id, data) {
   try {
     const response = await apiClient.post(
-      `/finance/accounting/journals/${id}/void_journal/`,
+      `/finance/accounting/journals/${id}/void/`,
       data,
     );
     return response.data;
@@ -674,7 +645,7 @@ export async function voidJournalEntry(id, data) {
 export async function reverseJournalEntry(id) {
   try {
     const response = await apiClient.post(
-      `/finance/accounting/journals/${id}/reverse_journal/`,
+      `/finance/accounting/journals/${id}/reverse/`,
     );
     return response.data;
   } catch (error) {

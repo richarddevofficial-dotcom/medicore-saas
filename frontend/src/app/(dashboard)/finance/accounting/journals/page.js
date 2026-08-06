@@ -2,12 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, Plus, Trash2, Edit, Eye } from "lucide-react";
-import {
-  getJournalEntries,
-  deleteJournalEntry,
-  postJournalEntry,
-} from "@/lib/api/finance";
+import { AlertCircle, ArrowLeft, Plus, Eye, Check } from "lucide-react";
+import { getJournalEntries, postJournalEntry } from "@/lib/api/finance";
 import toast from "react-hot-toast";
 
 export default function JournalEntriesPage() {
@@ -37,29 +33,12 @@ export default function JournalEntriesPage() {
     }
   }
 
-  async function handleDelete(id) {
-    if (!confirm("Are you sure you want to delete this journal entry?")) return;
-
-    try {
-      setUpdating(id);
-      await deleteJournalEntry(id);
-      setEntries((prev) => prev.filter((e) => e.id !== id));
-      toast.success("Journal entry deleted successfully");
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to delete journal entry",
-      );
-    } finally {
-      setUpdating(null);
-    }
-  }
-
   async function handlePost(id) {
     try {
       setUpdating(id);
       await postJournalEntry(id);
       setEntries((prev) =>
-        prev.map((e) => (e.id === id ? { ...e, status: "POSTED" } : e)),
+        prev.map((e) => (e.id === id ? { ...e, status: "posted" } : e)),
       );
       toast.success("Journal entry posted successfully");
     } catch (err) {
@@ -74,9 +53,7 @@ export default function JournalEntriesPage() {
   const filteredEntries =
     filterStatus === "all"
       ? entries
-      : entries.filter(
-          (e) => e.status?.toUpperCase() === filterStatus.toUpperCase(),
-        );
+      : entries.filter((e) => e.status === filterStatus);
 
   if (loading) {
     return (
@@ -133,24 +110,24 @@ export default function JournalEntriesPage() {
           All ({entries.length})
         </button>
         <button
-          onClick={() => setFilterStatus("DRAFT")}
+          onClick={() => setFilterStatus("draft")}
           className={`px-4 py-2 font-medium transition-colors ${
-            filterStatus === "DRAFT"
+            filterStatus === "draft"
               ? "border-b-2 border-blue-600 text-blue-600"
               : "text-gray-600 hover:text-gray-900"
           }`}
         >
-          Draft ({entries.filter((e) => e.status === "DRAFT").length})
+          Draft ({entries.filter((e) => e.status === "draft").length})
         </button>
         <button
-          onClick={() => setFilterStatus("POSTED")}
+          onClick={() => setFilterStatus("posted")}
           className={`px-4 py-2 font-medium transition-colors ${
-            filterStatus === "POSTED"
+            filterStatus === "posted"
               ? "border-b-2 border-blue-600 text-blue-600"
               : "text-gray-600 hover:text-gray-900"
           }`}
         >
-          Posted ({entries.filter((e) => e.status === "POSTED").length})
+          Posted ({entries.filter((e) => e.status === "posted").length})
         </button>
       </div>
 
@@ -195,7 +172,7 @@ export default function JournalEntriesPage() {
               {filteredEntries.map((entry) => (
                 <tr key={entry.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm font-mono text-gray-900">
-                    {entry.reference_number}
+                    {entry.reference || entry.journal_number}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900">
                     {entry.description}
@@ -212,7 +189,7 @@ export default function JournalEntriesPage() {
                   <td className="px-6 py-4 text-sm">
                     <span
                       className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                        entry.status === "POSTED"
+                        entry.status === "posted"
                           ? "bg-green-100 text-green-700"
                           : "bg-yellow-100 text-yellow-700"
                       }`}
@@ -230,18 +207,8 @@ export default function JournalEntriesPage() {
                           <Eye size={18} />
                         </button>
                       </Link>
-                      {entry.status === "DRAFT" && (
+                      {entry.status === "draft" && (
                         <>
-                          <Link
-                            href={`/finance/accounting/journals/${entry.id}/edit`}
-                          >
-                            <button
-                              disabled={updating === entry.id}
-                              className="p-1.5 text-gray-600 hover:text-blue-600 disabled:opacity-50"
-                            >
-                              <Edit size={18} />
-                            </button>
-                          </Link>
                           <button
                             onClick={() => handlePost(entry.id)}
                             disabled={updating === entry.id}
@@ -252,15 +219,6 @@ export default function JournalEntriesPage() {
                           </button>
                         </>
                       )}
-                      <button
-                        onClick={() => handleDelete(entry.id)}
-                        disabled={
-                          updating === entry.id || entry.status === "POSTED"
-                        }
-                        className="p-1.5 text-gray-600 hover:text-red-600 disabled:opacity-50"
-                      >
-                        <Trash2 size={18} />
-                      </button>
                     </div>
                   </td>
                 </tr>
@@ -272,6 +230,3 @@ export default function JournalEntriesPage() {
     </div>
   );
 }
-
-// Import Check icon
-import { Check } from "lucide-react";

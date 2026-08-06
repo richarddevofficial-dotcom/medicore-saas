@@ -6,6 +6,9 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from rest_framework import serializers
 
+from hospitals.models import Hospital
+from human_resources.permissions import get_user_hospital_id
+
 from .models import (
     AccountCategory,
     ChartOfAccount,
@@ -15,6 +18,10 @@ from .models import (
 from .services import (
     JournalLineData,
     create_journal_entry,
+)
+from .accounting_permissions import (
+    FINANCE_MANAGER_ROLE_NAMES,
+    get_user_role_name,
 )
 
 
@@ -495,6 +502,9 @@ class JournalEntryCreateSerializer(
             "post_immediately",
         )
         read_only_fields = ("id",)
+        extra_kwargs = {
+            "hospital": {"required": False},
+        }
 
     def validate_description(self, value):
         value = value.strip()
@@ -509,6 +519,48 @@ class JournalEntryCreateSerializer(
     def validate(self, attrs):
         hospital = attrs.get("hospital")
         lines = attrs.get("lines", [])
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        if not hospital and user and user.is_authenticated and not user.is_superuser:
+            hospital_id = get_user_hospital_id(user)
+
+            if hospital_id is None:
+                raise serializers.ValidationError(
+                    {
+                        "hospital": (
+                            "Your account is not assigned to a hospital."
+                        )
+                    }
+                )
+
+            hospital = Hospital.objects.get(pk=hospital_id)
+            attrs["hospital"] = hospital
+
+        if not hospital:
+            raise serializers.ValidationError(
+                {"hospital": "Select a hospital for this journal entry."}
+            )
+
+        if attrs.get("post_immediately"):
+            if (
+                not user
+                or not user.is_authenticated
+                or (
+                    not user.is_superuser
+                    and get_user_role_name(user)
+                    not in FINANCE_MANAGER_ROLE_NAMES
+                )
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "post_immediately": (
+                            "Only a finance manager, accountant, "
+                            "administrator, or superuser may post "
+                            "a journal immediately."
+                        )
+                    }
+                )
 
         if len(lines) < 2:
             raise serializers.ValidationError(

@@ -140,7 +140,11 @@ class SalarySlipViewSet(HospitalScopedViewSet):
         
         return queryset
     
-    @action(detail=False, methods=['post'])
+    @action(
+        detail=False,
+        methods=['post'],
+        permission_classes=[IsAuthenticated, IsHRManager],
+    )
     def generate_bulk(self, request):
         """Generate salary slips for all employees in a month"""
         month = request.data.get('month')  # Format: YYYY-MM-01
@@ -244,7 +248,11 @@ class SalarySlipViewSet(HospitalScopedViewSet):
             'month': month
         })
     
-    @action(detail=True, methods=['post'])
+    @action(
+        detail=True,
+        methods=['post'],
+        permission_classes=[IsAuthenticated, IsHRManager],
+    )
     def approve(self, request, pk=None):
         """Approve salary slip"""
         salary_slip = self.get_object()
@@ -260,7 +268,11 @@ class SalarySlipViewSet(HospitalScopedViewSet):
         
         return Response(SalarySlipDetailSerializer(salary_slip).data)
     
-    @action(detail=True, methods=['post'])
+    @action(
+        detail=True,
+        methods=['post'],
+        permission_classes=[IsAuthenticated, IsHRManager],
+    )
     def reject(self, request, pk=None):
         """Reject salary slip"""
         salary_slip = self.get_object()
