@@ -129,3 +129,16 @@ class AccountingPermissionsTests(TestCase):
 		)
 
 		self.assertEqual(response.status_code, 403)
+
+	def test_accountant_can_load_shared_dashboard_metrics(self):
+		self.client.force_authenticate(user=self.accountant)
+
+		for endpoint in (
+			"/api/v1/patients/stats/",
+			"/api/v1/bills/stats/",
+			"/api/v1/staff/stats/",
+			"/api/v1/reports/dashboard-charts/",
+		):
+			with self.subTest(endpoint=endpoint):
+				response = self.client.get(endpoint)
+				self.assertEqual(response.status_code, 200)

@@ -112,8 +112,13 @@ export default function DashboardPage() {
             payload[endpoint.key] = result.value?.data || {};
           } else {
             nextHealth[endpoint.key] = "error";
+            const errorData = result.reason?.response?.data;
+            const errorMessage =
+              typeof errorData === "string"
+                ? errorData
+                : errorData?.detail || errorData?.error || "";
             nextErrors.push(
-              `${endpoint.path} failed (${result.reason?.response?.status || "network"})`,
+              `${endpoint.path} failed (${result.reason?.response?.status || "network"})${errorMessage ? `: ${errorMessage}` : ""}`,
             );
           }
         });
