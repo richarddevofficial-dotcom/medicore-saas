@@ -416,7 +416,6 @@ const navigationByRole = {
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
         { name: "Billing", href: "/billing", icon: DollarSign },
         { name: "Insurance", href: "/admin/insurance", icon: BadgeCheck },
-        { name: "Reports", href: "/admin/reports", icon: FileText },
       ],
     },
   ],

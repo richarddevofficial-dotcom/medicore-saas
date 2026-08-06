@@ -1,4 +1,4 @@
-from rest_framework.permissions import BasePermission, SAFE_METHODS
+from rest_framework.permissions import BasePermission
 
 
 FINANCE_ROLE_NAMES = {
@@ -45,14 +45,20 @@ def get_user_role_name(user):
         if role_code:
             return str(role_code).strip().lower()
 
+    try:
+        staff_profile = user.staff_profile
+    except Exception:
+        staff_profile = None
+
+    if staff_profile and staff_profile.role:
+        return str(staff_profile.role).strip().lower()
+
     return ""
 
 
 class IsFinanceUser(BasePermission):
     """
     Allows authenticated finance users.
-
-    Read access is also available to staff users.
     """
 
     message = "You do not have permission to access finance records."
@@ -69,9 +75,6 @@ class IsFinanceUser(BasePermission):
         role_name = get_user_role_name(user)
 
         if role_name in FINANCE_ROLE_NAMES:
-            return True
-
-        if request.method in SAFE_METHODS and user.is_staff:
             return True
 
         return False
