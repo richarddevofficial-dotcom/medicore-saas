@@ -1,45 +1,27 @@
 "use client";
 
-import {
-  Briefcase,
-  CalendarCheck,
-  UserCheck,
-  Users,
-} from "lucide-react";
+import { Briefcase, CalendarCheck, UserCheck, Users } from "lucide-react";
 
 export default function HRDashboardCards({ dashboard }) {
   const cards = [
     {
       title: "Total Employees",
-      value:
-        dashboard?.total_employees ??
-        dashboard?.employees ??
-        0,
+      value: dashboard?.total_employees ?? dashboard?.employees ?? 0,
       icon: Users,
     },
     {
       title: "Active Employees",
-      value:
-        dashboard?.active_employees ??
-        dashboard?.active ??
-        0,
+      value: dashboard?.active_employees ?? dashboard?.active ?? 0,
       icon: UserCheck,
     },
     {
       title: "Employees on Leave",
-      value:
-        dashboard?.employees_on_leave ??
-        dashboard?.on_leave ??
-        0,
+      value: dashboard?.employees_on_leave ?? dashboard?.on_leave ?? 0,
       icon: CalendarCheck,
     },
     {
       title: "Positions",
-      value:
-        dashboard?.total_positions ??
-        dashboard?.positions ??
-        dashboard?.departments ??
-        0,
+      value: dashboard?.total_positions ?? dashboard?.positions ?? 0,
       icon: Briefcase,
     },
   ];
