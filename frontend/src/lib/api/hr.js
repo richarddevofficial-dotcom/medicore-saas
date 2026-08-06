@@ -17,13 +17,10 @@ function getHeaders(customHeaders = {}, body = null) {
   const token = getAccessToken();
 
   const isFormData =
-    typeof FormData !== "undefined" &&
-    body instanceof FormData;
+    typeof FormData !== "undefined" && body instanceof FormData;
 
   return {
-    ...(isFormData
-      ? {}
-      : { "Content-Type": "application/json" }),
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...customHeaders,
   };
@@ -31,8 +28,7 @@ function getHeaders(customHeaders = {}, body = null) {
 
 function serializeBody(payload) {
   const isFormData =
-    typeof FormData !== "undefined" &&
-    payload instanceof FormData;
+    typeof FormData !== "undefined" && payload instanceof FormData;
 
   if (isFormData) {
     return payload;
@@ -49,6 +45,7 @@ async function request(endpoint, options = {}) {
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: getHeaders(options.headers, options.body),
+    credentials: "include",
     cache: "no-store",
   });
 
@@ -108,9 +105,7 @@ export function getEmployees(params = {}) {
 
   const queryString = query.toString();
 
-  return request(
-    `/hr/employees/${queryString ? `?${queryString}` : ""}`
-  );
+  return request(`/hr/employees/${queryString ? `?${queryString}` : ""}`);
 }
 
 export function getEmployee(id) {
@@ -143,16 +138,11 @@ export function deleteEmployee(id) {
   });
 }
 
-
 function buildQuery(params = {}) {
   const query = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
-    if (
-      value !== undefined &&
-      value !== null &&
-      value !== ""
-    ) {
+    if (value !== undefined && value !== null && value !== "") {
       query.set(key, String(value));
     }
   });
@@ -162,15 +152,12 @@ function buildQuery(params = {}) {
   return queryString ? `?${queryString}` : "";
 }
 
-
 /* =========================
    DEPARTMENTS
 ========================= */
 
 export function getDepartments(params = {}) {
-  return request(
-    `/hr/departments/${buildQuery(params)}`
-  );
+  return request(`/hr/departments/${buildQuery(params)}`);
 }
 
 export function getDepartment(id) {
@@ -197,15 +184,12 @@ export function deleteDepartment(id) {
   });
 }
 
-
 /* =========================
    POSITIONS
 ========================= */
 
 export function getPositions(params = {}) {
-  return request(
-    `/hr/positions/${buildQuery(params)}`
-  );
+  return request(`/hr/positions/${buildQuery(params)}`);
 }
 
 export function getPosition(id) {
@@ -232,15 +216,12 @@ export function deletePosition(id) {
   });
 }
 
-
 /* =========================
    CONTRACTS
 ========================= */
 
 export function getContracts(params = {}) {
-  return request(
-    `/hr/contracts/${buildQuery(params)}`
-  );
+  return request(`/hr/contracts/${buildQuery(params)}`);
 }
 
 export function getContract(id) {
@@ -267,15 +248,12 @@ export function deleteContract(id) {
   });
 }
 
-
 /* =========================
    SHIFTS
 ========================= */
 
 export function getShifts(params = {}) {
-  return request(
-    `/hr/shifts/${buildQuery(params)}`
-  );
+  return request(`/hr/shifts/${buildQuery(params)}`);
 }
 
 export function getShift(id) {
@@ -302,15 +280,12 @@ export function deleteShift(id) {
   });
 }
 
-
 /* =========================
    SHIFT ASSIGNMENTS
 ========================= */
 
 export function getShiftAssignments(params = {}) {
-  return request(
-    `/hr/shift-assignments/${buildQuery(params)}`
-  );
+  return request(`/hr/shift-assignments/${buildQuery(params)}`);
 }
 
 export function createShiftAssignment(payload) {
@@ -321,33 +296,24 @@ export function createShiftAssignment(payload) {
 }
 
 export function updateShiftAssignment(id, payload) {
-  return request(
-    `/hr/shift-assignments/${id}/`,
-    {
-      method: "PATCH",
-      body: serializeBody(payload),
-    }
-  );
+  return request(`/hr/shift-assignments/${id}/`, {
+    method: "PATCH",
+    body: serializeBody(payload),
+  });
 }
 
 export function deleteShiftAssignment(id) {
-  return request(
-    `/hr/shift-assignments/${id}/`,
-    {
-      method: "DELETE",
-    }
-  );
+  return request(`/hr/shift-assignments/${id}/`, {
+    method: "DELETE",
+  });
 }
-
 
 /* =========================
    ATTENDANCE
 ========================= */
 
 export function getAttendance(params = {}) {
-  return request(
-    `/hr/attendance/${buildQuery(params)}`
-  );
+  return request(`/hr/attendance/${buildQuery(params)}`);
 }
 
 export function createAttendance(payload) {
@@ -370,15 +336,12 @@ export function deleteAttendance(id) {
   });
 }
 
-
 /* =========================
    LEAVE TYPES
 ========================= */
 
 export function getLeaveTypes(params = {}) {
-  return request(
-    `/hr/leave-types/${buildQuery(params)}`
-  );
+  return request(`/hr/leave-types/${buildQuery(params)}`);
 }
 
 export function createLeaveType(payload) {
@@ -401,36 +364,27 @@ export function deleteLeaveType(id) {
   });
 }
 
-
 /* =========================
    LEAVE BALANCES
 ========================= */
 
 export function getLeaveBalances(params = {}) {
-  return request(
-    `/hr/leave-balances/${buildQuery(params)}`
-  );
+  return request(`/hr/leave-balances/${buildQuery(params)}`);
 }
 
 export function allocateLeaveBalance(payload) {
-  return request(
-    "/hr/leave-balances/allocate/",
-    {
-      method: "POST",
-      body: serializeBody(payload),
-    }
-  );
+  return request("/hr/leave-balances/allocate/", {
+    method: "POST",
+    body: serializeBody(payload),
+  });
 }
-
 
 /* =========================
    LEAVE REQUESTS
 ========================= */
 
 export function getLeaveRequests(params = {}) {
-  return request(
-    `/hr/leave-requests/${buildQuery(params)}`
-  );
+  return request(`/hr/leave-requests/${buildQuery(params)}`);
 }
 
 export function getLeaveRequest(id) {
@@ -445,40 +399,28 @@ export function createLeaveRequest(payload) {
 }
 
 export function updateLeaveRequest(id, payload) {
-  return request(
-    `/hr/leave-requests/${id}/`,
-    {
-      method: "PATCH",
-      body: serializeBody(payload),
-    }
-  );
+  return request(`/hr/leave-requests/${id}/`, {
+    method: "PATCH",
+    body: serializeBody(payload),
+  });
 }
 
 export function deleteLeaveRequest(id) {
-  return request(
-    `/hr/leave-requests/${id}/`,
-    {
-      method: "DELETE",
-    }
-  );
+  return request(`/hr/leave-requests/${id}/`, {
+    method: "DELETE",
+  });
 }
 
 export function approveLeaveRequest(id, payload = {}) {
-  return request(
-    `/hr/leave-requests/${id}/approve/`,
-    {
-      method: "POST",
-      body: serializeBody(payload),
-    }
-  );
+  return request(`/hr/leave-requests/${id}/approve/`, {
+    method: "POST",
+    body: serializeBody(payload),
+  });
 }
 
 export function rejectLeaveRequest(id, payload = {}) {
-  return request(
-    `/hr/leave-requests/${id}/reject/`,
-    {
-      method: "POST",
-      body: serializeBody(payload),
-    }
-  );
+  return request(`/hr/leave-requests/${id}/reject/`, {
+    method: "POST",
+    body: serializeBody(payload),
+  });
 }
