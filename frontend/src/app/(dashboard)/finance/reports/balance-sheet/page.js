@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, AlertCircle, Download } from "lucide-react";
 import { getBalanceSheet } from "@/lib/api/finance";
+import {
+  buildFinancialPrintDocument,
+  escapeHtml,
+  formatAmount,
+  printFinancialReport,
+} from "@/lib/financial-report-print";
+import { useHospitalSettings } from "@/hooks/useSettings";
 import toast from "react-hot-toast";
 
 export default function BalanceSheetPage() {
@@ -13,6 +20,8 @@ export default function BalanceSheetPage() {
   const [endDate, setEndDate] = useState(
     new Date().toISOString().split("T")[0],
   );
+  const { data: hospitalSettings } = useHospitalSettings();
+  const hospitalName = hospitalSettings?.name || "Medical Centre";
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -43,38 +52,29 @@ export default function BalanceSheetPage() {
   }
 
   function handleExportPDF() {
-    // Generate a simple PDF export
-    const content = generateReportContent();
-    const printWindow = window.open("", "", "width=800,height=600");
-    printWindow.document.write(content);
-    printWindow.print();
+    printFinancialReport(generateReportContent());
   }
 
   function generateReportContent() {
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Balance Sheet</title>
-          <style>
-            body { font-family: Arial; margin: 20px; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .header h1 { margin: 0; }
-            .header p { margin: 5px 0; color: #666; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th, td { padding: 10px; text-align: right; border-bottom: 1px solid #ddd; }
-            th { background-color: #f0f0f0; font-weight: bold; }
-            .category { text-align: left; font-weight: bold; }
-            .subcategory { text-align: left; padding-left: 20px; }
-            .total-row { font-weight: bold; border-top: 2px solid #000; }
-            .section-total { font-weight: bold; border-top: 1px solid #000; background-color: #f9f9f9; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>Balance Sheet</h1>
-            <p>As at: ${endDate}</p>
-          </div>
+    return buildFinancialPrintDocument({
+      hospitalName,
+      title: "Balance Sheet",
+      periodLabel: `As at ${endDate || "Not available"}`,
+      summary: [
+        {
+          label: "Total Assets",
+          value: `SSP ${formatAmount(report?.total_assets)}`,
+        },
+        {
+          label: "Total Liabilities",
+          value: `SSP ${formatAmount(report?.total_liabilities)}`,
+        },
+        {
+          label: "Total Equity",
+          value: `SSP ${formatAmount(report?.total_equity)}`,
+        },
+      ],
+      content: `
           <table>
             <thead>
               <tr>
@@ -85,10 +85,8 @@ export default function BalanceSheetPage() {
             <tbody>
               ${generateReportRows()}
             </tbody>
-          </table>
-        </body>
-      </html>
-    `;
+          </table>`,
+    });
   }
 
   function generateReportRows() {
@@ -100,27 +98,27 @@ export default function BalanceSheetPage() {
     if (report.assets && report.assets.length > 0) {
       html += `<tr><td class="category">ASSETS</td><td></td></tr>`;
       report.assets.forEach((item) => {
-        html += `<tr><td class="subcategory">${item.name}</td><td>${item.balance?.toLocaleString()}</td></tr>`;
+        html += `<tr><td class="subcategory">${escapeHtml(item.name)}</td><td>SSP ${formatAmount(item.balance)}</td></tr>`;
       });
-      html += `<tr class="section-total"><td>Total Assets</td><td>${report.total_assets?.toLocaleString()}</td></tr>`;
+      html += `<tr class="section-total"><td>Total Assets</td><td>SSP ${formatAmount(report.total_assets)}</td></tr>`;
     }
 
     // Liabilities
     if (report.liabilities && report.liabilities.length > 0) {
       html += `<tr><td class="category">LIABILITIES</td><td></td></tr>`;
       report.liabilities.forEach((item) => {
-        html += `<tr><td class="subcategory">${item.name}</td><td>${item.balance?.toLocaleString()}</td></tr>`;
+        html += `<tr><td class="subcategory">${escapeHtml(item.name)}</td><td>SSP ${formatAmount(item.balance)}</td></tr>`;
       });
-      html += `<tr class="section-total"><td>Total Liabilities</td><td>${report.total_liabilities?.toLocaleString()}</td></tr>`;
+      html += `<tr class="section-total"><td>Total Liabilities</td><td>SSP ${formatAmount(report.total_liabilities)}</td></tr>`;
     }
 
     // Equity
     if (report.equity && report.equity.length > 0) {
       html += `<tr><td class="category">EQUITY</td><td></td></tr>`;
       report.equity.forEach((item) => {
-        html += `<tr><td class="subcategory">${item.name}</td><td>${item.balance?.toLocaleString()}</td></tr>`;
+        html += `<tr><td class="subcategory">${escapeHtml(item.name)}</td><td>SSP ${formatAmount(item.balance)}</td></tr>`;
       });
-      html += `<tr class="section-total"><td>Total Equity</td><td>${report.total_equity?.toLocaleString()}</td></tr>`;
+      html += `<tr class="section-total"><td>Total Equity</td><td>SSP ${formatAmount(report.total_equity)}</td></tr>`;
     }
 
     return html;

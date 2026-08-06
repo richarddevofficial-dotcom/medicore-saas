@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, AlertCircle, Download } from "lucide-react";
 import { getGeneralLedger, getChartOfAccounts } from "@/lib/api/finance";
+import {
+  buildFinancialPrintDocument,
+  escapeHtml,
+  formatAmount,
+  printFinancialReport,
+} from "@/lib/financial-report-print";
+import { useHospitalSettings } from "@/hooks/useSettings";
 import toast from "react-hot-toast";
 
 export default function GeneralLedgerPage() {
@@ -16,6 +23,8 @@ export default function GeneralLedgerPage() {
     start_date: "",
     end_date: new Date().toISOString().split("T")[0],
   });
+  const { data: hospitalSettings } = useHospitalSettings();
+  const hospitalName = hospitalSettings?.name || "Medical Centre";
 
   useEffect(() => {
     loadAccounts();
@@ -74,42 +83,33 @@ export default function GeneralLedgerPage() {
   }
 
   function handleExportPDF() {
-    const content = generateReportContent();
-    const printWindow = window.open("", "", "width=900,height=600");
-    printWindow.document.write(content);
-    printWindow.print();
+    printFinancialReport(generateReportContent());
   }
 
   function generateReportContent() {
     const selectedAccountData = accounts.find(
       (a) => a.id === parseInt(selectedAccount),
     );
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>General Ledger</title>
-          <style>
-            body { font-family: Arial; margin: 20px; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .header h1 { margin: 0; }
-            .header p { margin: 5px 0; color: #666; }
-            .account-info { margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { padding: 10px; border-bottom: 1px solid #ddd; }
-            th { background-color: #f0f0f0; font-weight: bold; }
-            .text-right { text-align: right; }
-            .total-row { font-weight: bold; border-top: 2px solid #000; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>General Ledger</h1>
-            <p>For the Period: ${filters.start_date || "Start"} to ${filters.end_date || "End"}</p>
-          </div>
-          <div class="account-info">
-            <p><strong>Account:</strong> ${selectedAccountData?.name} (${selectedAccountData?.account_number})</p>
-          </div>
+    return buildFinancialPrintDocument({
+      hospitalName,
+      title: "General Ledger",
+      periodLabel: `${filters.start_date || "Start"} to ${filters.end_date || "End"}`,
+      summary: [
+        {
+          label: "Opening Balance",
+          value: `SSP ${formatAmount(ledgerData?.opening_balance)}`,
+        },
+        {
+          label: "Closing Balance",
+          value: `SSP ${formatAmount(ledgerData?.closing_balance)}`,
+        },
+        {
+          label: "Transactions",
+          value: formatAmount(ledgerData?.transactions?.length),
+        },
+      ],
+      content: `
+          <p><strong>Account:</strong> ${escapeHtml(selectedAccountData?.name)} (${escapeHtml(selectedAccountData?.account_number)})</p>
           <table>
             <thead>
               <tr>
@@ -126,21 +126,19 @@ export default function GeneralLedgerPage() {
                 ?.map(
                   (trans) => `
                 <tr>
-                  <td>${new Date(trans.date).toLocaleDateString()}</td>
-                  <td>${trans.reference}</td>
-                  <td>${trans.description}</td>
-                  <td class="text-right">${trans.debit?.toLocaleString() || "-"}</td>
-                  <td class="text-right">${trans.credit?.toLocaleString() || "-"}</td>
-                  <td class="text-right"><strong>${trans.balance?.toLocaleString()}</strong></td>
+                  <td>${escapeHtml(new Date(trans.date).toLocaleDateString())}</td>
+                  <td>${escapeHtml(trans.reference)}</td>
+                  <td>${escapeHtml(trans.description)}</td>
+                  <td class="text-right">${trans.debit ? `SSP ${formatAmount(trans.debit)}` : "-"}</td>
+                  <td class="text-right">${trans.credit ? `SSP ${formatAmount(trans.credit)}` : "-"}</td>
+                  <td class="text-right"><strong>SSP ${formatAmount(trans.balance)}</strong></td>
                 </tr>
               `,
                 )
                 .join("")}
             </tbody>
-          </table>
-        </body>
-      </html>
-    `;
+          </table>`,
+    });
   }
 
   if (loading && accounts.length === 0) {

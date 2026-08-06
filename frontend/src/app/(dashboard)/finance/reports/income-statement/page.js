@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, AlertCircle, Download } from "lucide-react";
 import { getIncomeStatement } from "@/lib/api/finance";
+import {
+  buildFinancialPrintDocument,
+  escapeHtml,
+  formatAmount,
+  printFinancialReport,
+} from "@/lib/financial-report-print";
+import { useHospitalSettings } from "@/hooks/useSettings";
 import toast from "react-hot-toast";
 
 export default function IncomeStatementPage() {
@@ -14,6 +21,8 @@ export default function IncomeStatementPage() {
     start_date: "",
     end_date: new Date().toISOString().split("T")[0],
   });
+  const { data: hospitalSettings } = useHospitalSettings();
+  const hospitalName = hospitalSettings?.name || "Medical Centre";
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -53,38 +62,29 @@ export default function IncomeStatementPage() {
   }
 
   function handleExportPDF() {
-    // Generate a simple PDF export
-    const content = generateReportContent();
-    const printWindow = window.open("", "", "width=800,height=600");
-    printWindow.document.write(content);
-    printWindow.print();
+    printFinancialReport(generateReportContent());
   }
 
   function generateReportContent() {
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Income Statement</title>
-          <style>
-            body { font-family: Arial; margin: 20px; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .header h1 { margin: 0; }
-            .header p { margin: 5px 0; color: #666; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { padding: 10px; text-align: right; border-bottom: 1px solid #ddd; }
-            th { background-color: #f0f0f0; font-weight: bold; }
-            .category { text-align: left; font-weight: bold; }
-            .subcategory { text-align: left; padding-left: 20px; }
-            .total-row { font-weight: bold; border-top: 2px solid #000; }
-            .net-income { font-weight: bold; border-top: 3px double #000; font-size: 14px; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>Income Statement</h1>
-            <p>For the Period: ${filters.start_date || "Start"} to ${filters.end_date || "End"}</p>
-          </div>
+    return buildFinancialPrintDocument({
+      hospitalName,
+      title: "Income Statement",
+      periodLabel: `${filters.start_date || "Start"} to ${filters.end_date || "End"}`,
+      summary: [
+        {
+          label: "Total Revenue",
+          value: `SSP ${formatAmount(report?.total_revenue)}`,
+        },
+        {
+          label: "Total Expenses",
+          value: `SSP ${formatAmount(report?.total_expenses)}`,
+        },
+        {
+          label: "Net Income",
+          value: `SSP ${formatAmount(report?.net_profit)}`,
+        },
+      ],
+      content: `
           <table>
             <thead>
               <tr>
@@ -95,10 +95,8 @@ export default function IncomeStatementPage() {
             <tbody>
               ${generateReportRows()}
             </tbody>
-          </table>
-        </body>
-      </html>
-    `;
+          </table>`,
+    });
   }
 
   function generateReportRows() {
@@ -110,22 +108,22 @@ export default function IncomeStatementPage() {
     if (report.revenue && report.revenue.length > 0) {
       html += `<tr><td class="category">REVENUE</td><td></td></tr>`;
       report.revenue.forEach((item) => {
-        html += `<tr><td class="subcategory">${item.name}</td><td>${item.amount.toLocaleString()}</td></tr>`;
+        html += `<tr><td class="subcategory">${escapeHtml(item.name)}</td><td>SSP ${formatAmount(item.amount)}</td></tr>`;
       });
-      html += `<tr><td class="category">Total Revenue</td><td>${report.total_revenue?.toLocaleString()}</td></tr>`;
+      html += `<tr class="section-total"><td>Total Revenue</td><td>SSP ${formatAmount(report.total_revenue)}</td></tr>`;
     }
 
     // Expenses
     if (report.expenses && report.expenses.length > 0) {
       html += `<tr><td class="category">EXPENSES</td><td></td></tr>`;
       report.expenses.forEach((item) => {
-        html += `<tr><td class="subcategory">${item.name}</td><td>${item.amount.toLocaleString()}</td></tr>`;
+        html += `<tr><td class="subcategory">${escapeHtml(item.name)}</td><td>SSP ${formatAmount(item.amount)}</td></tr>`;
       });
-      html += `<tr><td class="category">Total Expenses</td><td>${report.total_expenses?.toLocaleString()}</td></tr>`;
+      html += `<tr class="section-total"><td>Total Expenses</td><td>SSP ${formatAmount(report.total_expenses)}</td></tr>`;
     }
 
     // Net Income
-    html += `<tr class="net-income"><td>NET INCOME</td><td>${report.net_profit?.toLocaleString()}</td></tr>`;
+    html += `<tr class="net-income"><td>NET INCOME</td><td>SSP ${formatAmount(report.net_profit)}</td></tr>`;
 
     return html;
   }

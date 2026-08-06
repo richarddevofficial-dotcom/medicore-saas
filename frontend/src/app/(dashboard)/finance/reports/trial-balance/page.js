@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, AlertCircle, Download } from "lucide-react";
 import { getTrialBalance } from "@/lib/api/finance";
+import {
+  buildFinancialPrintDocument,
+  escapeHtml,
+  formatAmount,
+  printFinancialReport,
+} from "@/lib/financial-report-print";
+import { useHospitalSettings } from "@/hooks/useSettings";
 import toast from "react-hot-toast";
 
 export default function TrialBalancePage() {
@@ -13,6 +20,8 @@ export default function TrialBalancePage() {
   const [asOfDate, setAsOfDate] = useState(
     new Date().toISOString().split("T")[0],
   );
+  const { data: hospitalSettings } = useHospitalSettings();
+  const hospitalName = hospitalSettings?.name || "Medical Centre";
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -43,35 +52,34 @@ export default function TrialBalancePage() {
   }
 
   function handleExportPDF() {
-    const content = generateReportContent();
-    const printWindow = window.open("", "", "width=800,height=600");
-    printWindow.document.write(content);
-    printWindow.print();
+    printFinancialReport(generateReportContent());
   }
 
   function generateReportContent() {
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Trial Balance</title>
-          <style>
-            body { font-family: Arial; margin: 20px; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .header h1 { margin: 0; }
-            .header p { margin: 5px 0; color: #666; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { padding: 10px; border-bottom: 1px solid #ddd; }
-            th { background-color: #f0f0f0; font-weight: bold; }
-            .text-right { text-align: right; }
-            .total-row { font-weight: bold; border-top: 2px solid #000; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>Trial Balance</h1>
-            <p>As at: ${asOfDate}</p>
-          </div>
+    return buildFinancialPrintDocument({
+      hospitalName,
+      title: "Trial Balance",
+      periodLabel: `As at ${asOfDate || "Not available"}`,
+      summary: [
+        {
+          label: "Total Debits",
+          value: `SSP ${formatAmount(report?.total_debits)}`,
+        },
+        {
+          label: "Total Credits",
+          value: `SSP ${formatAmount(report?.total_credits)}`,
+        },
+        {
+          label: "Status",
+          value:
+            Math.abs(
+              (report?.total_debits || 0) - (report?.total_credits || 0),
+            ) < 0.01
+              ? "Balanced"
+              : "Review required",
+        },
+      ],
+      content: `
           <table>
             <thead>
               <tr>
@@ -88,10 +96,10 @@ export default function TrialBalancePage() {
                       ?.map(
                         (acc) => `
                 <tr>
-                  <td>${acc.account_number}</td>
-                  <td>${acc.name}</td>
-                  <td class="text-right">${acc.debit?.toLocaleString() || "-"}</td>
-                  <td class="text-right">${acc.credit?.toLocaleString() || "-"}</td>
+                  <td>${escapeHtml(acc.account_number)}</td>
+                  <td>${escapeHtml(acc.name)}</td>
+                  <td class="text-right">${acc.debit ? `SSP ${formatAmount(acc.debit)}` : "-"}</td>
+                  <td class="text-right">${acc.credit ? `SSP ${formatAmount(acc.credit)}` : "-"}</td>
                 </tr>
               `,
                       )
@@ -100,14 +108,12 @@ export default function TrialBalancePage() {
               }
               <tr class="total-row">
                 <td colspan="2">TOTAL</td>
-                <td class="text-right">${report?.total_debits?.toLocaleString()}</td>
-                <td class="text-right">${report?.total_credits?.toLocaleString()}</td>
+                <td class="text-right">SSP ${formatAmount(report?.total_debits)}</td>
+                <td class="text-right">SSP ${formatAmount(report?.total_credits)}</td>
               </tr>
             </tbody>
-          </table>
-        </body>
-      </html>
-    `;
+          </table>`,
+    });
   }
 
   if (loading) {
