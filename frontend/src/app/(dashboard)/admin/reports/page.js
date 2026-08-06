@@ -24,6 +24,16 @@ import {
 
 const chartColors = ["#2563eb", "#ec4899", "#16a34a", "#f97316"];
 
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+const formatNumber = (value) => Number(value || 0).toLocaleString();
+
 export default function ReportsPage() {
   const [data, setData] = useState(null);
   const [period, setPeriod] = useState("daily");
@@ -56,48 +66,54 @@ export default function ReportsPage() {
   }, [period]);
 
   const printReport = () => {
+    const generatedAt = new Date().toLocaleString();
+    const reportPeriod = `${data?.start_date || "Not available"} to ${
+      data?.end_date || "Not available"
+    }`;
     const printWindow = window.open("", "_blank", "width=800,height=700");
     printWindow.document.write(`
       <html><head><title>${period.toUpperCase()} Report - ${hospitalName}</title>
       <style>
-        body{font-family:Arial;padding:30px;color:#333}
-        .header{text-align:center;border-bottom:3px solid #1E3A5F;padding-bottom:15px;margin-bottom:20px}
-        .header h1{color:#1E3A5F;margin:0}.header p{color:#666}
-        .section{margin:20px 0;page-break-inside:avoid}
-        .section h2{color:#F97316;border-bottom:1px solid #ddd;padding-bottom:5px}
-        table{width:100%;border-collapse:collapse;margin:10px 0}
-        th{background:#1E3A5F;color:#fff;padding:10px;text-align:left}
-        td{padding:10px;border-bottom:1px solid #ddd}
-        .highlight{font-size:1.2em;font-weight:bold;color:#F97316}
-        .footer{text-align:center;margin-top:30px;color:#888;font-size:0.8em;border-top:1px solid #ddd;padding-top:15px}
-        @media print{body{padding:10px}}
+        @page{margin:16mm 14mm 18mm;size:A4}
+        body{font-family:Arial,sans-serif;color:#172033;font-size:11px;line-height:1.45}
+        .header{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #173b63;padding-bottom:14px;margin-bottom:18px}
+        .header h1{color:#173b63;font-size:21px;margin:0}.header h2{font-size:14px;letter-spacing:.4px;margin:4px 0 0}.header p{color:#526075;margin:3px 0}
+        .report-meta{text-align:right;color:#526075}.report-meta strong{color:#172033}
+        .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 20px}.summary-item{border:1px solid #d9e1ea;border-top:3px solid #e87518;padding:9px}.summary-label{color:#526075;font-size:10px;text-transform:uppercase}.summary-value{color:#172033;font-size:17px;font-weight:bold;margin-top:3px}
+        .section{margin:18px 0;break-inside:avoid}.section h2{color:#173b63;font-size:14px;border-bottom:1px solid #cbd5e1;padding-bottom:5px;margin-bottom:7px}
+        table{width:100%;border-collapse:collapse;margin:8px 0}th{background:#173b63;color:#fff;padding:8px;text-align:left;font-size:10px;text-transform:uppercase}td{padding:8px;border-bottom:1px solid #d9e1ea}.highlight{font-weight:bold;color:#b45309}
+        .notice{border-left:3px solid #e87518;background:#fff7ed;color:#7c2d12;padding:8px 10px;margin-top:20px;font-size:10px}
+        .footer{position:fixed;bottom:-11mm;left:0;right:0;border-top:1px solid #cbd5e1;color:#526075;padding-top:5px;font-size:9px}.footer .right{float:right}.page:after{content:counter(page)}
+        @media print{.section{break-inside:avoid}}
       </style></head><body>
-      <div class="header"><h1>${hospitalName}</h1><h2>${period.toUpperCase()} REPORT</h2><p>Period: ${data?.start_date || ""} to ${data?.end_date || ""} | Generated: ${new Date().toLocaleString()}</p></div>
+      <div class="header"><div><h1>${escapeHtml(hospitalName)}</h1><h2>${escapeHtml(period.toUpperCase())} OPERATIONAL REPORT</h2><p>Hospital performance and service activity summary</p></div><div class="report-meta"><p><strong>Reporting period</strong><br>${escapeHtml(reportPeriod)}</p><p><strong>Generated</strong><br>${escapeHtml(generatedAt)}</p></div></div>
+      <div class="summary"><div class="summary-item"><div class="summary-label">Total patients</div><div class="summary-value">${formatNumber(data?.patients?.total)}</div></div><div class="summary-item"><div class="summary-label">Revenue collected</div><div class="summary-value">SSP ${formatNumber(data?.billing?.revenue)}</div></div><div class="summary-item"><div class="summary-label">Appointments</div><div class="summary-value">${formatNumber(data?.appointments?.total)}</div></div></div>
       
       <div class="section"><h2>Patient Statistics</h2>
         <table><tr><th>Metric</th><th>Value</th></tr>
-        <tr><td>Total Patients</td><td class="highlight">${data?.patients?.total || 0}</td></tr>
-        <tr><td>New Patients</td><td>${data?.patients?.new || 0}</td></tr>
-        <tr><td>Treated</td><td>${data?.patients?.treated || 0}</td></tr>
-        <tr><td>Male</td><td>${data?.patients?.male || 0}</td></tr>
-        <tr><td>Female</td><td>${data?.patients?.female || 0}</td></tr></table>
+        <tr><td>Total Patients</td><td class="highlight">${formatNumber(data?.patients?.total)}</td></tr>
+        <tr><td>New Patients</td><td>${formatNumber(data?.patients?.new)}</td></tr>
+        <tr><td>Treated</td><td>${formatNumber(data?.patients?.treated)}</td></tr>
+        <tr><td>Male</td><td>${formatNumber(data?.patients?.male)}</td></tr>
+        <tr><td>Female</td><td>${formatNumber(data?.patients?.female)}</td></tr></table>
       </div>
       
       <div class="section"><h2>Revenue</h2>
         <table><tr><th>Metric</th><th>Value</th></tr>
-        <tr><td>Total Bills</td><td>${data?.billing?.total_bills || 0}</td></tr>
-        <tr><td>Paid Bills</td><td>${data?.billing?.paid_bills || 0}</td></tr>
-        <tr><td>Revenue</td><td class="highlight">SSP ${(data?.billing?.revenue || 0).toLocaleString()}</td></tr>
-        <tr><td>Pending</td><td>SSP ${(data?.billing?.pending || 0).toLocaleString()}</td></tr></table>
+        <tr><td>Total Bills</td><td>${formatNumber(data?.billing?.total_bills)}</td></tr>
+        <tr><td>Paid Bills</td><td>${formatNumber(data?.billing?.paid_bills)}</td></tr>
+        <tr><td>Revenue</td><td class="highlight">SSP ${formatNumber(data?.billing?.revenue)}</td></tr>
+        <tr><td>Pending</td><td>SSP ${formatNumber(data?.billing?.pending)}</td></tr></table>
       </div>
       
       <div class="section"><h2>Appointments</h2>
         <table><tr><th>Metric</th><th>Value</th></tr>
-        <tr><td>Total</td><td>${data?.appointments?.total || 0}</td></tr>
-        <tr><td>Completed</td><td>${data?.appointments?.completed || 0}</td></tr></table>
+        <tr><td>Total</td><td>${formatNumber(data?.appointments?.total)}</td></tr>
+        <tr><td>Completed</td><td>${formatNumber(data?.appointments?.completed)}</td></tr></table>
       </div>
       
-      <div class="footer"><p>${hospitalName} - MediCore HMS</p><p>Printed: ${new Date().toLocaleString()}</p></div>
+      <div class="notice">Confidential hospital information. Print, distribute, and retain this report only in accordance with your hospital's records and privacy policy.</div>
+      <div class="footer"><span>${escapeHtml(hospitalName)} | MediCore HMS</span><span class="right">Page <span class="page"></span></span></div>
       </body></html>
     `);
     printWindow.document.close();
