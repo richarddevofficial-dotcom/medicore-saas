@@ -1,13 +1,14 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from django.db import transaction
 from datetime import datetime, timedelta
 from django.utils import timezone
 
 from human_resources.permissions import IsHRUser, IsHRManager
 from human_resources.views import HospitalScopedViewSet
+from finance.accounting_permissions import IsFinanceUser
 from django.db.models import Count, Sum
 from finance.models import (
     PayrollYear,
@@ -115,10 +116,22 @@ class EmployeeSalaryViewSet(HospitalScopedViewSet):
     search_fields = ['employee__user__first_name', 'employee__user__last_name']
 
 
+class IsPayrollViewer(BasePermission):
+    """Allow HR and finance staff to view hospital payroll records."""
+
+    message = "You do not have permission to view payroll records."
+
+    def has_permission(self, request, view):
+        return (
+            IsHRUser().has_permission(request, view)
+            or IsFinanceUser().has_permission(request, view)
+        )
+
+
 class SalarySlipViewSet(HospitalScopedViewSet):
     """Manage salary slips"""
     queryset = SalarySlip.objects.all()
-    permission_classes = [IsAuthenticated, IsHRUser]
+    hospital_lookup = 'employee__hospital_id'
     filterset_fields = ['employee', 'status', 'month']
     search_fields = ['employee__user__first_name', 'employee__user__last_name']
     ordering_fields = ['-month', 'employee']
@@ -129,6 +142,14 @@ class SalarySlipViewSet(HospitalScopedViewSet):
         if self.action == 'retrieve':
             return SalarySlipDetailSerializer
         return SalarySlipSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            permission_classes = [IsAuthenticated, IsPayrollViewer]
+        else:
+            permission_classes = [IsAuthenticated, IsHRManager]
+
+        return [permission() for permission in permission_classes]
     
     def get_queryset(self):
         """Filter by hospital and optionally by user's own slips"""

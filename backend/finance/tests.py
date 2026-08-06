@@ -215,6 +215,13 @@ class AccountingPermissionsTests(TestCase):
 				response = self.client.get(endpoint)
 				self.assertEqual(response.status_code, 200)
 
+	def test_accountant_can_view_payroll_slips(self):
+		self.client.force_authenticate(user=self.accountant)
+
+		response = self.client.get("/api/v1/finance/salary-slips/")
+
+		self.assertEqual(response.status_code, 200)
+
 
 class JournalPostingAuthorizationTests(TestCase):
 	def setUp(self):
