@@ -41,6 +41,8 @@ export default function BillingPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [highlightedMrn, setHighlightedMrn] = useState("");
+  const [role, setRole] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   const [form, setForm] = useState({
     patient_name: "",
@@ -57,15 +59,27 @@ export default function BillingPage() {
   const getSymbol = () => "SSP";
 
   const fetchData = async () => {
+    const currentRole = localStorage.getItem("role") || "";
+    const canCreateBills = ["admin", "super_admin", "receptionist"].includes(
+      currentRole,
+    );
+
+    setRole(currentRole);
+    setLoadError("");
     try {
-      const [patientRes, billRes] = await Promise.all([
-        apiClient.get("/patients/?page_size=100"),
+      const [billRes, patientRes] = await Promise.all([
         apiClient.get("/bills/"),
+        canCreateBills ? apiClient.get("/patients/?page_size=100") : null,
       ]);
-      setPatients(patientRes.data.results || patientRes.data || []);
+      setPatients(patientRes?.data?.results || patientRes?.data || []);
       setBills(billRes.data.results || billRes.data || []);
     } catch (err) {
       console.error("Failed to load:", err);
+      const errorData = err.response?.data;
+      const message =
+        errorData?.detail || errorData?.error || "Unable to load billing data.";
+      setLoadError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -94,6 +108,9 @@ export default function BillingPage() {
 
   const billedMRNs = bills.map((b) => b.patient_mrn).filter(Boolean);
   const unbilledPatients = patients.filter((p) => !billedMRNs.includes(p.mrn));
+  const canCreateBills = ["admin", "super_admin", "receptionist"].includes(
+    role,
+  );
 
   const handleQuickBill = (patient) => {
     setSelectedPatient(patient);
@@ -294,18 +311,24 @@ export default function BillingPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Cashier Dashboard</h1>
+            <h1 className="text-2xl font-bold">
+              {canCreateBills ? "Cashier Dashboard" : "Billing Dashboard"}
+            </h1>
             <p className="text-sm text-gray-500">
-              {unbilledPatients.length} patients pending
+              {canCreateBills
+                ? `${unbilledPatients.length} patients pending`
+                : "Review and collect hospital bill payments."}
             </p>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-gray-600 bg-gray-100 px-3 py-1.5 rounded-lg">
               SSP
             </span>
-            <Button icon={Plus} onClick={() => setShowModal(true)}>
-              Create Bill
-            </Button>
+            {canCreateBills && (
+              <Button icon={Plus} onClick={() => setShowModal(true)}>
+                Create Bill
+              </Button>
+            )}
           </div>
         </div>
 
@@ -318,12 +341,22 @@ export default function BillingPage() {
           />
         </Card>
 
-        <div className="grid grid-cols-4 gap-4">
-          <Card className="text-center">
-            <Receipt className="h-6 w-6 text-blue-600 mx-auto mb-1" />
-            <p className="text-2xl font-bold">{unbilledPatients.length}</p>
-            <p className="text-xs text-gray-500">Patients</p>
+        {loadError && (
+          <Card className="border border-red-200 bg-red-50 p-4">
+            <p className="text-sm text-red-700">{loadError}</p>
           </Card>
+        )}
+
+        <div
+          className={`grid gap-4 ${canCreateBills ? "grid-cols-4" : "grid-cols-3"}`}
+        >
+          {canCreateBills && (
+            <Card className="text-center">
+              <Receipt className="h-6 w-6 text-blue-600 mx-auto mb-1" />
+              <p className="text-2xl font-bold">{unbilledPatients.length}</p>
+              <p className="text-xs text-gray-500">Patients</p>
+            </Card>
+          )}
           <Card className="text-center">
             <Banknote className="h-6 w-6 text-green-600 mx-auto mb-1" />
             <p className="text-2xl font-bold">
@@ -352,12 +385,14 @@ export default function BillingPage() {
           >
             Pending ({pendingBills.length})
           </button>
-          <button
-            onClick={() => setActiveTab("unbilled")}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === "unbilled" ? "bg-white shadow-sm" : "text-gray-500"}`}
-          >
-            Patients ({unbilledPatients.length})
-          </button>
+          {canCreateBills && (
+            <button
+              onClick={() => setActiveTab("unbilled")}
+              className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === "unbilled" ? "bg-white shadow-sm" : "text-gray-500"}`}
+            >
+              Patients ({unbilledPatients.length})
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("billed")}
             className={`px-4 py-2 rounded-md text-sm font-medium ${activeTab === "billed" ? "bg-white shadow-sm" : "text-gray-500"}`}
@@ -575,7 +610,7 @@ export default function BillingPage() {
           ))}
 
         <Modal
-          isOpen={showModal}
+          isOpen={canCreateBills && showModal}
           onClose={() => setShowModal(false)}
           title="Create Bill"
           size="md"

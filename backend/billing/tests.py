@@ -848,6 +848,49 @@ class AuthAndBillingSmokeTests(TestCase):
         self.assertEqual(patient_stats_response.status_code, 200)
         self.assertEqual(billing_stats_response.status_code, 200)
 
+    def test_accountant_can_view_and_collect_hospital_bills(self):
+        accountant_user = User.objects.create_user(
+            username="accountant@example.com",
+            password="Accountant@1234",
+        )
+        StaffProfile.objects.create(
+            user=accountant_user,
+            hospital=self.hospital,
+            role="accountant",
+            phone="1234567899",
+        )
+        pending_bill = Bill.objects.create(
+            hospital=self.hospital,
+            bill_number="BILL-ACCOUNTANT-PENDING",
+            patient_name="Accountant Patient",
+            consultation_fee=25,
+            total_amount=25,
+            balance=25,
+            status="pending",
+        )
+        self.client.force_authenticate(user=accountant_user)
+
+        list_response = self.client.get("/api/v1/bills/")
+        retrieve_response = self.client.get(
+            f"/api/v1/bills/{pending_bill.id}/",
+        )
+        payment_response = self.client.post(
+            f"/api/v1/bills/{pending_bill.id}/make_payment/",
+            {"amount": "25.00", "method": "cash"},
+            format="json",
+        )
+        create_response = self.client.post(
+            "/api/v1/bills/",
+            {"patient_name": "Unauthorized Bill"},
+            format="json",
+        )
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertIn(pending_bill.id, [bill["id"] for bill in list_response.data])
+        self.assertEqual(retrieve_response.status_code, 200)
+        self.assertEqual(payment_response.status_code, 200)
+        self.assertEqual(create_response.status_code, 403)
+
     def test_doctor_can_load_read_only_billing_dashboard_stats(self):
         self.staff_profile.role = "doctor"
         self.staff_profile.save(update_fields=["role"])

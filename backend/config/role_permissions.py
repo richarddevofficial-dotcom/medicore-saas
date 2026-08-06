@@ -304,6 +304,30 @@ class IsFinanceStaff(BasePermission):
         return role in self.allowed_roles
 
 
+class CanAccessBilling(BasePermission):
+    """Allow reception and finance staff to view bills and record payments."""
+    message = "Billing access permission required."
+
+    allowed_roles = {
+        "admin",
+        "receptionist",
+        "accountant",
+        "finance",
+        "finance_manager",
+        "cashier",
+    }
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        if user.is_superuser:
+            return True
+
+        return get_staff_role(user) in self.allowed_roles
+
+
 class IsFinanceManager(BasePermission):
     """Only finance managers and admins can approve payments."""
     message = "Finance manager permission required."

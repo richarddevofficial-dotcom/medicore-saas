@@ -25,6 +25,7 @@ from .serializers import (
 )
 from pharmacy.models import Medicine, StockMovement
 from config.role_permissions import (
+    CanAccessBilling,
     CanOperatePharmacyPOS,
     CanViewBillingStats,
     IsFinanceStaff,
@@ -461,9 +462,10 @@ class BillViewSet(viewsets.ModelViewSet):
         if self.action in {
             'list',
             'retrieve',
-            'create',
             'make_payment',
         }:
+            return [IsAuthenticated(), CanAccessBilling()]
+        if self.action == 'create':
             return [IsAuthenticated(), IsReceptionist()]
         return [IsAuthenticated(), IsFinanceStaff()]
     pagination_class = None
