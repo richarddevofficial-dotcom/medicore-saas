@@ -13,7 +13,12 @@ from pharmacy.models import Prescription
 from config.role_permissions import IsHospitalAdmin
 from appointments.models import Appointment
 from laboratory.models import LabTest
-from human_resources.models import Attendance, Employee, ShiftAssignment
+from human_resources.models import (
+    Attendance,
+    Employee,
+    LeaveRequest,
+    ShiftAssignment,
+)
 from ipd.models import MedicationAdministration, NursingObservation
 from django.utils import timezone
 from django.db.models import Count, Sum, Q
@@ -228,6 +233,23 @@ def _personal_role_metrics(profile, user, report_date):
             ).count(),
             'medications_refused': administrations.filter(
                 was_refused=True,
+            ).count(),
+        }
+
+    if profile.role in {'hr', 'hr_officer', 'hr_manager'}:
+        leave_reviews = LeaveRequest.objects.filter(
+            employee__hospital=profile.hospital,
+            reviewed_by=user,
+            reviewed_at__gte=start_of_day,
+            reviewed_at__lt=end_of_day,
+        )
+        return {
+            'leave_requests_reviewed': leave_reviews.count(),
+            'leave_requests_approved': leave_reviews.filter(
+                status='APPROVED',
+            ).count(),
+            'leave_requests_rejected': leave_reviews.filter(
+                status='REJECTED',
             ).count(),
         }
 

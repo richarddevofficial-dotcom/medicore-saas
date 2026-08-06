@@ -10,7 +10,14 @@ from patients.models import Patient
 from billing.models import Bill, BillPayment, SubscriptionPayment
 from appointments.models import Appointment
 from laboratory.models import LabTest
-from human_resources.models import Attendance, Employee, Shift, ShiftAssignment
+from human_resources.models import (
+	Attendance,
+	Employee,
+	LeaveRequest,
+	LeaveType,
+	Shift,
+	ShiftAssignment,
+)
 from pharmacy.models import Medicine, Prescription
 from ipd.models import (
 	Admission,
@@ -351,6 +358,72 @@ class PersonalShiftReportTests(TestCase):
 		self.assertEqual(response.data["observations_recorded"], 1)
 		self.assertEqual(response.data["medications_administered"], 1)
 		self.assertEqual(response.data["medications_refused"], 1)
+
+	def test_hr_report_only_includes_own_leave_reviews(self):
+		hr_user = User.objects.create_user(
+			username="hr-shift@example.com",
+			password="Password123!",
+		)
+		other_hr_user = User.objects.create_user(
+			username="other-hr-shift@example.com",
+			password="Password123!",
+		)
+		StaffProfile.objects.create(
+			user=hr_user,
+			hospital=self.hospital,
+			role="hr_officer",
+			phone="555000122",
+		)
+		StaffProfile.objects.create(
+			user=other_hr_user,
+			hospital=self.hospital,
+			role="hr_manager",
+			phone="555000123",
+		)
+		leave_type = LeaveType.objects.create(
+			hospital=self.hospital,
+			name="Annual Leave",
+			code="ANNUAL",
+			days_allowed=20,
+		)
+		LeaveRequest.objects.create(
+			employee=self.employee,
+			leave_type=leave_type,
+			start_date=timezone.localdate(),
+			end_date=timezone.localdate(),
+			reason="Family commitment",
+			status="APPROVED",
+			reviewed_by=hr_user,
+			reviewed_at=timezone.now(),
+		)
+		LeaveRequest.objects.create(
+			employee=self.employee,
+			leave_type=leave_type,
+			start_date=timezone.localdate(),
+			end_date=timezone.localdate(),
+			reason="Personal appointment",
+			status="REJECTED",
+			reviewed_by=hr_user,
+			reviewed_at=timezone.now(),
+		)
+		LeaveRequest.objects.create(
+			employee=self.employee,
+			leave_type=leave_type,
+			start_date=timezone.localdate(),
+			end_date=timezone.localdate(),
+			reason="Other review",
+			status="APPROVED",
+			reviewed_by=other_hr_user,
+			reviewed_at=timezone.now(),
+		)
+		self.client.force_authenticate(hr_user)
+
+		response = self.client.get("/api/v1/reports/my-shift/")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["leave_requests_reviewed"], 2)
+		self.assertEqual(response.data["leave_requests_approved"], 1)
+		self.assertEqual(response.data["leave_requests_rejected"], 1)
 
 
 class ReportsPlanAccessTests(TestCase):
