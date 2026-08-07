@@ -200,7 +200,7 @@ export default function BillingPage() {
                 </div>
                 <button
                   onClick={() => {
-                    window.location.href = "/admin/subscription";
+                    window.location.href = "/settings/billing/plans";
                   }}
                   className="mt-4 rounded-lg bg-amber-600 px-6 py-2 font-medium text-white hover:bg-amber-700"
                 >

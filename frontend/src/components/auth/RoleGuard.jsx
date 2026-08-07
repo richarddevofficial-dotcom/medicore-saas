@@ -121,7 +121,7 @@ export default function RoleGuard({ children }) {
     // Admin or superuser can access everything
     if (role === "admin" || isSystemSuperAdmin || allowedPaths.includes("*")) {
       if (role === "admin" && !isRouteAllowedForPlan(path, plan)) {
-        router.push("/admin/subscription?restricted=1");
+        router.push("/settings/billing/plans?restricted=1");
         return;
       }
       setAuthorized(true);
@@ -129,7 +129,7 @@ export default function RoleGuard({ children }) {
     }
 
     if (!isRouteAllowedForPlan(path, plan)) {
-      router.push("/admin/subscription?restricted=1");
+      router.push("/settings/billing/plans?restricted=1");
       return;
     }
 
