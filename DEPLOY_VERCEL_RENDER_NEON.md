@@ -60,12 +60,17 @@ At your DNS provider add:
 4. Verify tenant host resolution in backend (hospital-specific branding/settings).
 5. Validate admin settings domain/subdomain view and updates.
 
-## 7. Recommended Background Job
+## 7. Required Background Jobs
 
-Schedule on backend host:
+Create these Render Cron Jobs with root directory `backend`. Configure each job with the same `DATABASE_URL`, `DJANGO_SECRET_KEY`, email, and database environment variables as the backend web service.
 
-1. `python manage.py refresh_domain_health --limit 200`
-2. Run every 15-30 minutes.
+| Schedule       | Command                                              | Purpose                                                             |
+| -------------- | ---------------------------------------------------- | ------------------------------------------------------------------- |
+| `*/30 * * * *` | `python manage.py refresh_domain_health --limit 200` | Refresh custom-domain health and certificate checks.                |
+| `5 0 * * *`    | `python manage.py apply_scheduled_plan_changes`      | Activate scheduled subscription downgrades on their effective date. |
+| `15 0 1 * *`   | `python manage.py run_monthly_billing`               | Generate monthly subscription invoices.                             |
+
+Verify the scheduled plan job after deployment with the Render Cron Job logs. A completed run should report `Failed=0`.
 
 ## 8. Important
 

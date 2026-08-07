@@ -945,11 +945,27 @@ def approve_manual_payment(request, payment_id):
 @permission_classes([IsAuthenticated])
 def billing_dashboard(request):
     hospital = get_user_hospital(request.user)
+    staff_profile = getattr(
+        request.user,
+        "staff_profile",
+        None,
+    )
 
     if not hospital:
         return Response(
             {"error": "Hospital account not found."},
             status=404,
+        )
+
+    if not staff_profile or staff_profile.role != "admin":
+        return Response(
+            {
+                "error": (
+                    "Only the hospital administrator can view "
+                    "subscription billing information."
+                )
+            },
+            status=403,
         )
 
     try:
@@ -1258,11 +1274,27 @@ from .plan_change_services import (
 @permission_classes([IsAuthenticated])
 def available_plan_changes(request):
     hospital = get_user_hospital(request.user)
+    staff_profile = getattr(
+        request.user,
+        "staff_profile",
+        None,
+    )
 
     if not hospital:
         return Response(
             {"error": "Hospital account not found."},
             status=404,
+        )
+
+    if not staff_profile or staff_profile.role != "admin":
+        return Response(
+            {
+                "error": (
+                    "Only the hospital administrator can view "
+                    "subscription plan changes."
+                )
+            },
+            status=403,
         )
 
     try:
