@@ -66,6 +66,32 @@ class IPDLifecycleTests(TestCase):
 			room=self.room,
 			bed_number="B",
 		)
+		self.other_hospital = Hospital.objects.create(
+			name="Other IPD Test Hospital",
+			slug="other-ipd-test",
+			hospital_type="general",
+			registration_number="IPD-002",
+			email="other-ipd@example.com",
+			phone="1234567891",
+			address="456 Other Street",
+			city="Juba",
+			state="Central",
+			country="South Sudan",
+		)
+		other_ward = Ward.objects.create(
+			hospital=self.other_hospital,
+			name="Other General Ward",
+		)
+		other_room = Room.objects.create(
+			hospital=self.other_hospital,
+			ward=other_ward,
+			room_number="201",
+		)
+		self.other_bed = Bed.objects.create(
+			hospital=self.other_hospital,
+			room=other_room,
+			bed_number="A",
+		)
 		self.admission = Admission.objects.create(
 			hospital=self.hospital,
 			patient=self.patient,
@@ -179,6 +205,41 @@ class IPDLifecycleTests(TestCase):
 		self.assertIsNone(self.admission.bed_id)
 		self.assertEqual(self.first_bed.status, "available")
 		self.assertFalse(BedAssignment.objects.filter(bed=self.first_bed).exists())
+
+	def test_admission_cannot_use_another_hospitals_bed(self):
+		response = self.client.post(
+			f"/api/v1/ipd/admissions/{self.admission.id}/admit/",
+			{"bed_id": self.other_bed.id},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 404)
+		self.admission.refresh_from_db()
+		self.other_bed.refresh_from_db()
+		self.assertEqual(self.admission.status, Admission.STATUS_PENDING)
+		self.assertEqual(self.other_bed.status, "available")
+
+	def test_transfer_cannot_use_another_hospitals_bed(self):
+		self.client.post(
+			f"/api/v1/ipd/admissions/{self.admission.id}/admit/",
+			{"bed_id": self.first_bed.id},
+			format="json",
+		)
+
+		response = self.client.post(
+			f"/api/v1/ipd/admissions/{self.admission.id}/transfer/",
+			{
+				"target_bed_id": self.other_bed.id,
+				"reason": "Cross-tenant transfer attempt",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 404)
+		self.first_bed.refresh_from_db()
+		self.other_bed.refresh_from_db()
+		self.assertEqual(self.first_bed.status, "occupied")
+		self.assertEqual(self.other_bed.status, "available")
 
 	def test_discharge_rejects_invalid_bed_status_without_partial_discharge(self):
 		self.client.post(

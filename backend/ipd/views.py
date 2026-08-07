@@ -548,7 +548,8 @@ def admit_patient(
         )
 
     bed = Bed.objects.filter(
-        id=bed_id
+        id=bed_id,
+        hospital=admission.hospital,
     ).first()
 
     if not bed:
@@ -709,7 +710,8 @@ def transfer_patient(
         )
 
     target_bed = Bed.objects.filter(
-        id=target_bed_id
+        id=target_bed_id,
+        hospital=admission.hospital,
     ).first()
 
     if not target_bed:
