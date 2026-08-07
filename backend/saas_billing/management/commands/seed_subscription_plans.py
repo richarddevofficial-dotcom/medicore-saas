@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.db import transaction
 from django.core.management.base import BaseCommand
 
 from saas_billing.models import PlanFeature, SubscriptionPlan
@@ -103,21 +104,33 @@ class Command(BaseCommand):
             plan_data = source_plan_data.copy()
             feature_data = plan_data.pop("features")
 
-            plan, created = SubscriptionPlan.objects.update_or_create(
-                code=plan_data["code"],
-                defaults=plan_data,
-            )
+            with transaction.atomic():
+                plan = SubscriptionPlan.objects.filter(
+                    code=plan_data["code"],
+                ).first()
+                if not plan:
+                    plan = SubscriptionPlan.objects.filter(
+                        name__iexact=plan_data["name"],
+                    ).first()
 
-            for feature_code, feature_name, enabled, limit_value in feature_data:
-                PlanFeature.objects.update_or_create(
-                    plan=plan,
-                    feature_code=feature_code,
-                    defaults={
-                        "feature_name": feature_name,
-                        "is_enabled": enabled,
-                        "limit_value": limit_value,
-                    },
-                )
+                created = plan is None
+                if created:
+                    plan = SubscriptionPlan.objects.create(**plan_data)
+                else:
+                    for field, value in plan_data.items():
+                        setattr(plan, field, value)
+                    plan.save()
+
+                for feature_code, feature_name, enabled, limit_value in feature_data:
+                    PlanFeature.objects.update_or_create(
+                        plan=plan,
+                        feature_code=feature_code,
+                        defaults={
+                            "feature_name": feature_name,
+                            "is_enabled": enabled,
+                            "limit_value": limit_value,
+                        },
+                    )
 
             action = "Created" if created else "Updated"
 

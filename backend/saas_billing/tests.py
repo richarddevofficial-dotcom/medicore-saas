@@ -25,6 +25,26 @@ class SubscriptionCatalogTests(TestCase):
 		self.assertEqual(str(prices["pro"]), "89.90")
 		self.assertEqual(str(prices["enterprise"]), "129.90")
 
+	def test_seed_reconciles_legacy_professional_plan_by_name(self):
+		legacy_plan = SubscriptionPlan.objects.create(
+			code="professional",
+			name="Professional",
+			monthly_price="99.90",
+			service_fee="500.00",
+			max_staff=100,
+			max_patients=20000,
+		)
+
+		call_command("seed_subscription_plans")
+
+		legacy_plan.refresh_from_db()
+		self.assertEqual(legacy_plan.code, "pro")
+		self.assertEqual(str(legacy_plan.monthly_price), "89.90")
+		self.assertEqual(
+			SubscriptionPlan.objects.filter(name="Professional").count(),
+			1,
+		)
+
 
 class BackfillLegacySubscriptionsTests(TestCase):
 	def setUp(self):
