@@ -5,9 +5,11 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.text import slugify
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+
+from config.throttles import RegistrationThrottle
 
 from hospitals.models import Hospital
 from saas_billing.models import (
@@ -56,6 +58,7 @@ def generate_unique_username(email):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([RegistrationThrottle])
 @transaction.atomic
 def register_hospital(request):
     hospital_name = str(

@@ -12,13 +12,13 @@ class LoginThrottle(SimpleRateThrottle):
     """
     scope = 'login'
     
-    def get_cache_key(self):
+    def get_cache_key(self, request, view):
         # Don't throttle authenticated users
-        if self.request.user and self.request.user.is_authenticated:
+        if request.user and request.user.is_authenticated:
             return None
         
         # Throttle by IP address
-        client_ip = self.request.META.get('REMOTE_ADDR')
+        client_ip = request.META.get('REMOTE_ADDR')
         return f"login_{client_ip}"
 
 
@@ -29,9 +29,18 @@ class PasswordResetThrottle(SimpleRateThrottle):
     """
     scope = 'password_reset'
     
-    def get_cache_key(self):
-        client_ip = self.request.META.get('REMOTE_ADDR')
+    def get_cache_key(self, request, view):
+        client_ip = request.META.get('REMOTE_ADDR')
         return f"password_reset_{client_ip}"
+
+class RegistrationThrottle(SimpleRateThrottle):
+    """Allow three hospital registration attempts per hour per IP."""
+
+    scope = 'registration'
+
+    def get_cache_key(self, request, view):
+        client_ip = request.META.get('REMOTE_ADDR')
+        return f"registration_{client_ip}"
 
 
 class RefreshTokenThrottle(SimpleRateThrottle):
@@ -41,7 +50,7 @@ class RefreshTokenThrottle(SimpleRateThrottle):
     """
     scope = 'refresh_token'
     
-    def get_cache_key(self):
-        if self.request.user and self.request.user.is_authenticated:
-            return f"refresh_token_{self.request.user.id}"
+    def get_cache_key(self, request, view):
+        if request.user and request.user.is_authenticated:
+            return f"refresh_token_{request.user.id}"
         return None
