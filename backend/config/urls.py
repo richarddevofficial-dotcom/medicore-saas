@@ -33,6 +33,7 @@ from appointments.views import AppointmentViewSet
 from billing.views import BillViewSet, SubscriptionPaymentViewSet, ServiceCatalogViewSet, POSReceiptViewSet
 from insurance.views import InsuranceCompanyViewSet, InsuranceClaimViewSet
 from imaging.views import ImagingTestViewSet
+from laboratory.views import LabTestViewSet
 from reports.views import (
     dashboard_report, staff_report, reception_report, 
     cashier_report, pharmacy_report, lab_report, 
@@ -1045,6 +1046,7 @@ router.register(r'prescriptions', PrescriptionViewSet, basename='prescription')
 router.register(r'insurance-companies', InsuranceCompanyViewSet, basename='insurance-company')
 router.register(r'insurance-claims', InsuranceClaimViewSet, basename='insurance-claim')
 router.register(r'imaging-tests', ImagingTestViewSet, basename='imaging-test')
+router.register(r'lab-tests', LabTestViewSet, basename='lab-test')
 router.register(r'subscription-payments', SubscriptionPaymentViewSet, basename='subscription-payment')
 router.register(r'audit-logs', AuditLogViewSet, basename='audit-log')
 
