@@ -367,7 +367,9 @@ export default function DashboardPage() {
                   />
                 </div>
               </div>
-              <Button>Upgrade Now</Button>
+              <Button onClick={() => router.push("/settings/billing/plans")}>
+                Upgrade Now
+              </Button>
             </div>
           </Card>
         )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import apiClient from "@/lib/api-client";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
@@ -73,6 +74,7 @@ export function checkLimit(subscription, type, currentCount) {
 }
 
 export default function SubscriptionGuard({ children }) {
+  const router = useRouter();
   const subscription = useSubscription();
 
   if (!subscription) return null;
@@ -92,7 +94,9 @@ export default function SubscriptionGuard({ children }) {
             Your 14-day free trial has ended. Upgrade to continue using MediCore
             HMS.
           </p>
-          <Button>Upgrade Now</Button>
+          <Button onClick={() => router.push("/settings/billing/plans")}>
+            Upgrade Now
+          </Button>
         </Card>
       </div>
     );
