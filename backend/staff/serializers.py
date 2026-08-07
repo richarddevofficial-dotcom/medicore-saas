@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils.crypto import get_random_string
+from departments.models import Department
 from human_resources.models import Employee
 from .models import StaffProfile
 
@@ -51,6 +52,23 @@ class StaffCreateSerializer(serializers.ModelSerializer):
         department = validated_data.pop('department', None)
         if department == '' or department == 0:
             department = None
+
+        hospital = validated_data.get('hospital')
+        department_obj = None
+        if department:
+            department_obj = Department.objects.filter(
+                id=department,
+                hospital=hospital,
+            ).first()
+            if not department_obj:
+                raise serializers.ValidationError(
+                    {
+                        'department': (
+                            'Selected department does not belong to '
+                            'the staff hospital.'
+                        )
+                    }
+                )
         
         user = User.objects.create_user(
             username=email,
@@ -62,7 +80,7 @@ class StaffCreateSerializer(serializers.ModelSerializer):
         
         staff = StaffProfile.objects.create(
             user=user,
-            department_id=department,
+            department=department_obj,
             **validated_data
         )
 

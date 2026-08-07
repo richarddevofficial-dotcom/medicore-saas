@@ -29,7 +29,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         hospital = _resolve_request_hospital(self.request)
         if self.request.user.is_superuser and not hospital:
-            return Department.objects.all()
+            return Department.objects.none()
         if not hospital:
             return Department.objects.none()
         return Department.objects.filter(hospital=hospital)
