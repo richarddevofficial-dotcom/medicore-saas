@@ -64,7 +64,7 @@ def _parse_date(raw_value, field_name):
 
 
 def _build_date_filters(request):
-    today = timezone.now().date()
+    today = timezone.localdate()
     period = request.query_params.get('period', 'daily')
     start_date_param = request.query_params.get('start_date')
     end_date_param = request.query_params.get('end_date')
@@ -675,7 +675,7 @@ def reconciliation_report(request):
 @permission_classes([IsAuthenticated])
 def dashboard_charts(request):
     """Real data for dashboard charts"""
-    today = timezone.now().date()
+    today = timezone.localdate()
     hospital = _resolve_report_hospital(request)
     patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()
     bills_qs = Bill.objects.filter(hospital=hospital) if hospital else Bill.objects.none()

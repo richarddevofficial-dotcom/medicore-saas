@@ -579,7 +579,7 @@ class ReportsPlanAccessTests(TestCase):
 		Appointment.objects.create(
 			hospital=self.hospital_basic,
 			patient=self.basic_patient,
-			appointment_date=timezone.now().date(),
+			appointment_date=timezone.localdate(),
 			appointment_time="08:30",
 			reason="Review",
 			status="completed",
@@ -587,7 +587,7 @@ class ReportsPlanAccessTests(TestCase):
 		Appointment.objects.create(
 			hospital=self.hospital_pro,
 			patient=self.pro_patient,
-			appointment_date=timezone.now().date(),
+			appointment_date=timezone.localdate(),
 			appointment_time="10:15",
 			reason="Consult",
 			status="completed",
@@ -639,7 +639,7 @@ class ReportsPlanAccessTests(TestCase):
 		today_row = next(
 			row
 			for row in response.data["weekly"]
-			if row["day"] == timezone.now().strftime("%a")
+			if row["day"] == timezone.localdate().strftime("%a")
 		)
 		self.assertEqual(today_row["consultations"], 1)
 		self.assertEqual(today_row["lab"], 1)
