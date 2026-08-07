@@ -34,6 +34,9 @@ class ExpenseViewSet(HospitalScopedViewSet):
     search_fields = ['description', 'vendor_name', 'invoice_number']
     ordering_fields = ['-expense_date', 'amount', 'status']
     ordering = ['-expense_date']
+
+    def _is_hr_manager(self):
+        return IsHRManager().has_permission(self.request, self)
     
     def get_serializer_class(self):
         """Use detail serializer for retrieve"""
@@ -45,7 +48,7 @@ class ExpenseViewSet(HospitalScopedViewSet):
         """Filter by hospital"""
         queryset = super().get_queryset()
         # Staff can only see their own submitted expenses (unless HR manager)
-        if not self.request.user.groups.filter(name__in=['hr_manager']).exists():
+        if not self._is_hr_manager():
             queryset = queryset.filter(submitted_by=self.request.user)
         return queryset
     
@@ -92,7 +95,7 @@ class ExpenseViewSet(HospitalScopedViewSet):
             )
         
         # Check if user has permission to approve
-        if not request.user.groups.filter(name__in=['hr_manager']).exists():
+        if not self._is_hr_manager():
             return Response(
                 {'error': 'Only HR managers can approve expenses'},
                 status=status.HTTP_403_FORBIDDEN
@@ -134,7 +137,7 @@ class ExpenseViewSet(HospitalScopedViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        if not request.user.groups.filter(name__in=['hr_manager']).exists():
+        if not self._is_hr_manager():
             return Response(
                 {'error': 'Only HR managers can reject expenses'},
                 status=status.HTTP_403_FORBIDDEN
@@ -160,7 +163,7 @@ class ExpenseViewSet(HospitalScopedViewSet):
     @action(detail=False, methods=['get'])
     def pending_approval(self, request):
         """Get all expenses pending approval"""
-        if not request.user.groups.filter(name__in=['hr_manager']).exists():
+        if not self._is_hr_manager():
             return Response(
                 {'error': 'Only HR managers can view pending approvals'},
                 status=status.HTTP_403_FORBIDDEN
