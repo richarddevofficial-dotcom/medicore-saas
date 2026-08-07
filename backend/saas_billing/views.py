@@ -1317,6 +1317,9 @@ def available_plan_changes(request):
         is_active=True
     ).order_by("display_order")
 
+    if subscription.plan.code != "starter":
+        plans = plans.exclude(code="starter")
+
     results = []
 
     for plan in plans:

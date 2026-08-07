@@ -161,8 +161,12 @@ export default function BillingPlansPage() {
             </p>
 
             <p className="mt-1 text-sm text-slate-600">
-              {money(currentPlan.monthly_price, currentPlan.currency || "USD")}{" "}
-              per month
+              {currentPlan.code === "starter"
+                ? "14-day free trial"
+                : `${money(
+                    currentPlan.monthly_price,
+                    currentPlan.currency || "USD",
+                  )} per month`}
             </p>
           </div>
         )}
@@ -192,6 +196,7 @@ export default function BillingPlansPage() {
           const isSelected = selectedPlan?.code === plan.code;
 
           const canChange = plan.allowed && !isCurrent;
+          const isStarterTrial = plan.code === "starter";
 
           return (
             <article
@@ -237,17 +242,25 @@ export default function BillingPlansPage() {
               <div className="mt-6">
                 <div className="flex items-end gap-2">
                   <span className="text-4xl font-bold text-slate-900">
-                    {money(plan.monthly_price, plan.currency)}
+                    {isStarterTrial
+                      ? "Free"
+                      : money(plan.monthly_price, plan.currency)}
                   </span>
 
-                  <span className="pb-1 text-sm text-slate-500">/ month</span>
+                  <span className="pb-1 text-sm text-slate-500">
+                    {isStarterTrial ? "for 14 days" : "/ month"}
+                  </span>
                 </div>
 
                 <p className="mt-3 text-sm text-slate-600">
-                  One-time setup fee:{" "}
-                  <span className="font-semibold text-slate-900">
-                    {money(plan.service_fee, plan.currency)}
-                  </span>
+                  {isStarterTrial
+                    ? "No payment required during trial"
+                    : "One-time setup fee:"}{" "}
+                  {!isStarterTrial && (
+                    <span className="font-semibold text-slate-900">
+                      {money(plan.service_fee, plan.currency)}
+                    </span>
+                  )}
                 </p>
               </div>
 

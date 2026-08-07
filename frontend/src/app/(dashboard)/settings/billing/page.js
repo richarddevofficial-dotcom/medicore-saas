@@ -342,7 +342,11 @@ export default function BillingPage() {
         <SummaryCard
           icon={Wallet}
           label="Monthly subscription"
-          value={money(subscription.monthly_price, currency)}
+          value={
+            subscription.status === "trial"
+              ? "Free during trial"
+              : money(subscription.monthly_price, currency)
+          }
         />
 
         <SummaryCard

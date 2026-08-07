@@ -13,6 +13,19 @@ from staff.models import StaffProfile
 from .models import HospitalSubscription, SubscriptionPlan
 
 
+class SubscriptionCatalogTests(TestCase):
+	def test_seeded_catalog_has_free_trial_and_paid_plans(self):
+		call_command("seed_subscription_plans")
+
+		prices = dict(
+			SubscriptionPlan.objects.values_list("code", "monthly_price"),
+		)
+		self.assertEqual(str(prices["starter"]), "0.00")
+		self.assertEqual(str(prices["basic"]), "49.90")
+		self.assertEqual(str(prices["pro"]), "89.90")
+		self.assertEqual(str(prices["enterprise"]), "129.90")
+
+
 class BackfillLegacySubscriptionsTests(TestCase):
 	def setUp(self):
 		self.hospital = Hospital.objects.create(
@@ -28,16 +41,16 @@ class BackfillLegacySubscriptionsTests(TestCase):
 			country="South Sudan",
 			subscription_plan="basic",
 		)
-		self.starter_plan = SubscriptionPlan.objects.create(
-			code="starter",
-			name="Starter",
+		self.basic_plan = SubscriptionPlan.objects.create(
+			code="basic",
+			name="Basic",
 			monthly_price="49.90",
 			service_fee="300.00",
 			max_staff=20,
 			max_patients=2000,
 		)
 
-	def test_backfill_creates_starter_subscription_from_paid_basic_payment(self):
+	def test_backfill_creates_basic_subscription_from_paid_basic_payment(self):
 		paid_at = timezone.now()
 		payment_end = timezone.localdate() + timedelta(days=180)
 		SubscriptionPayment.objects.create(
@@ -54,7 +67,7 @@ class BackfillLegacySubscriptionsTests(TestCase):
 		call_command("backfill_legacy_subscriptions")
 
 		subscription = HospitalSubscription.objects.get(hospital=self.hospital)
-		self.assertEqual(subscription.plan, self.starter_plan)
+		self.assertEqual(subscription.plan, self.basic_plan)
 		self.assertEqual(subscription.status, HospitalSubscription.STATUS_ACTIVE)
 		self.assertEqual(subscription.next_billing_date, payment_end)
 		self.assertFalse(subscription.service_fee_paid)

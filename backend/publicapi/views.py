@@ -189,7 +189,7 @@ def register_hospital(request):
     slug = generate_unique_slug(hospital_name)
     username = generate_unique_username(admin_email)
     now = timezone.now()
-    trial_end = now + timedelta(days=15)
+    trial_end = now + timedelta(days=14)
 
     try:
         hospital = Hospital.objects.create(
@@ -205,7 +205,7 @@ def register_hospital(request):
             city=city,
             state=state,
             country=country,
-            subscription_plan="starter",
+            subscription_plan="trial",
             subscription_status="trial",
             trial_start=now,
             trial_end=trial_end,

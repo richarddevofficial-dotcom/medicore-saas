@@ -6,9 +6,7 @@ from billing.models import SubscriptionPayment
 from saas_billing.models import HospitalSubscription, SubscriptionPlan
 
 
-PLAN_CODE_ALIASES = {
-    "basic": "starter",
-}
+PLAN_CODE_ALIASES = {}
 
 
 class Command(BaseCommand):
