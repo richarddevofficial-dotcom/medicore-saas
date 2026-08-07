@@ -3,13 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  Building2,
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  Loader2,
-} from "lucide-react";
+import { Building2, CheckCircle2, Eye, EyeOff, Loader2 } from "lucide-react";
 
 const initialForm = {
   hospital_name: "",
@@ -37,9 +31,9 @@ export default function HospitalRegistrationPage() {
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const apiBase =
-    process.env.NEXT_PUBLIC_API_URL ||
-    "https://api.medicorecloud.com/api/v1";
+  const apiBase = (
+    process.env.NEXT_PUBLIC_API_URL || "https://api.medicorecloud.com/api/v1"
+  ).replace(/\/+$/, "");
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -68,36 +62,43 @@ export default function HospitalRegistrationPage() {
     setSubmitting(true);
 
     try {
-      const response = await fetch(
-        `${apiBase}/public/register-hospital/`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            hospital_name: form.hospital_name,
-            hospital_type: form.hospital_type,
-            hospital_email: form.hospital_email,
-            hospital_phone: form.hospital_phone,
-            address: form.address,
-            city: form.city,
-            state: form.state,
-            country: form.country,
-            admin_first_name: form.admin_first_name,
-            admin_last_name: form.admin_last_name,
-            admin_email: form.admin_email,
-            admin_phone: form.admin_phone,
-            password: form.password,
-          }),
-        }
-      );
+      const response = await fetch(`${apiBase}/public/register-hospital/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          hospital_name: form.hospital_name,
+          hospital_type: form.hospital_type,
+          hospital_email: form.hospital_email,
+          hospital_phone: form.hospital_phone,
+          address: form.address,
+          city: form.city,
+          state: form.state,
+          country: form.country,
+          admin_first_name: form.admin_first_name,
+          admin_last_name: form.admin_last_name,
+          admin_email: form.admin_email,
+          admin_phone: form.admin_phone,
+          password: form.password,
+        }),
+      });
 
-      const data = await response.json();
+      const contentType = response.headers.get("content-type") || "";
+      const data = contentType.includes("application/json")
+        ? await response.json()
+        : null;
 
       if (!response.ok) {
         throw new Error(
-          data.error || "Hospital registration failed."
+          data?.error ||
+            `Hospital registration service returned an unexpected response (${response.status}). Check NEXT_PUBLIC_API_URL.`,
+        );
+      }
+
+      if (!data) {
+        throw new Error(
+          "Hospital registration service returned an unexpected response. Check NEXT_PUBLIC_API_URL.",
         );
       }
 
@@ -107,10 +108,7 @@ export default function HospitalRegistrationPage() {
         window.location.href = data.login_url;
       }, 2500);
     } catch (requestError) {
-      setError(
-        requestError.message ||
-          "Unable to register the hospital."
-      );
+      setError(requestError.message || "Unable to register the hospital.");
     } finally {
       setSubmitting(false);
     }
@@ -133,16 +131,12 @@ export default function HospitalRegistrationPage() {
           </p>
 
           <div className="mt-6 rounded-2xl bg-slate-100 p-5 text-left">
-            <p className="text-sm text-slate-500">
-              Hospital
-            </p>
+            <p className="text-sm text-slate-500">Hospital</p>
             <p className="font-semibold text-slate-900">
               {success.hospital?.name}
             </p>
 
-            <p className="mt-4 text-sm text-slate-500">
-              Login address
-            </p>
+            <p className="mt-4 text-sm text-slate-500">Login address</p>
             <p className="break-all font-semibold text-orange-600">
               {success.login_url}
             </p>
@@ -168,21 +162,14 @@ export default function HospitalRegistrationPage() {
     <main className="min-h-screen bg-slate-100 px-4 py-10 sm:px-6">
       <div className="mx-auto max-w-5xl">
         <div className="mb-8 text-center">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-3"
-          >
+          <Link href="/" className="inline-flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500 text-white">
               <Building2 size={26} />
             </div>
 
             <div className="text-left">
-              <p className="text-xl font-bold text-slate-900">
-                MediCore HMS
-              </p>
-              <p className="text-sm text-slate-500">
-                Hospital Management SaaS
-              </p>
+              <p className="text-xl font-bold text-slate-900">MediCore HMS</p>
+              <p className="text-sm text-slate-500">Hospital Management SaaS</p>
             </div>
           </Link>
 
@@ -191,8 +178,8 @@ export default function HospitalRegistrationPage() {
           </h1>
 
           <p className="mx-auto mt-3 max-w-2xl text-slate-600">
-            Create your hospital workspace and receive your
-            secure MediCore subdomain.
+            Create your hospital workspace and receive your secure MediCore
+            subdomain.
           </p>
         </div>
 
@@ -327,9 +314,7 @@ export default function HospitalRegistrationPage() {
                 value={form.password}
                 onChange={handleChange}
                 visible={showPassword}
-                onToggle={() =>
-                  setShowPassword((current) => !current)
-                }
+                onToggle={() => setShowPassword((current) => !current)}
               />
 
               <PasswordField
@@ -338,9 +323,7 @@ export default function HospitalRegistrationPage() {
                 value={form.confirm_password}
                 onChange={handleChange}
                 visible={showPassword}
-                onToggle={() =>
-                  setShowPassword((current) => !current)
-                }
+                onToggle={() => setShowPassword((current) => !current)}
               />
             </div>
           </section>
@@ -353,9 +336,8 @@ export default function HospitalRegistrationPage() {
             />
 
             <p className="text-sm text-slate-600">
-              I confirm that the information provided is correct
-              and I agree to the MediCore terms of service and
-              privacy policy.
+              I confirm that the information provided is correct and I agree to
+              the MediCore terms of service and privacy policy.
             </p>
           </div>
 
@@ -376,10 +358,7 @@ export default function HospitalRegistrationPage() {
 
           <p className="mt-6 text-center text-sm text-slate-600">
             Already registered?{" "}
-            <Link
-              href="/login"
-              className="font-semibold text-orange-600"
-            >
+            <Link href="/login" className="font-semibold text-orange-600">
               Sign in
             </Link>
           </p>
@@ -401,9 +380,7 @@ function Field({
     <label className="block">
       <span className="mb-2 block text-sm font-semibold text-slate-700">
         {label}
-        {required && (
-          <span className="ml-1 text-red-500">*</span>
-        )}
+        {required && <span className="ml-1 text-red-500">*</span>}
       </span>
 
       <input
@@ -418,13 +395,7 @@ function Field({
   );
 }
 
-function SelectField({
-  label,
-  name,
-  value,
-  onChange,
-  options,
-}) {
+function SelectField({ label, name, value, onChange, options }) {
   return (
     <label className="block">
       <span className="mb-2 block text-sm font-semibold text-slate-700">
@@ -447,14 +418,7 @@ function SelectField({
   );
 }
 
-function PasswordField({
-  label,
-  name,
-  value,
-  onChange,
-  visible,
-  onToggle,
-}) {
+function PasswordField({ label, name, value, onChange, visible, onToggle }) {
   return (
     <label className="block">
       <span className="mb-2 block text-sm font-semibold text-slate-700">
