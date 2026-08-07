@@ -251,7 +251,6 @@ class TestHRRBACPermissions(HRModuleSetUp):
 
     def test_hr_user_cannot_create_employee(self):
         """HR officers cannot create employees (HR manager only)."""
-        # This depends on implementation - some systems allow HR to create
         self.client.force_authenticate(user=self.hr_user)
         data = {
             "employee_number": "EMP998",
@@ -263,11 +262,7 @@ class TestHRRBACPermissions(HRModuleSetUp):
             "hire_date": date.today().isoformat(),
         }
         response = self.client.post("/api/v1/hr/employees/", data, format="json")
-        # May succeed if HR has create permissions in this system
-        self.assertIn(
-            response.status_code,
-            [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST],
-        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_superuser_can_access_all_data(self):
         """Superusers can access all hospital data."""
