@@ -651,6 +651,11 @@ class ReportsPlanAccessTests(TestCase):
 		response = self.client.get("/api/v1/reports/detailed/?period=daily")
 
 		self.assertEqual(response.status_code, 200)
+		self.assertIn("ipd", response.data)
+		self.assertIn("laboratory", response.data)
+		self.assertIn("imaging", response.data)
+		self.assertIn("pharmacy", response.data)
+		self.assertIn("expenses", response.data)
 
 	def test_active_trial_can_access_detailed_reports(self):
 		trial_hospital = Hospital.objects.create(

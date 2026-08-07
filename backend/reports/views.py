@@ -21,8 +21,10 @@ from human_resources.models import (
     ShiftAssignment,
 )
 from ipd.models import MedicationAdministration, NursingObservation
+from ipd.models import Admission
+from expenses.models import Expense
 from django.utils import timezone
-from django.db.models import Count, Sum, Q
+from django.db.models import Count, F, Sum, Q
 from datetime import timedelta, datetime
 
 
@@ -458,6 +460,11 @@ def detailed_report(request):
     patients_qs = Patient.objects.filter(hospital=hospital) if hospital else Patient.objects.none()
     bills_qs = Bill.objects.filter(hospital=hospital) if hospital else Bill.objects.none()
     appointments_qs = Appointment.objects.filter(hospital=hospital) if hospital else Appointment.objects.none()
+    lab_tests_qs = LabTest.objects.filter(hospital=hospital) if hospital else LabTest.objects.none()
+    imaging_tests_qs = ImagingTest.objects.filter(hospital=hospital) if hospital else ImagingTest.objects.none()
+    medicines_qs = Medicine.objects.filter(hospital=hospital) if hospital else Medicine.objects.none()
+    admissions_qs = Admission.objects.filter(hospital=hospital) if hospital else Admission.objects.none()
+    expenses_qs = Expense.objects.filter(hospital=hospital) if hospital else Expense.objects.none()
 
     # Patients
     total_patients = patients_qs.count()
@@ -484,6 +491,23 @@ def detailed_report(request):
     # Appointments
     total_appointments = appointments_qs.filter(appointment_date__gte=start_date, appointment_date__lte=end_date).count()
     completed_appointments = appointments_qs.filter(appointment_date__gte=start_date, appointment_date__lte=end_date, status='completed').count()
+
+    # Clinical services and operational controls
+    completed_lab_tests = lab_tests_qs.filter(
+        status='completed',
+        completed_at__date__gte=start_date,
+        completed_at__date__lte=end_date,
+    )
+    completed_imaging_tests = imaging_tests_qs.filter(
+        status='completed',
+        completed_at__date__gte=start_date,
+        completed_at__date__lte=end_date,
+    )
+    period_expenses = expenses_qs.filter(
+        expense_date__gte=start_date,
+        expense_date__lte=end_date,
+        status__in=['approved', 'paid'],
+    )
     
     # Gender distribution
     gender_patients = patients_qs.filter(
@@ -515,6 +539,58 @@ def detailed_report(request):
         'appointments': {
             'total': total_appointments,
             'completed': completed_appointments,
+        },
+        'ipd': {
+            'active_admissions': admissions_qs.filter(
+                status__in=[
+                    Admission.STATUS_ADMITTED,
+                    Admission.STATUS_TRANSFERRED,
+                ],
+            ).count(),
+            'admissions': admissions_qs.filter(
+                admitted_at__date__gte=start_date,
+                admitted_at__date__lte=end_date,
+            ).count(),
+            'discharges': admissions_qs.filter(
+                discharged_at__date__gte=start_date,
+                discharged_at__date__lte=end_date,
+            ).count(),
+        },
+        'laboratory': {
+            'completed': completed_lab_tests.count(),
+            'pending': lab_tests_qs.filter(
+                status__in=['requested', 'in_progress'],
+            ).count(),
+            'revenue': float(
+                completed_lab_tests.aggregate(total=Sum('price')).get('total') or 0,
+            ),
+        },
+        'imaging': {
+            'completed': completed_imaging_tests.count(),
+            'pending': imaging_tests_qs.filter(
+                status__in=['requested', 'scheduled', 'in_progress'],
+            ).count(),
+            'revenue': float(
+                completed_imaging_tests.aggregate(total=Sum('price')).get('total') or 0,
+            ),
+        },
+        'pharmacy': {
+            'medicines': medicines_qs.filter(is_active=True).count(),
+            'low_stock': medicines_qs.filter(
+                is_active=True,
+                quantity__lte=F('reorder_level'),
+            ).count(),
+            'stock_value': float(
+                medicines_qs.aggregate(
+                    total=Sum(F('quantity') * F('cost_price')),
+                ).get('total') or 0,
+            ),
+        },
+        'expenses': {
+            'approved_or_paid': float(
+                period_expenses.aggregate(total=Sum('amount')).get('total') or 0,
+            ),
+            'pending_approval': expenses_qs.filter(status='submitted').count(),
         },
     })
 

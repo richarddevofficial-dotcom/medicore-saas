@@ -111,6 +111,28 @@ export default function ReportsPage() {
         <tr><td>Total</td><td>${formatNumber(data?.appointments?.total)}</td></tr>
         <tr><td>Completed</td><td>${formatNumber(data?.appointments?.completed)}</td></tr></table>
       </div>
+
+      <div class="section"><h2>Clinical Services</h2>
+        <table><tr><th>Service</th><th>Completed</th><th>Pending</th><th>Period Revenue</th></tr>
+        <tr><td>Laboratory</td><td>${formatNumber(data?.laboratory?.completed)}</td><td>${formatNumber(data?.laboratory?.pending)}</td><td>SSP ${formatNumber(data?.laboratory?.revenue)}</td></tr>
+        <tr><td>Imaging</td><td>${formatNumber(data?.imaging?.completed)}</td><td>${formatNumber(data?.imaging?.pending)}</td><td>SSP ${formatNumber(data?.imaging?.revenue)}</td></tr></table>
+      </div>
+
+      <div class="section"><h2>Inpatient Services</h2>
+        <table><tr><th>Metric</th><th>Value</th></tr>
+        <tr><td>Active Admissions</td><td class="highlight">${formatNumber(data?.ipd?.active_admissions)}</td></tr>
+        <tr><td>Admissions During Period</td><td>${formatNumber(data?.ipd?.admissions)}</td></tr>
+        <tr><td>Discharges During Period</td><td>${formatNumber(data?.ipd?.discharges)}</td></tr></table>
+      </div>
+
+      <div class="section"><h2>Pharmacy and Expense Control</h2>
+        <table><tr><th>Metric</th><th>Value</th></tr>
+        <tr><td>Active Medicines</td><td>${formatNumber(data?.pharmacy?.medicines)}</td></tr>
+        <tr><td>Low-Stock Medicines</td><td class="highlight">${formatNumber(data?.pharmacy?.low_stock)}</td></tr>
+        <tr><td>Inventory Cost Value</td><td>SSP ${formatNumber(data?.pharmacy?.stock_value)}</td></tr>
+        <tr><td>Approved or Paid Expenses</td><td>SSP ${formatNumber(data?.expenses?.approved_or_paid)}</td></tr>
+        <tr><td>Expenses Awaiting Approval</td><td>${formatNumber(data?.expenses?.pending_approval)}</td></tr></table>
+      </div>
       
       <div class="notice">Confidential hospital information. Print, distribute, and retain this report only in accordance with your hospital's records and privacy policy.</div>
       <div class="footer"><span>${escapeHtml(hospitalName)} | MediCore HMS</span><span class="right">Page <span class="page"></span></span></div>
