@@ -145,9 +145,13 @@ def create_plan_change_invoice(
     else:
         subscription_amount = Decimal("0.00")
 
-    service_fee_amount = Decimal("0.00")
+    service_fee_amount = (
+        Decimal("0.00")
+        if subscription.service_fee_paid
+        else target_plan.service_fee
+    )
 
-    subtotal = subscription_amount
+    subtotal = service_fee_amount + subscription_amount
     tax_amount = Decimal("0.00")
     total_amount = subtotal
 

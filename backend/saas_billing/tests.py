@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.core.management import call_command
 from django.contrib.auth.models import User
@@ -11,6 +12,7 @@ from hospitals.models import Hospital
 from staff.models import StaffProfile
 
 from .models import HospitalSubscription, SubscriptionPlan
+from .plan_change_services import create_plan_change_invoice
 
 
 class SubscriptionCatalogTests(TestCase):
@@ -241,3 +243,58 @@ class HospitalBillingAuthorizationTests(TestCase):
 			response.data["subscription"]["monthly_price"],
 			"89.90",
 		)
+
+	def test_starter_trial_upgrade_charges_basic_service_fee_once(self):
+		self.starter_plan.monthly_price = "0.00"
+		self.starter_plan.service_fee = "0.00"
+		self.starter_plan.save(
+			update_fields=["monthly_price", "service_fee"],
+		)
+		basic_plan = SubscriptionPlan.objects.create(
+			code="billing-auth-basic",
+			name="Billing Authorization Basic",
+			monthly_price="49.90",
+			service_fee="300.00",
+			max_staff=20,
+			max_patients=2000,
+		)
+		subscription = HospitalSubscription.objects.get(
+			hospital=self.hospital,
+		)
+		subscription.current_monthly_price = "0.00"
+		subscription.current_service_fee = "0.00"
+		subscription.status = HospitalSubscription.STATUS_TRIAL
+		subscription.save(
+			update_fields=[
+				"current_monthly_price",
+				"current_service_fee",
+				"status",
+			]
+		)
+
+		invoice, created = create_plan_change_invoice(
+			subscription=subscription,
+			target_plan=basic_plan,
+		)
+
+		self.assertTrue(created)
+		self.assertEqual(invoice.service_fee_amount, Decimal("300.00"))
+		self.assertEqual(invoice.subscription_amount, Decimal("49.90"))
+		self.assertEqual(invoice.total_amount, Decimal("349.90"))
+
+	def test_upgrade_omits_service_fee_after_initial_fee_is_paid(self):
+		subscription = HospitalSubscription.objects.get(
+			hospital=self.hospital,
+		)
+		subscription.service_fee_paid = True
+		subscription.save(update_fields=["service_fee_paid"])
+
+		invoice, created = create_plan_change_invoice(
+			subscription=subscription,
+			target_plan=self.pro_plan,
+		)
+
+		self.assertTrue(created)
+		self.assertEqual(invoice.service_fee_amount, Decimal("0.00"))
+		self.assertEqual(invoice.subscription_amount, Decimal("40.00"))
+		self.assertEqual(invoice.total_amount, Decimal("40.00"))
