@@ -184,3 +184,27 @@ class HospitalBillingAuthorizationTests(TestCase):
 			self.hospital.max_patients,
 			self.pro_plan.max_patients,
 		)
+
+	def test_billing_dashboard_returns_the_subscription_price_snapshot(self):
+		subscription = HospitalSubscription.objects.get(
+			hospital=self.hospital,
+		)
+		subscription.plan = self.pro_plan
+		subscription.current_monthly_price = "89.90"
+		subscription.current_service_fee = "500.00"
+		subscription.save(
+			update_fields=[
+				"plan",
+				"current_monthly_price",
+				"current_service_fee",
+			]
+		)
+		self.client.force_authenticate(user=self.admin_user)
+
+		response = self.client.get("/api/v1/saas-billing/dashboard/")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(
+			response.data["subscription"]["monthly_price"],
+			"89.90",
+		)
