@@ -8,6 +8,7 @@ import {
   Edit,
   Loader2,
   Plus,
+  RefreshCw,
   Search,
   Trash2,
   UserCheck,
@@ -56,6 +57,7 @@ export default function AttendancePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
   const [error, setError] = useState("");
@@ -69,9 +71,13 @@ export default function AttendancePage() {
     );
   }, []);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async ({ silent = false } = {}) => {
     try {
-      setIsLoading(true);
+      if (silent) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
       setError("");
 
       const [attendanceData, employeeData, shiftData] = await Promise.all([
@@ -89,11 +95,18 @@ export default function AttendancePage() {
       setError(getApiError(err, "Unable to load attendance records."));
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
     loadData();
+
+    const refreshInterval = window.setInterval(() => {
+      loadData({ silent: true });
+    }, 30000);
+
+    return () => window.clearInterval(refreshInterval);
   }, [loadData]);
 
   const filteredAttendance = useMemo(() => {
@@ -312,16 +325,30 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          {canManageAttendance && (
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={openCreateModal}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-700"
+              onClick={() => loadData({ silent: true })}
+              disabled={isRefreshing}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <Plus className="h-4 w-4" />
-              Record Attendance
+              <RefreshCw
+                className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+              />
+              Refresh
             </button>
-          )}
+
+            {canManageAttendance && (
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-700"
+              >
+                <Plus className="h-4 w-4" />
+                Record Attendance
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

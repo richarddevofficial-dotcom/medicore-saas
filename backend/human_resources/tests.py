@@ -559,6 +559,68 @@ class HRPermissionTests(TestCase):
 			timedelta(hours=7, minutes=55),
 		)
 
+	def test_employee_clock_in_appears_for_hr_manager_and_can_be_adjusted(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="VISIBLE-CLOCK-001",
+			first_name="Visible",
+			last_name="Clock",
+		)
+		shift = Shift.objects.create(
+			hospital=self.hospital,
+			code="VISIBLE-DAY",
+			name="Visible Day Shift",
+			start_time="08:00",
+			end_time="16:00",
+		)
+		ShiftAssignment.objects.create(
+			employee=employee,
+			shift=shift,
+			start_date="2026-08-01",
+		)
+		clock_in = timezone.make_aware(
+			datetime(2026, 8, 8, 8, 5),
+			timezone.get_current_timezone(),
+		)
+		self.client.force_authenticate(self.doctor)
+
+		with patch(
+			"human_resources.self_service_views.timezone.now",
+			return_value=clock_in,
+		):
+			created = self.client.post(
+				"/api/v1/hr/me/attendance/clock-in/",
+				{},
+				format="json",
+			)
+
+		self.client.force_authenticate(self.hr_manager)
+		listed = self.client.get("/api/v1/hr/attendance/")
+		record = next(
+			item
+			for item in listed.data["results"]
+			if item["employee"] == employee.id
+		)
+		adjusted = self.client.patch(
+			f"/api/v1/hr/attendance/{record['id']}/",
+			{
+				"clock_in": "2026-08-08T08:00:00+05:30",
+				"clock_out": "2026-08-08T16:15:00+05:30",
+			},
+			format="json",
+		)
+
+		self.assertEqual(created.status_code, 201, created.data)
+		self.assertEqual(listed.status_code, 200, listed.data)
+		self.assertEqual(record["shift"], shift.id)
+		self.assertEqual(adjusted.status_code, 200, adjusted.data)
+		attendance = Attendance.objects.get(pk=record["id"])
+		self.assertEqual(
+			attendance.clock_out - attendance.clock_in,
+			timedelta(hours=8, minutes=15),
+		)
+
 	def test_staff_can_complete_an_empty_attendance_row(self):
 		employee = Employee.objects.create(
 			hospital=self.hospital,
