@@ -16,7 +16,10 @@ from .views import (
     hr_dashboard,
 )
 from .self_service_views import (
+    MyAttendanceClockInView,
+    MyAttendanceClockOutView,
     MyAttendanceListView,
+    MyAttendanceStatusView,
     MyLeaveBalanceListView,
     MyLeaveRequestListCreateView,
     MyLeaveTypeListView,
@@ -100,6 +103,21 @@ urlpatterns = [
         "me/attendance/",
         MyAttendanceListView.as_view(),
         name="my-attendance",
+    ),
+    path(
+        "me/attendance/status/",
+        MyAttendanceStatusView.as_view(),
+        name="my-attendance-status",
+    ),
+    path(
+        "me/attendance/clock-in/",
+        MyAttendanceClockInView.as_view(),
+        name="my-attendance-clock-in",
+    ),
+    path(
+        "me/attendance/clock-out/",
+        MyAttendanceClockOutView.as_view(),
+        name="my-attendance-clock-out",
     ),
     path(
         "me/leave-types/",

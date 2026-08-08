@@ -1,5 +1,9 @@
 from django.contrib.auth.models import User
 from django.test import TestCase
+from django.utils import timezone
+
+from datetime import datetime
+from unittest.mock import patch
 
 from rest_framework.test import APIClient
 
@@ -314,6 +318,144 @@ class HRPermissionTests(TestCase):
 		self.assertEqual(shifts.data["count"], 0)
 		self.assertEqual(leave_request.status_code, 400)
 		self.assertIn("employee", leave_request.data)
+
+	def test_staff_clock_in_uses_server_time_and_shift_window(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="CLOCK-001",
+			first_name="Clock",
+			last_name="Employee",
+		)
+		shift = Shift.objects.create(
+			hospital=self.hospital,
+			code="CLOCK-DAY",
+			name="Clock Day Shift",
+			start_time="08:00",
+			end_time="16:00",
+		)
+		ShiftAssignment.objects.create(
+			employee=employee,
+			shift=shift,
+			start_date="2026-08-01",
+		)
+		Attendance.objects.create(
+			employee=employee,
+			attendance_date="2026-08-07",
+			clock_in=timezone.make_aware(
+				datetime(2026, 8, 7, 8, 0),
+				timezone.get_current_timezone(),
+			),
+			clock_out=timezone.make_aware(
+				datetime(2026, 8, 7, 16, 0),
+				timezone.get_current_timezone(),
+			),
+			status="PRESENT",
+		)
+		self.client.force_authenticate(self.doctor)
+		current_timezone = timezone.get_current_timezone()
+		too_early = timezone.make_aware(
+			datetime(2026, 8, 8, 6, 59),
+			current_timezone,
+		)
+		late_arrival = timezone.make_aware(
+			datetime(2026, 8, 8, 8, 30),
+			current_timezone,
+		)
+		too_late = timezone.make_aware(
+			datetime(2026, 8, 8, 12, 1),
+			current_timezone,
+		)
+
+		with patch(
+			"human_resources.self_service_views.timezone.now",
+			return_value=too_early,
+		):
+			rejected = self.client.post(
+				"/api/v1/hr/me/attendance/clock-in/",
+				{},
+				format="json",
+			)
+		with patch(
+			"human_resources.self_service_views.timezone.now",
+			return_value=too_late,
+		):
+			closed = self.client.post(
+				"/api/v1/hr/me/attendance/clock-in/",
+				{},
+				format="json",
+			)
+		with patch(
+			"human_resources.self_service_views.timezone.now",
+			return_value=late_arrival,
+		):
+			status_response = self.client.get(
+				"/api/v1/hr/me/attendance/status/",
+			)
+			created = self.client.post(
+				"/api/v1/hr/me/attendance/clock-in/",
+				{"clock_in": "2026-08-08T07:00:00Z"},
+				format="json",
+			)
+			duplicate = self.client.post(
+				"/api/v1/hr/me/attendance/clock-in/",
+				{},
+				format="json",
+			)
+
+		self.assertEqual(rejected.status_code, 400)
+		self.assertEqual(closed.status_code, 400)
+		self.assertTrue(status_response.data["can_clock_in"])
+		self.assertEqual(
+			status_response.data["shift"]["name"],
+			"Clock Day Shift",
+		)
+		self.assertEqual(created.status_code, 201, created.data)
+		self.assertEqual(created.data["status"], "LATE")
+		self.assertEqual(duplicate.status_code, 400)
+		attendance = Attendance.objects.get(
+			employee=employee,
+			attendance_date="2026-08-08",
+		)
+		self.assertEqual(attendance.clock_in, late_arrival)
+
+	def test_staff_can_clock_out_only_their_open_attendance(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="CLOCK-OUT-001",
+			first_name="Clock",
+			last_name="Out",
+		)
+		clock_in = timezone.make_aware(
+			datetime(2026, 8, 8, 8, 0),
+			timezone.get_current_timezone(),
+		)
+		attendance = Attendance.objects.create(
+			employee=employee,
+			attendance_date="2026-08-08",
+			clock_in=clock_in,
+			status="PRESENT",
+		)
+		clock_out = timezone.make_aware(
+			datetime(2026, 8, 8, 16, 0),
+			timezone.get_current_timezone(),
+		)
+		self.client.force_authenticate(self.doctor)
+
+		with patch(
+			"human_resources.self_service_views.timezone.now",
+			return_value=clock_out,
+		):
+			response = self.client.post(
+				"/api/v1/hr/me/attendance/clock-out/",
+				{},
+				format="json",
+			)
+
+		self.assertEqual(response.status_code, 200, response.data)
+		attendance.refresh_from_db()
+		self.assertEqual(attendance.clock_out, clock_out)
 
 	def test_leave_request_requires_a_balance_and_cannot_be_deleted(self):
 		employee = Employee.objects.create(

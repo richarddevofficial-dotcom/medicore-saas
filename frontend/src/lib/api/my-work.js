@@ -42,6 +42,36 @@ export function getMyAttendance(params = {}) {
   return list("hr/me/attendance/", params);
 }
 
+export async function getMyAttendanceStatus() {
+  try {
+    const response = await apiClient.get("hr/me/attendance/status/");
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      getErrorMessage(error, "Unable to load your attendance status."),
+    );
+  }
+}
+
+async function attendanceAction(action) {
+  try {
+    const response = await apiClient.post(`hr/me/attendance/${action}/`);
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      getErrorMessage(error, "Unable to update your attendance."),
+    );
+  }
+}
+
+export function clockIn() {
+  return attendanceAction("clock-in");
+}
+
+export function clockOut() {
+  return attendanceAction("clock-out");
+}
+
 export function getMyLeaveTypes() {
   return list("hr/me/leave-types/");
 }

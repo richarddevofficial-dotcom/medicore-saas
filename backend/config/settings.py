@@ -186,6 +186,16 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+ATTENDANCE_CLOCK_IN_EARLY_MINUTES = int(
+    os.getenv('ATTENDANCE_CLOCK_IN_EARLY_MINUTES', '60')
+)
+ATTENDANCE_LATE_GRACE_MINUTES = int(
+    os.getenv('ATTENDANCE_LATE_GRACE_MINUTES', '15')
+)
+ATTENDANCE_CLOCK_IN_CLOSE_MINUTES = int(
+    os.getenv('ATTENDANCE_CLOCK_IN_CLOSE_MINUTES', '240')
+)
+
 # ✅ SECURITY: Never allow all CORS origins
 CORS_ALLOW_ALL_ORIGINS = False
 
