@@ -33,6 +33,7 @@ import {
   PieChart,
   Sliders,
   BadgeCheck,
+  Clock3,
 } from "lucide-react";
 import {
   filterNavigationByPlan,
@@ -557,6 +558,35 @@ const navigationByRole = {
   ],
 };
 
+const selfServiceRoles = new Set([
+  "doctor",
+  "receptionist",
+  "nurse",
+  "pharmacist",
+  "lab_technician",
+  "radiographer",
+  "accountant",
+  "finance",
+  "finance_manager",
+  "cashier",
+  "hr_manager",
+  "hr_officer",
+  "hr",
+]);
+
+const myWorkNavigation = {
+  section: "MY WORK",
+  items: [
+    { name: "My Shift", href: "/my-work/shifts", icon: Clock3 },
+    {
+      name: "My Attendance",
+      href: "/my-work/attendance",
+      icon: Activity,
+    },
+    { name: "My Leave", href: "/my-work/leave", icon: Calendar },
+  ],
+};
+
 export default function Sidebar({
   collapsed,
   onToggle,
@@ -605,7 +635,10 @@ export default function Sidebar({
     setExpandedSections(sections);
   }, [pathname]);
 
-  const baseNavigation = navigationByRole[role] || navigationByRole.admin;
+  const roleNavigation = navigationByRole[role] || navigationByRole.admin;
+  const baseNavigation = selfServiceRoles.has(role)
+    ? [...roleNavigation, myWorkNavigation]
+    : roleNavigation;
 
   const adminHRAllowedRoles = ["admin", "super_admin", "superadmin"];
 

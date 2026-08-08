@@ -15,6 +15,13 @@ from .views import (
     ShiftViewSet,
     hr_dashboard,
 )
+from .self_service_views import (
+    MyAttendanceListView,
+    MyLeaveBalanceListView,
+    MyLeaveRequestListCreateView,
+    MyLeaveTypeListView,
+    MyShiftListView,
+)
 
 
 router = DefaultRouter()
@@ -88,5 +95,26 @@ router.register(
 
 urlpatterns = [
     path("dashboard/", hr_dashboard, name="hr-dashboard"),
+    path("me/shifts/", MyShiftListView.as_view(), name="my-shifts"),
+    path(
+        "me/attendance/",
+        MyAttendanceListView.as_view(),
+        name="my-attendance",
+    ),
+    path(
+        "me/leave-types/",
+        MyLeaveTypeListView.as_view(),
+        name="my-leave-types",
+    ),
+    path(
+        "me/leave-balances/",
+        MyLeaveBalanceListView.as_view(),
+        name="my-leave-balances",
+    ),
+    path(
+        "me/leave-requests/",
+        MyLeaveRequestListCreateView.as_view(),
+        name="my-leave-requests",
+    ),
     path("", include(router.urls)),
 ]

@@ -134,9 +134,9 @@ export default function RoleGuard({ children }) {
     }
 
     // Check if current path is allowed
-    const isAllowed = allowedPaths.some(
-      (p) => path === p || path.startsWith(p + "/"),
-    );
+    const isAllowed =
+      allowedPaths.some((p) => path === p || path.startsWith(p + "/")) ||
+      (path.startsWith("/my-work") && role in roleAccess);
 
     if (!isAllowed) {
       router.push("/dashboard");

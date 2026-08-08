@@ -7,12 +7,14 @@ from hospitals.models import Hospital
 from departments.models import Department
 from staff.models import StaffProfile
 from human_resources.models import (
+	Attendance,
 	Employee,
 	JobPosition,
 	LeaveBalance,
 	LeaveRequest,
 	LeaveType,
 	Shift,
+	ShiftAssignment,
 )
 
 
@@ -155,6 +157,163 @@ class HRPermissionTests(TestCase):
 		self.assertEqual(created.data["break_minutes"], 30)
 		self.assertEqual(duplicate.status_code, 400)
 		self.assertIn("code", duplicate.data)
+
+	def test_staff_self_service_is_scoped_to_linked_employee(self):
+		doctor_employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="SELF-001",
+			first_name="Doctor",
+			last_name="Self",
+		)
+		other_user = User.objects.create_user(
+			username="self-service-nurse",
+			password="Nurse@1234",
+		)
+		StaffProfile.objects.create(
+			user=other_user,
+			hospital=self.hospital,
+			role="nurse",
+			phone="1234567897",
+		)
+		other_employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=other_user,
+			employee_number="SELF-002",
+			first_name="Nurse",
+			last_name="Other",
+		)
+		shift = Shift.objects.create(
+			hospital=self.hospital,
+			code="SELF",
+			name="Self Service Shift",
+			start_time="08:00",
+			end_time="16:00",
+		)
+		own_assignment = ShiftAssignment.objects.create(
+			employee=doctor_employee,
+			shift=shift,
+			start_date="2026-08-01",
+		)
+		ShiftAssignment.objects.create(
+			employee=other_employee,
+			shift=shift,
+			start_date="2026-08-01",
+		)
+		Attendance.objects.create(
+			employee=doctor_employee,
+			shift=shift,
+			attendance_date="2026-08-08",
+			status="PRESENT",
+		)
+		Attendance.objects.create(
+			employee=other_employee,
+			shift=shift,
+			attendance_date="2026-08-08",
+			status="LATE",
+		)
+		self.client.force_authenticate(self.doctor)
+
+		shift_response = self.client.get("/api/v1/hr/me/shifts/")
+		attendance_response = self.client.get(
+			"/api/v1/hr/me/attendance/",
+		)
+
+		self.assertEqual(shift_response.status_code, 200)
+		self.assertEqual(shift_response.data["count"], 1)
+		self.assertEqual(
+			shift_response.data["results"][0]["id"],
+			own_assignment.id,
+		)
+		self.assertEqual(attendance_response.status_code, 200)
+		self.assertEqual(attendance_response.data["count"], 1)
+		self.assertEqual(
+			attendance_response.data["results"][0]["employee"],
+			doctor_employee.id,
+		)
+
+	def test_staff_can_submit_and_view_only_own_leave_requests(self):
+		doctor_employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="LEAVE-SELF-001",
+			first_name="Doctor",
+			last_name="Leave",
+		)
+		leave_type = LeaveType.objects.create(
+			hospital=self.hospital,
+			name="Annual Leave",
+			code="SELF-ANNUAL",
+			days_allowed=20,
+		)
+		balance = LeaveBalance.objects.create(
+			employee=doctor_employee,
+			leave_type=leave_type,
+			year=2026,
+			allocated_days=20,
+		)
+		self.client.force_authenticate(self.doctor)
+
+		created = self.client.post(
+			"/api/v1/hr/me/leave-requests/",
+			{
+				"employee": 999999,
+				"leave_type": leave_type.id,
+				"start_date": "2026-08-10",
+				"end_date": "2026-08-11",
+				"reason": "Personal leave",
+			},
+			format="json",
+		)
+		listed = self.client.get("/api/v1/hr/me/leave-requests/")
+
+		self.assertEqual(created.status_code, 201, created.data)
+		self.assertEqual(created.data["employee"], doctor_employee.id)
+		self.assertEqual(created.data["total_days"], 2)
+		self.assertEqual(listed.data["count"], 1)
+		balance.refresh_from_db()
+		self.assertEqual(balance.pending_days, 2)
+
+		insufficient = self.client.post(
+			"/api/v1/hr/me/leave-requests/",
+			{
+				"leave_type": leave_type.id,
+				"start_date": "2026-09-01",
+				"end_date": "2026-09-30",
+				"reason": "Extended leave",
+			},
+			format="json",
+		)
+		self.assertEqual(insufficient.status_code, 400)
+		self.assertIn("total_days", insufficient.data)
+
+	def test_self_service_requires_authentication_and_employee_link(self):
+		unauthenticated = self.client.get("/api/v1/hr/me/shifts/")
+		self.assertEqual(unauthenticated.status_code, 401)
+
+		leave_type = LeaveType.objects.create(
+			hospital=self.hospital,
+			name="Personal Leave",
+			code="SELF-PERSONAL",
+			days_allowed=5,
+		)
+		self.client.force_authenticate(self.doctor)
+		shifts = self.client.get("/api/v1/hr/me/shifts/")
+		leave_request = self.client.post(
+			"/api/v1/hr/me/leave-requests/",
+			{
+				"leave_type": leave_type.id,
+				"start_date": "2026-10-01",
+				"end_date": "2026-10-01",
+				"reason": "Personal appointment",
+			},
+			format="json",
+		)
+
+		self.assertEqual(shifts.status_code, 200)
+		self.assertEqual(shifts.data["count"], 0)
+		self.assertEqual(leave_request.status_code, 400)
+		self.assertIn("employee", leave_request.data)
 
 	def test_leave_request_requires_a_balance_and_cannot_be_deleted(self):
 		employee = Employee.objects.create(
