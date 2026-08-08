@@ -270,7 +270,7 @@ export default function LoginPage() {
       title="Sign in to MediCore"
       subtitle={
         step === "credentials"
-          ? "Enter your username, email or phone number"
+          ? "Enter your email"
           : `Enter the OTP sent to ${otpDestination}`
       }
     >
@@ -290,11 +290,11 @@ export default function LoginPage() {
           className="space-y-4 sm:space-y-5"
         >
           <Input
-            label="Username, Email or Phone Number"
+            label="Email"
             type="text"
             value={credential}
             onChange={(event) => setCredential(event.target.value)}
-            placeholder="username, example@gmail.com, or 09XX XXX XXX"
+            placeholder="example@gmail.com"
             icon={credentialType === "phone" ? Phone : Mail}
             className="h-11 text-base sm:text-sm"
             name="username"
