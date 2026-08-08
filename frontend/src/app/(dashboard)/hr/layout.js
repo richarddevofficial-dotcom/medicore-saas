@@ -54,6 +54,11 @@ const navigation = [
     href: "/hr/leave-requests",
     icon: ClipboardList,
   },
+  {
+    name: "Leave Types",
+    href: "/hr/leave-types",
+    icon: FileText,
+  },
 ];
 
 export default function HRLayout({ children }) {

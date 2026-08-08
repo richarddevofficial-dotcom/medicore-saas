@@ -124,6 +124,7 @@ const navigationByRole = {
         { name: "Contracts", href: "/hr/contracts", icon: FileText },
         { name: "Attendance", href: "/hr/attendance", icon: Activity },
         { name: "Leave Requests", href: "/hr/leave-requests", icon: Calendar },
+        { name: "Leave Types", href: "/hr/leave-types", icon: FileText },
         { name: "Shifts", href: "/hr/shifts", icon: Activity },
         {
           name: "Shift Assignments",
@@ -272,6 +273,7 @@ const navigationByRole = {
           href: "/hr/leave-requests",
           icon: Calendar,
         },
+        { name: "Leave Types", href: "/hr/leave-types", icon: FileText },
         { name: "Shifts", href: "/hr/shifts", icon: Activity },
         {
           name: "Departments",
@@ -451,6 +453,7 @@ const navigationByRole = {
         { name: "Contracts", href: "/hr/contracts", icon: FileText },
         { name: "Attendance", href: "/hr/attendance", icon: Activity },
         { name: "Leave Requests", href: "/hr/leave-requests", icon: Calendar },
+        { name: "Leave Types", href: "/hr/leave-types", icon: FileText },
         { name: "Shifts", href: "/hr/shifts", icon: Activity },
         {
           name: "Shift Assignments",
@@ -469,6 +472,7 @@ const navigationByRole = {
         { name: "Employees", href: "/hr/employees", icon: Users },
         { name: "Attendance", href: "/hr/attendance", icon: Activity },
         { name: "Leave Requests", href: "/hr/leave-requests", icon: Calendar },
+        { name: "Leave Types", href: "/hr/leave-types", icon: FileText },
         {
           name: "Shift Assignments",
           href: "/hr/shift-assignments",
@@ -486,6 +490,7 @@ const navigationByRole = {
         { name: "Employees", href: "/hr/employees", icon: Users },
         { name: "Attendance", href: "/hr/attendance", icon: Activity },
         { name: "Leave Requests", href: "/hr/leave-requests", icon: Calendar },
+        { name: "Leave Types", href: "/hr/leave-types", icon: FileText },
       ],
     },
   ],
