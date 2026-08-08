@@ -390,12 +390,13 @@ class JournalEntryViewSet(
     http_method_names = (
         "get",
         "post",
+        "patch",
         "head",
         "options",
     )
 
     def get_serializer_class(self):
-        if self.action == "create":
+        if self.action in {"create", "partial_update"}:
             return JournalEntryCreateSerializer
 
         if self.action == "retrieve":

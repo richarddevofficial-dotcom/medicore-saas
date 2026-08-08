@@ -614,6 +614,20 @@ export async function createJournalEntry(data) {
   }
 }
 
+export async function updateJournalEntry(id, data) {
+  try {
+    const response = await apiClient.patch(
+      `/finance/accounting/journals/${id}/`,
+      data,
+    );
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.detail || "Failed to update journal entry",
+    );
+  }
+}
+
 export async function postJournalEntry(id) {
   try {
     const response = await apiClient.post(

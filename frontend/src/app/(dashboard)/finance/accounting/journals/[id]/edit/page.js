@@ -20,7 +20,7 @@ export default function EditJournalEntryPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    reference_number: "",
+    reference: "",
     description: "",
     entry_date: new Date().toISOString().split("T")[0],
     lines: [{ account: "", debit: 0, credit: 0, description: "" }],
@@ -48,7 +48,7 @@ export default function EditJournalEntryPage() {
       setError("");
       const data = await getJournalEntry(journalId);
       setFormData({
-        reference_number: data.reference_number || "",
+        reference: data.reference || "",
         description: data.description || "",
         entry_date: data.entry_date || new Date().toISOString().split("T")[0],
         lines: data.lines || [
@@ -113,8 +113,8 @@ export default function EditJournalEntryPage() {
 
     // Validation
     const newErrors = {};
-    if (!formData.reference_number.trim())
-      newErrors.reference_number = "Reference number is required";
+    if (!formData.reference.trim())
+      newErrors.reference = "Reference number is required";
     if (!formData.description.trim())
       newErrors.description = "Description is required";
     if (formData.lines.length < 2)
@@ -175,26 +175,24 @@ export default function EditJournalEntryPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label
-                htmlFor="reference_number"
+                htmlFor="reference"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
                 Reference Number *
               </label>
               <input
                 type="text"
-                id="reference_number"
-                name="reference_number"
-                value={formData.reference_number}
+                id="reference"
+                name="reference"
+                value={formData.reference}
                 onChange={handleChange}
                 placeholder="e.g., JE-001"
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.reference_number ? "border-red-500" : "border-gray-300"
+                  errors.reference ? "border-red-500" : "border-gray-300"
                 }`}
               />
-              {errors.reference_number && (
-                <p className="text-red-600 text-sm mt-1">
-                  {errors.reference_number}
-                </p>
+              {errors.reference && (
+                <p className="text-red-600 text-sm mt-1">{errors.reference}</p>
               )}
             </div>
 

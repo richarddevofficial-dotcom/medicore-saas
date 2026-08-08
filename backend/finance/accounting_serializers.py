@@ -517,6 +517,14 @@ class JournalEntryCreateSerializer(
         return value
 
     def validate(self, attrs):
+        if (
+            self.instance
+            and self.instance.status != JournalEntry.Status.DRAFT
+        ):
+            raise serializers.ValidationError(
+                "Only draft journal entries can be edited."
+            )
+
         hospital = attrs.get("hospital")
         lines = attrs.get("lines", [])
         request = self.context.get("request")
@@ -637,6 +645,9 @@ class JournalEntryCreateSerializer(
                 source_id=source_id,
             )
 
+            if self.instance:
+                duplicate = duplicate.exclude(pk=self.instance.pk)
+
             status_field = JournalEntry._meta.get_field(
                 "status"
             )
@@ -734,6 +745,32 @@ class JournalEntryCreateSerializer(
             raise serializers.ValidationError(
                 str(exc)
             ) from exc
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        lines = validated_data.pop("lines")
+        validated_data.pop("post_immediately", None)
+
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        instance.save()
+        instance.lines.all().delete()
+
+        JournalEntryLine.objects.bulk_create(
+            [
+                JournalEntryLine(
+                    journal_entry=instance,
+                    account=line["account"],
+                    description=line.get("description", ""),
+                    debit=line.get("debit", ZERO),
+                    credit=line.get("credit", ZERO),
+                )
+                for line in lines
+            ]
+        )
+
+        return instance
 
     def to_representation(self, instance):
         return JournalEntryDetailSerializer(

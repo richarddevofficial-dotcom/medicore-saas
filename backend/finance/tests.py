@@ -341,6 +341,48 @@ class JournalPostingAuthorizationTests(TestCase):
 			self.hospital,
 		)
 
+	def test_accountant_can_edit_only_draft_journals(self):
+		self.client.force_authenticate(self.accountant)
+		payload = self.journal_payload()
+		payload["post_immediately"] = False
+		created = self.client.post(
+			"/api/v1/finance/accounting/journals/",
+			payload,
+			format="json",
+		)
+		journal_id = created.data["id"]
+		update_payload = {
+			"reference": "EDITED-001",
+			"description": "Edited service income",
+			"lines": [
+				{"account": self.cash_account.id, "debit": "125.00"},
+				{"account": self.revenue_account.id, "credit": "125.00"},
+			],
+		}
+
+		updated = self.client.patch(
+			f"/api/v1/finance/accounting/journals/{journal_id}/",
+			update_payload,
+			format="json",
+		)
+
+		self.assertEqual(updated.status_code, 200, updated.data)
+		journal = JournalEntry.objects.get(pk=journal_id)
+		self.assertEqual(journal.reference, "EDITED-001")
+		self.assertEqual(journal.lines.count(), 2)
+		self.assertEqual(
+			sum(line.debit for line in journal.lines.all()),
+			Decimal("125.00"),
+		)
+
+		journal.post(user=self.accountant)
+		rejected = self.client.patch(
+			f"/api/v1/finance/accounting/journals/{journal_id}/",
+			update_payload,
+			format="json",
+		)
+		self.assertEqual(rejected.status_code, 400)
+
 
 class PayrollPermissionsTests(TestCase):
 	def setUp(self):
