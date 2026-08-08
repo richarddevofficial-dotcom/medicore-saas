@@ -13,8 +13,27 @@ function getAccessToken() {
   );
 }
 
-function getHeaders(customHeaders = {}, body = null) {
+function getCsrfToken() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const prefix = "csrftoken=";
+  const cookie = document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith(prefix));
+
+  return (
+    (cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null) ||
+    sessionStorage.getItem("csrf_token")
+  );
+}
+
+function getHeaders(customHeaders = {}, body = null, method = "GET") {
   const token = getAccessToken();
+  const csrfToken = getCsrfToken();
+  const normalizedMethod = method.toUpperCase();
+  const requiresCsrf = !["GET", "HEAD", "OPTIONS"].includes(normalizedMethod);
 
   const isFormData =
     typeof FormData !== "undefined" && body instanceof FormData;
@@ -22,6 +41,7 @@ function getHeaders(customHeaders = {}, body = null) {
   return {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(requiresCsrf && csrfToken ? { "X-CSRFToken": csrfToken } : {}),
     ...customHeaders,
   };
 }
@@ -44,7 +64,7 @@ function serializeBody(payload) {
 async function request(endpoint, options = {}) {
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
-    headers: getHeaders(options.headers, options.body),
+    headers: getHeaders(options.headers, options.body, options.method),
     credentials: "include",
     cache: "no-store",
   });
