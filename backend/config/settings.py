@@ -342,12 +342,13 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://([a-zA-Z0-9-]+\.)?medicorecloud\.com$",
 ]
 
-CSRF_TRUSTED_ORIGINS = [
+CSRF_TRUSTED_ORIGINS = list(dict.fromkeys([
+    *CSRF_TRUSTED_ORIGINS,
     "https://medicorecloud.com",
     "https://www.medicorecloud.com",
     "https://api.medicorecloud.com",
     "https://*.medicorecloud.com",
-]
+]))
 
 # MediCore SaaS subscription and commercial billing
 if 'saas_billing' not in INSTALLED_APPS:

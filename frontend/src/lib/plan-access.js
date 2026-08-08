@@ -2,6 +2,8 @@ const BASIC_ROUTE_PATTERNS = [
   "/admin",
   "/dashboard",
   "/dashboard/*",
+  "/my-work",
+  "/my-work/*",
   "/patients",
   "/patients/*",
   "/appointments",
