@@ -393,7 +393,10 @@ class LeaveType(TimestampedModel):
     name = models.CharField(max_length=100)
     code = models.CharField(max_length=30)
     days_allowed = models.PositiveIntegerField(default=0)
+    entitlement_description = models.CharField(max_length=255, blank=True)
+    minimum_service_months = models.PositiveIntegerField(default=0)
     is_paid = models.BooleanField(default=True)
+    payment_description = models.CharField(max_length=255, blank=True)
     requires_document = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 

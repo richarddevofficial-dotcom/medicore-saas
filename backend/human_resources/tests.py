@@ -3,7 +3,10 @@ from django.test import TestCase
 from django.utils import timezone
 
 from datetime import datetime, timedelta
+from importlib import import_module
 from unittest.mock import patch
+
+from django.apps import apps
 
 from rest_framework.test import APIClient
 
@@ -344,6 +347,108 @@ class HRPermissionTests(TestCase):
 		)
 		self.assertEqual(insufficient.status_code, 400)
 		self.assertIn("total_days", insufficient.data)
+
+	def test_new_hospitals_receive_standard_leave_types(self):
+		leave_types = {
+			item.code: item
+			for item in LeaveType.objects.filter(hospital=self.hospital)
+		}
+
+		self.assertTrue(
+			{
+				"ANNUAL",
+				"SICK",
+				"MATERNITY",
+				"PATERNITY",
+				"BEREAVEMENT",
+				"PUBLIC-HOLIDAY",
+				"STUDY",
+				"UNPAID",
+				"MARRIAGE-SPECIAL",
+			}.issubset(leave_types)
+		)
+		self.assertEqual(leave_types["ANNUAL"].days_allowed, 21)
+		self.assertEqual(leave_types["SICK"].days_allowed, 12)
+		self.assertEqual(leave_types["SICK"].minimum_service_months, 3)
+		self.assertEqual(leave_types["MATERNITY"].days_allowed, 90)
+		self.assertEqual(leave_types["PATERNITY"].days_allowed, 14)
+		self.assertEqual(
+			leave_types["BEREAVEMENT"].payment_description,
+			"Depends on employer policy",
+		)
+
+	def test_default_migration_reuses_existing_leave_type_name(self):
+		LeaveType.objects.filter(
+			hospital=self.hospital,
+			code="ANNUAL",
+		).delete()
+		existing = LeaveType.objects.create(
+			hospital=self.hospital,
+			name="Annual Leave",
+			code="CUSTOM-ANNUAL",
+			days_allowed=10,
+		)
+		migration = import_module(
+			"human_resources.migrations.0007_leave_type_policy_defaults"
+		)
+
+		migration.seed_leave_types(apps, None)
+
+		existing.refresh_from_db()
+		self.assertEqual(existing.code, "CUSTOM-ANNUAL")
+		self.assertEqual(existing.days_allowed, 21)
+		self.assertEqual(existing.entitlement_description, "21 days per year")
+		self.assertEqual(
+			LeaveType.objects.filter(
+				hospital=self.hospital,
+				name__iexact="Annual Leave",
+			).count(),
+			1,
+		)
+
+	def test_sick_leave_requires_three_months_of_service(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="SICK-ELIGIBILITY-001",
+			first_name="Sick",
+			last_name="Eligibility",
+			hire_date="2026-06-01",
+		)
+		sick_leave = LeaveType.objects.get(
+			hospital=self.hospital,
+			code="SICK",
+		)
+		LeaveBalance.objects.create(
+			employee=employee,
+			leave_type=sick_leave,
+			year=2026,
+			allocated_days=12,
+		)
+		self.client.force_authenticate(self.doctor)
+		payload = {
+			"leave_type": sick_leave.id,
+			"start_date": "2026-08-31",
+			"end_date": "2026-08-31",
+			"reason": "Medical appointment",
+		}
+
+		too_early = self.client.post(
+			"/api/v1/hr/me/leave-requests/",
+			payload,
+			format="json",
+		)
+		payload["start_date"] = "2026-09-01"
+		payload["end_date"] = "2026-09-01"
+		eligible = self.client.post(
+			"/api/v1/hr/me/leave-requests/",
+			payload,
+			format="json",
+		)
+
+		self.assertEqual(too_early.status_code, 400)
+		self.assertIn("leave_type", too_early.data)
+		self.assertEqual(eligible.status_code, 201, eligible.data)
 
 	def test_self_service_requires_authentication_and_employee_link(self):
 		unauthenticated = self.client.get("/api/v1/hr/me/shifts/")
@@ -857,11 +962,9 @@ class HRPermissionTests(TestCase):
 			last_name="Employee",
 			email="leave.employee@example.com",
 		)
-		leave_type = LeaveType.objects.create(
+		leave_type = LeaveType.objects.get(
 			hospital=self.hospital,
-			name="Annual Leave",
 			code="ANNUAL",
-			days_allowed=21,
 		)
 		self.client.force_authenticate(self.hr_manager)
 		payload = {

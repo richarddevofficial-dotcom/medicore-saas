@@ -20,7 +20,10 @@ const initialForm = {
   name: "",
   code: "",
   days_allowed: "",
+  entitlement_description: "",
+  minimum_service_months: "0",
   is_paid: true,
+  payment_description: "Paid",
   requires_document: false,
   is_active: true,
 };
@@ -107,7 +110,12 @@ export default function LeaveTypesPage() {
       name: leaveType.name || "",
       code: leaveType.code || "",
       days_allowed: leaveType.days_allowed ?? "",
+      entitlement_description: leaveType.entitlement_description || "",
+      minimum_service_months: leaveType.minimum_service_months ?? "0",
       is_paid: Boolean(leaveType.is_paid),
+      payment_description:
+        leaveType.payment_description ||
+        (leaveType.is_paid ? "Paid" : "Unpaid"),
       requires_document: Boolean(leaveType.requires_document),
       is_active: Boolean(leaveType.is_active),
     });
@@ -140,10 +148,7 @@ export default function LeaveTypesPage() {
     setForm((current) => ({
       ...current,
       name: value,
-      code:
-        editingType || current.code
-          ? current.code
-          : normalizeCode(value),
+      code: editingType || current.code ? current.code : normalizeCode(value),
     }));
   }
 
@@ -158,7 +163,10 @@ export default function LeaveTypesPage() {
       name: form.name.trim(),
       code: normalizeCode(form.code),
       days_allowed: Number(form.days_allowed),
+      entitlement_description: form.entitlement_description.trim(),
+      minimum_service_months: Number(form.minimum_service_months),
       is_paid: form.is_paid,
+      payment_description: form.payment_description.trim(),
       requires_document: form.requires_document,
       is_active: form.is_active,
     };
@@ -323,7 +331,7 @@ export default function LeaveTypesPage() {
                   {[
                     "Leave Type",
                     "Code",
-                    "Days Allowed",
+                    "Entitlement",
                     "Payment",
                     "Document",
                     "Status",
@@ -357,15 +365,26 @@ export default function LeaveTypesPage() {
                       </span>
                     </td>
 
-                    <td className="whitespace-nowrap px-4 py-4 text-sm font-semibold text-gray-800">
-                      {leaveType.days_allowed} days
+                    <td className="min-w-56 px-4 py-4 text-sm text-gray-700">
+                      <p className="font-semibold text-gray-900">
+                        {leaveType.entitlement_description ||
+                          (leaveType.days_allowed
+                            ? `${leaveType.days_allowed} days per year`
+                            : "Set by policy")}
+                      </p>
+                      {leaveType.minimum_service_months > 0 && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          After {leaveType.minimum_service_months} months of
+                          service
+                        </p>
+                      )}
                     </td>
 
-                    <td className="whitespace-nowrap px-4 py-4">
+                    <td className="min-w-48 px-4 py-4">
                       <StatusBadge
                         enabled={leaveType.is_paid}
-                        enabledText="Paid"
-                        disabledText="Unpaid"
+                        enabledText={leaveType.payment_description || "Paid"}
+                        disabledText={leaveType.payment_description || "Unpaid"}
                       />
                     </td>
 
@@ -407,7 +426,6 @@ export default function LeaveTypesPage() {
                           ) : (
                             <Trash2 className="h-3.5 w-3.5" />
                           )}
-
                           Delete
                         </button>
                       </div>
@@ -471,6 +489,45 @@ export default function LeaveTypesPage() {
               </FormField>
             </div>
 
+            <FormField label="Entitlement description" required>
+              <input
+                type="text"
+                name="entitlement_description"
+                value={form.entitlement_description}
+                onChange={updateForm}
+                required
+                placeholder="Example: 21 days per year"
+                className="input-field"
+              />
+            </FormField>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField label="Minimum service months" required>
+                <input
+                  type="number"
+                  name="minimum_service_months"
+                  value={form.minimum_service_months}
+                  onChange={updateForm}
+                  required
+                  min="0"
+                  step="1"
+                  className="input-field"
+                />
+              </FormField>
+
+              <FormField label="Payment policy" required>
+                <input
+                  type="text"
+                  name="payment_description"
+                  value={form.payment_description}
+                  onChange={updateForm}
+                  required
+                  placeholder="Paid, unpaid, or depends on policy"
+                  className="input-field"
+                />
+              </FormField>
+            </div>
+
             <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
               <CheckboxField
                 name="is_paid"
@@ -512,9 +569,7 @@ export default function LeaveTypesPage() {
                 disabled={submitting}
                 className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {submitting && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
+                {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
 
                 {editingType ? "Save Changes" : "Create Leave Type"}
               </button>
@@ -559,17 +614,11 @@ function SummaryCard({ label, value, icon: Icon }) {
   );
 }
 
-function StatusBadge({
-  enabled,
-  enabledText,
-  disabledText,
-}) {
+function StatusBadge({ enabled, enabledText, disabledText }) {
   return (
     <span
       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-        enabled
-          ? "bg-green-100 text-green-700"
-          : "bg-gray-100 text-gray-600"
+        enabled ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
       }`}
     >
       {enabled ? enabledText : disabledText}
@@ -577,13 +626,7 @@ function StatusBadge({
   );
 }
 
-function CheckboxField({
-  name,
-  checked,
-  onChange,
-  label,
-  description,
-}) {
+function CheckboxField({ name, checked, onChange, label, description }) {
   return (
     <label className="flex cursor-pointer items-start gap-3">
       <input

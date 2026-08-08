@@ -1,3 +1,5 @@
+from calendar import monthrange
+
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
@@ -620,11 +622,40 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
                 }
             )
 
-        # Check available balance on new requests only
         employee = attrs.get(
             "employee",
             getattr(self.instance, "employee", None),
         )
+        if (
+            employee
+            and leave_type
+            and start_date
+            and leave_type.minimum_service_months > 0
+        ):
+            service_months = leave_type.minimum_service_months
+            eligibility_month = employee.hire_date.month - 1 + service_months
+            eligibility_year = employee.hire_date.year + eligibility_month // 12
+            eligibility_month = eligibility_month % 12 + 1
+            eligibility_day = min(
+                employee.hire_date.day,
+                monthrange(eligibility_year, eligibility_month)[1],
+            )
+            eligibility_date = employee.hire_date.replace(
+                year=eligibility_year,
+                month=eligibility_month,
+                day=eligibility_day,
+            )
+            if start_date < eligibility_date:
+                raise serializers.ValidationError(
+                    {
+                        "leave_type": (
+                            f"This leave requires {service_months} month(s) "
+                            "of continuous service."
+                        )
+                    }
+                )
+
+        # Check available balance on new requests only
         total_days = attrs.get(
             "total_days",
             getattr(self.instance, "total_days", None),
