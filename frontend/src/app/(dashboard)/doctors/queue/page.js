@@ -298,13 +298,9 @@ export default function DoctorQueuePage() {
           service_ids: labTest.lab_service_ids,
         },
       );
-      const targetMrn = selectedPatient.mrn;
       toast.success("Lab test requested and sent to cashier for payment");
       closeLabModal();
       fetchQueue();
-      router.push(
-        `/billing?focus=pending&mrn=${encodeURIComponent(targetMrn)}`,
-      );
     } catch (err) {
       toast.error(
         err?.response?.data?.error ||
