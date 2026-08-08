@@ -3,7 +3,12 @@ from django.urls import path, include
 import secrets
 from datetime import timedelta
 from rest_framework.routers import DefaultRouter
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+    throttle_classes,
+)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from django.contrib.auth import authenticate
@@ -20,8 +25,16 @@ from django.conf import settings
 from config.services.brevo_email import BrevoEmailError, send_brevo_email
 from django.contrib.auth.hashers import make_password, check_password
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 import hashlib
+
+from config.throttles import (
+    LoginThrottle,
+    PasswordResetThrottle,
+    RefreshTokenThrottle,
+    get_client_ip,
+)
 
 from hospitals.views import HospitalViewSet
 from patients.views import PatientViewSet
@@ -76,10 +89,7 @@ TRUSTED_DEVICE_SIGNER = TimestampSigner(salt='trusted-device-login')
 
 
 def _get_client_ip(request):
-    forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR', '')
-    if forwarded_for and request.META.get('REMOTE_ADDR') in settings.TRUSTED_PROXY_IPS:
-        return forwarded_for.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR', 'unknown')
+    return get_client_ip(request)
 
 
 def _rate_limit_check(key, limit, window_seconds):
@@ -393,6 +403,7 @@ def _mask_destination(destination):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([PasswordResetThrottle])
 def password_setup_request(request):
     email = (request.data.get('email') or '').strip().lower()
     if not email:
@@ -495,11 +506,6 @@ def password_change(request):
     return Response({'success': True, 'message': 'Password changed successfully.'}, status=200)
 
 
-# Throttled Token Views (with rate limiting)
-from config.throttles import LoginThrottle, RefreshTokenThrottle
-from rest_framework.decorators import throttle_classes
-
-
 class ThrottledTokenObtainPairView(TokenObtainPairView):
     """Token endpoint with login rate limiting (5 attempts/minute per IP)"""
     throttle_classes = [LoginThrottle]
@@ -513,7 +519,7 @@ class ThrottledTokenObtainPairView(TokenObtainPairView):
 
 
 class ThrottledTokenRefreshView(TokenRefreshView):
-    """Token refresh endpoint with rate limiting (10 attempts/minute per user)"""
+    """Token refresh endpoint with rate limiting (10 attempts/minute per IP)"""
     throttle_classes = [RefreshTokenThrottle]
 
     def post(self, request, *args, **kwargs):
@@ -522,7 +528,10 @@ class ThrottledTokenRefreshView(TokenRefreshView):
             or request.COOKIES.get(settings.SIMPLE_JWT['REFRESH_COOKIE'])
         )
         serializer = self.get_serializer(data={'refresh': refresh_token})
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as exc:
+            raise InvalidToken(exc.args[0]) from exc
         response = Response(dict(serializer.validated_data))
         _set_auth_cookies(response, response.data)
         return response
@@ -531,6 +540,7 @@ class ThrottledTokenRefreshView(TokenRefreshView):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @authentication_classes([])
+@throttle_classes([LoginThrottle])
 def login_view(request):
     email = request.data.get('email', '')
     phone = request.data.get('phone', '')

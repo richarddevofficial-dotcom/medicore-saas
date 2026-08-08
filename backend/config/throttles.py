@@ -2,55 +2,51 @@
 Rate limiting (throttling) classes for API endpoints.
 Prevents brute force attacks, DoS, and abuse.
 """
+from django.conf import settings
 from rest_framework.throttling import SimpleRateThrottle
 
 
-class LoginThrottle(SimpleRateThrottle):
+def get_client_ip(request):
+    remote_address = request.META.get("REMOTE_ADDR", "unknown")
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded_for and remote_address in settings.TRUSTED_PROXY_IPS:
+        return forwarded_for.split(",")[0].strip()
+    return remote_address
+
+
+class ClientIPThrottle(SimpleRateThrottle):
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            "scope": self.scope,
+            "ident": get_client_ip(request),
+        }
+
+
+class LoginThrottle(ClientIPThrottle):
     """
     Allow 5 login attempts per minute per IP address.
     Prevents password brute force attacks.
     """
-    scope = 'login'
-    
-    def get_cache_key(self, request, view):
-        # Don't throttle authenticated users
-        if request.user and request.user.is_authenticated:
-            return None
-        
-        # Throttle by IP address
-        client_ip = request.META.get('REMOTE_ADDR')
-        return f"login_{client_ip}"
+    scope = "login"
 
 
-class PasswordResetThrottle(SimpleRateThrottle):
+class PasswordResetThrottle(ClientIPThrottle):
     """
     Allow 3 password reset attempts per hour per IP.
     Prevents password reset abuse.
     """
-    scope = 'password_reset'
-    
-    def get_cache_key(self, request, view):
-        client_ip = request.META.get('REMOTE_ADDR')
-        return f"password_reset_{client_ip}"
+    scope = "password_reset"
 
-class RegistrationThrottle(SimpleRateThrottle):
+
+class RegistrationThrottle(ClientIPThrottle):
     """Allow three hospital registration attempts per hour per IP."""
 
-    scope = 'registration'
-
-    def get_cache_key(self, request, view):
-        client_ip = request.META.get('REMOTE_ADDR')
-        return f"registration_{client_ip}"
+    scope = "registration"
 
 
-class RefreshTokenThrottle(SimpleRateThrottle):
+class RefreshTokenThrottle(ClientIPThrottle):
     """
-    Allow 10 token refresh attempts per minute per user.
+    Allow 10 token refresh attempts per minute per IP.
     Prevents token refresh spam.
     """
-    scope = 'refresh_token'
-    
-    def get_cache_key(self, request, view):
-        if request.user and request.user.is_authenticated:
-            return f"refresh_token_{request.user.id}"
-        return None
+    scope = "refresh_token"

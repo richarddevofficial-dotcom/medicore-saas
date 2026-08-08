@@ -36,3 +36,14 @@ services:
         value: "true"
       - key: DB_SSLMODE
         value: require
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: medicore-cache
+          property: connectionString
+
+  - type: keyvalue
+    name: medicore-cache
+    plan: free
+    persistenceMode: off
+    ipAllowList: []

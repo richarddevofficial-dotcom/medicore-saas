@@ -153,6 +153,19 @@ if DATABASE_URL:
     if parsed_db:
         DATABASES['default'] = parsed_db
 
+REDIS_URL = os.getenv('REDIS_URL', '').strip()
+CACHES = {
+    'default': {
+        'BACKEND': (
+            'django.core.cache.backends.redis.RedisCache'
+            if REDIS_URL
+            else 'django.core.cache.backends.locmem.LocMemCache'
+        ),
+        **({'LOCATION': REDIS_URL} if REDIS_URL else {}),
+        'KEY_PREFIX': 'medicore',
+    }
+}
+
 ENABLE_PASSWORD_VALIDATORS = True  # Always enable (critical for security)
 AUTH_PASSWORD_VALIDATORS = (
     [
@@ -279,7 +292,7 @@ REST_FRAMEWORK = {
         'login': '5/minute',    # Login attempts: 5/minute per IP
         'password_reset': '3/hour',  # Password resets: 3/hour per IP
         'registration': '3/hour',  # Hospital registrations per IP
-        'refresh_token': '10/minute',  # Token refresh: 10/minute per user
+        'refresh_token': '10/minute',  # Token refresh: 10/minute per IP
         'export': '10/hour',    # 🔒 Data exports: 10/hour per user
         'bulk_access': '100/hour',  # Bulk data access limited
     }

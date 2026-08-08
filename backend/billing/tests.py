@@ -12,11 +12,13 @@ import hashlib
 from calendar import monthrange
 from unittest.mock import patch
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from billing.models import Bill, BillPayment, ServiceCatalog
 from billing.models import ReceiptEmailJob, SubscriptionPayment
 from auditlog.models import AuditLog, NotificationEvent
 from config.services.brevo_email import BrevoEmailError
+from config.throttles import get_client_ip
 from hospitals.models import Hospital, LoginOTP, TrustedDevice
 from imaging.models import ImagingTest
 from laboratory.models import LabTest
@@ -196,6 +198,118 @@ class AuthAndBillingSmokeTests(TestCase):
                 action_type="security",
             ).exists()
         )
+
+    @patch("config.urls.send_password_setup_email")
+    def test_password_setup_request_is_rate_limited_per_ip(self, mock_send_setup):
+        for _ in range(3):
+            response = self.client.post(
+                "/api/v1/auth/password/setup-request/",
+                {"email": "unknown@example.com"},
+                format="json",
+                REMOTE_ADDR="203.0.113.20",
+            )
+            self.assertEqual(response.status_code, 200)
+
+        throttled = self.client.post(
+            "/api/v1/auth/password/setup-request/",
+            {"email": "unknown@example.com"},
+            format="json",
+            REMOTE_ADDR="203.0.113.20",
+        )
+        other_ip = self.client.post(
+            "/api/v1/auth/password/setup-request/",
+            {"email": "unknown@example.com"},
+            format="json",
+            REMOTE_ADDR="203.0.113.21",
+        )
+
+        self.assertEqual(throttled.status_code, 429)
+        self.assertEqual(other_ip.status_code, 200)
+        self.assertFalse(mock_send_setup.called)
+
+    def test_legacy_login_is_rate_limited_per_ip(self):
+        payload = {
+            "email": "richard@gmail.com",
+            "password": "wrong-password",
+        }
+        for _ in range(5):
+            response = self.client.post(
+                "/api/v1/hospitals/login/",
+                payload,
+                format="json",
+                REMOTE_ADDR="203.0.113.30",
+            )
+            self.assertEqual(response.status_code, 401)
+
+        throttled = self.client.post(
+            "/api/v1/hospitals/login/",
+            payload,
+            format="json",
+            REMOTE_ADDR="203.0.113.30",
+        )
+        other_ip = self.client.post(
+            "/api/v1/hospitals/login/",
+            payload,
+            format="json",
+            REMOTE_ADDR="203.0.113.31",
+        )
+
+        self.assertEqual(throttled.status_code, 429)
+        self.assertEqual(other_ip.status_code, 401)
+
+    def test_token_refresh_is_rate_limited_per_ip(self):
+        refresh_tokens = [str(RefreshToken.for_user(self.user)) for _ in range(12)]
+        for refresh_token in refresh_tokens[:10]:
+            response = self.client.post(
+                "/api/v1/token/refresh/",
+                {"refresh": refresh_token},
+                format="json",
+                REMOTE_ADDR="203.0.113.40",
+            )
+            self.assertEqual(response.status_code, 200)
+
+        throttled = self.client.post(
+            "/api/v1/token/refresh/",
+            {"refresh": refresh_tokens[10]},
+            format="json",
+            REMOTE_ADDR="203.0.113.40",
+        )
+        other_ip = self.client.post(
+            "/api/v1/token/refresh/",
+            {"refresh": refresh_tokens[11]},
+            format="json",
+            REMOTE_ADDR="203.0.113.41",
+        )
+
+        self.assertEqual(throttled.status_code, 429)
+        self.assertEqual(other_ip.status_code, 200)
+
+    def test_token_refresh_rejects_invalid_token(self):
+        response = self.client.post(
+            "/api/v1/token/refresh/",
+            {"refresh": "not-a-valid-token"},
+            format="json",
+            REMOTE_ADDR="203.0.113.42",
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.data["code"], "token_not_valid")
+
+    @override_settings(TRUSTED_PROXY_IPS={"10.0.0.1"})
+    def test_client_ip_only_accepts_forwarded_header_from_trusted_proxy(self):
+        trusted_request = RequestFactory().post(
+            "/",
+            REMOTE_ADDR="10.0.0.1",
+            HTTP_X_FORWARDED_FOR="203.0.113.50, 10.0.0.1",
+        )
+        untrusted_request = RequestFactory().post(
+            "/",
+            REMOTE_ADDR="203.0.113.51",
+            HTTP_X_FORWARDED_FOR="198.51.100.10",
+        )
+
+        self.assertEqual(get_client_ip(trusted_request), "203.0.113.50")
+        self.assertEqual(get_client_ip(untrusted_request), "203.0.113.51")
 
     def test_password_setup_confirm_sets_password(self):
         uid = urlsafe_base64_encode(force_bytes(self.user.pk))
