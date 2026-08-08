@@ -3,6 +3,7 @@
 import {
   Briefcase,
   CalendarCheck,
+  CalendarClock,
   ClipboardList,
   FileText,
   LayoutDashboard,
@@ -44,6 +45,11 @@ const navigation = [
     icon: CalendarCheck,
   },
   {
+    name: "Shift Assignments",
+    href: "/hr/shift-assignments",
+    icon: CalendarClock,
+  },
+  {
     name: "Leave Requests",
     href: "/hr/leave-requests",
     icon: ClipboardList,
@@ -57,9 +63,7 @@ export default function HRLayout({ children }) {
     <div className="space-y-6">
       <div className="rounded-xl border bg-white p-5 shadow-sm">
         <div className="mb-5">
-          <h1 className="text-2xl font-bold text-gray-900">
-            Human Resources
-          </h1>
+          <h1 className="text-2xl font-bold text-gray-900">Human Resources</h1>
 
           <p className="mt-1 text-sm text-gray-500">
             Manage employees, attendance, leave, contracts and positions.
