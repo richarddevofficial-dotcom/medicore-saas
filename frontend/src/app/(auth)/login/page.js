@@ -127,7 +127,7 @@ export default function LoginPage() {
     setError("");
 
     if (!normalizedCredential) {
-      setError("Enter your username, email, or phone number.");
+      setError("Enter your email");
       return;
     }
 
