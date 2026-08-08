@@ -298,6 +298,8 @@ class Shift(TimestampedModel):
     start_time = models.TimeField()
     end_time = models.TimeField()
     break_minutes = models.PositiveIntegerField(default=0)
+    clock_in_early_minutes = models.PositiveIntegerField(default=60)
+    clock_in_close_minutes = models.PositiveIntegerField(default=240)
     is_night_shift = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 

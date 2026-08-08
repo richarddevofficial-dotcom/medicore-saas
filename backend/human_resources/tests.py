@@ -473,6 +473,76 @@ class HRPermissionTests(TestCase):
 		)
 		self.assertEqual(attendance.clock_in, late_arrival)
 
+	def test_hr_manager_can_adjust_a_shift_clock_in_window(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="WINDOW-001",
+			first_name="Window",
+			last_name="Employee",
+		)
+		shift = Shift.objects.create(
+			hospital=self.hospital,
+			code="WINDOW-DAY",
+			name="Window Day Shift",
+			start_time="07:30",
+			end_time="15:30",
+		)
+		ShiftAssignment.objects.create(
+			employee=employee,
+			shift=shift,
+			start_date="2026-08-01",
+		)
+		payload = {
+			"clock_in_early_minutes": 60,
+			"clock_in_close_minutes": 240,
+		}
+
+		self.client.force_authenticate(self.hr_officer)
+		forbidden = self.client.patch(
+			f"/api/v1/hr/shifts/{shift.id}/",
+			payload,
+			format="json",
+		)
+
+		self.client.force_authenticate(self.hr_manager)
+		updated = self.client.patch(
+			f"/api/v1/hr/shifts/{shift.id}/",
+			payload,
+			format="json",
+		)
+		invalid = self.client.patch(
+			f"/api/v1/hr/shifts/{shift.id}/",
+			{"clock_in_close_minutes": 600},
+			format="json",
+		)
+
+		self.assertEqual(forbidden.status_code, 403)
+		self.assertEqual(updated.status_code, 200, updated.data)
+		self.assertEqual(updated.data["clock_in_early_minutes"], 60)
+		self.assertEqual(updated.data["clock_in_close_minutes"], 240)
+		self.assertEqual(invalid.status_code, 400)
+		self.assertIn("clock_in_close_minutes", invalid.data)
+
+		self.client.force_authenticate(self.doctor)
+		current_timezone = timezone.get_current_timezone()
+		eligibility = []
+		for hour, minute in [(6, 29), (6, 30), (11, 30), (11, 31)]:
+			current_time = timezone.make_aware(
+				datetime(2026, 8, 8, hour, minute),
+				current_timezone,
+			)
+			with patch(
+				"human_resources.self_service_views.timezone.now",
+				return_value=current_time,
+			):
+				status_response = self.client.get(
+					"/api/v1/hr/me/attendance/status/",
+				)
+				eligibility.append(status_response.data["can_clock_in"])
+
+		self.assertEqual(eligibility, [False, True, True, False])
+
 	def test_staff_can_clock_out_only_their_open_attendance(self):
 		employee = Employee.objects.create(
 			hospital=self.hospital,

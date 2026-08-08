@@ -355,6 +355,43 @@ class ShiftSerializer(serializers.ModelSerializer):
                 {"code": "This shift code is already in use."}
             )
 
+        start_time = attrs.get(
+            "start_time",
+            getattr(self.instance, "start_time", None),
+        )
+        end_time = attrs.get(
+            "end_time",
+            getattr(self.instance, "end_time", None),
+        )
+        early_minutes = attrs.get(
+            "clock_in_early_minutes",
+            getattr(self.instance, "clock_in_early_minutes", 60),
+        )
+        close_minutes = attrs.get(
+            "clock_in_close_minutes",
+            getattr(self.instance, "clock_in_close_minutes", 240),
+        )
+        if early_minutes > 1440:
+            raise serializers.ValidationError(
+                {"clock_in_early_minutes": "Clock-in cannot open more than one day early."}
+            )
+        if close_minutes < 1:
+            raise serializers.ValidationError(
+                {"clock_in_close_minutes": "Clock-in must close after the shift starts."}
+            )
+        if start_time and end_time:
+            start_minutes = start_time.hour * 60 + start_time.minute
+            end_minutes = end_time.hour * 60 + end_time.minute
+            shift_minutes = (end_minutes - start_minutes) % 1440 or 1440
+            if close_minutes > shift_minutes:
+                raise serializers.ValidationError(
+                    {
+                        "clock_in_close_minutes": (
+                            "Clock-in must close no later than the shift end time."
+                        )
+                    }
+                )
+
         return attrs
 
 

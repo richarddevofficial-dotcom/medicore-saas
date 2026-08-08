@@ -126,8 +126,6 @@ def _attendance_windows(employee, now):
         )
         .filter(Q(end_date__isnull=True) | Q(end_date__gte=previous_date))
     )
-    early_minutes = settings.ATTENDANCE_CLOCK_IN_EARLY_MINUTES
-    close_minutes = settings.ATTENDANCE_CLOCK_IN_CLOSE_MINUTES
     windows = []
 
     for assignment in assignments:
@@ -146,9 +144,13 @@ def _attendance_windows(employee, now):
             shift_start = _shift_datetime(work_date, shift.start_time)
             shift_end_date = work_date + timedelta(days=1) if overnight else work_date
             shift_end = _shift_datetime(shift_end_date, shift.end_time)
-            opens_at = shift_start - timedelta(minutes=early_minutes)
+            opens_at = shift_start - timedelta(
+                minutes=shift.clock_in_early_minutes,
+            )
             closes_at = min(
-                shift_start + timedelta(minutes=close_minutes),
+                shift_start + timedelta(
+                    minutes=shift.clock_in_close_minutes,
+                ),
                 shift_end,
             )
             windows.append(

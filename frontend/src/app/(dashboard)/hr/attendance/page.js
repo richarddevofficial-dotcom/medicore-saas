@@ -10,6 +10,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   Trash2,
   UserCheck,
   UserX,
@@ -55,14 +56,21 @@ export default function AttendancePage() {
   const [dateFilter, setDateFilter] = useState("");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isWindowModalOpen, setIsWindowModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSavingWindow, setIsSavingWindow] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [canManageAttendance, setCanManageAttendance] = useState(false);
+  const [windowForm, setWindowForm] = useState({
+    shift: "",
+    opensAt: "",
+    closesAt: "",
+  });
 
   useEffect(() => {
     const role = String(localStorage.getItem("role") || "").toLowerCase();
@@ -301,6 +309,56 @@ export default function AttendancePage() {
     setDateFilter("");
   }
 
+  function selectWindowShift(shiftId) {
+    const shift = shifts.find((item) => String(item.id) === String(shiftId));
+    if (!shift) return;
+
+    const windowTimes = getClockInWindowTimes(shift);
+    setWindowForm({
+      shift: String(shift.id),
+      opensAt: windowTimes.opensAt,
+      closesAt: windowTimes.closesAt,
+    });
+  }
+
+  function openWindowModal() {
+    const shift = shifts.find((item) => item.is_active !== false);
+    if (!shift) {
+      setError("Create an active shift before setting a clock-in window.");
+      return;
+    }
+
+    selectWindowShift(shift.id);
+    setError("");
+    setSuccess("");
+    setIsWindowModalOpen(true);
+  }
+
+  async function handleWindowSubmit(event) {
+    event.preventDefault();
+    const shift = shifts.find(
+      (item) => String(item.id) === String(windowForm.shift),
+    );
+    if (!shift || !windowForm.opensAt || !windowForm.closesAt) {
+      setError("Select a shift and enter both clock-in window times.");
+      return;
+    }
+
+    try {
+      setIsSavingWindow(true);
+      setError("");
+      const offsets = getClockInWindowOffsets(shift, windowForm);
+      await hrApi.updateShift(shift.id, offsets);
+      setIsWindowModalOpen(false);
+      setSuccess(`Clock-in window updated for ${shift.name}.`);
+      await loadData({ silent: true });
+    } catch (err) {
+      setError(getApiError(err, "Unable to update the clock-in window."));
+    } finally {
+      setIsSavingWindow(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border bg-white p-6 shadow-sm">
@@ -339,14 +397,24 @@ export default function AttendancePage() {
             </button>
 
             {canManageAttendance && (
-              <button
-                type="button"
-                onClick={openCreateModal}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-700"
-              >
-                <Plus className="h-4 w-4" />
-                Record Attendance
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={openWindowModal}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-semibold text-orange-700 transition hover:bg-orange-100"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  Clock-in Windows
+                </button>
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-700"
+                >
+                  <Plus className="h-4 w-4" />
+                  Record Attendance
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -545,6 +613,132 @@ export default function AttendancePage() {
           </div>
         )}
       </div>
+
+      {isWindowModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  Clock-in Window
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  Set when employees may clock in for each shift.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWindowModalOpen(false)}
+                disabled={isSavingWindow}
+                className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100"
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleWindowSubmit}>
+              <div className="space-y-5 p-6">
+                <div>
+                  <label
+                    htmlFor="window_shift"
+                    className="mb-1.5 block text-sm font-medium text-gray-700"
+                  >
+                    Shift
+                  </label>
+                  <select
+                    id="window_shift"
+                    value={windowForm.shift}
+                    onChange={(event) => selectWindowShift(event.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                  >
+                    {shifts
+                      .filter((shift) => shift.is_active !== false)
+                      .map((shift) => (
+                        <option key={shift.id} value={shift.id}>
+                          {shift.name} ({formatShiftTime(shift.start_time)}–
+                          {formatShiftTime(shift.end_time)})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor="window_opens_at"
+                      className="mb-1.5 block text-sm font-medium text-gray-700"
+                    >
+                      Opens at
+                    </label>
+                    <input
+                      id="window_opens_at"
+                      type="time"
+                      value={windowForm.opensAt}
+                      onChange={(event) =>
+                        setWindowForm((current) => ({
+                          ...current,
+                          opensAt: event.target.value,
+                        }))
+                      }
+                      required
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="window_closes_at"
+                      className="mb-1.5 block text-sm font-medium text-gray-700"
+                    >
+                      Closes at
+                    </label>
+                    <input
+                      id="window_closes_at"
+                      type="time"
+                      value={windowForm.closesAt}
+                      onChange={(event) =>
+                        setWindowForm((current) => ({
+                          ...current,
+                          closesAt: event.target.value,
+                        }))
+                      }
+                      required
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-orange-100 bg-orange-50 p-4 text-sm text-orange-800">
+                  Employees assigned to this shift may clock in from
+                  <strong> {formatShiftTime(windowForm.opensAt)}</strong> to
+                  <strong> {formatShiftTime(windowForm.closesAt)}</strong>.
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 border-t bg-gray-50 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => setIsWindowModalOpen(false)}
+                  disabled={isSavingWindow}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingWindow}
+                  className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-60"
+                >
+                  {isSavingWindow && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  Save Window
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -955,4 +1149,53 @@ function formatDate(value) {
     month: "short",
     year: "numeric",
   });
+}
+
+function timeToMinutes(value) {
+  const [hour = 0, minute = 0] = String(value || "")
+    .slice(0, 5)
+    .split(":")
+    .map(Number);
+  return hour * 60 + minute;
+}
+
+function minutesToTime(totalMinutes) {
+  const normalized = ((totalMinutes % 1440) + 1440) % 1440;
+  const hour = Math.floor(normalized / 60);
+  const minute = normalized % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function getClockInWindowTimes(shift) {
+  const startMinutes = timeToMinutes(shift.start_time);
+  return {
+    opensAt: minutesToTime(
+      startMinutes - Number(shift.clock_in_early_minutes ?? 60),
+    ),
+    closesAt: minutesToTime(
+      startMinutes + Number(shift.clock_in_close_minutes ?? 240),
+    ),
+  };
+}
+
+function getClockInWindowOffsets(shift, windowForm) {
+  const startMinutes = timeToMinutes(shift.start_time);
+  const opensAt = timeToMinutes(windowForm.opensAt);
+  const closesAt = timeToMinutes(windowForm.closesAt);
+  const closeMinutes = (closesAt - startMinutes + 1440) % 1440 || 1440;
+
+  return {
+    clock_in_early_minutes: (startMinutes - opensAt + 1440) % 1440,
+    clock_in_close_minutes: closeMinutes,
+  };
+}
+
+function formatShiftTime(value) {
+  if (!value) return "—";
+  const minutes = timeToMinutes(value);
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${
+    hour < 12 ? "AM" : "PM"
+  }`;
 }
