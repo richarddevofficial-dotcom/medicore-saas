@@ -1,22 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Clock3,
-  Edit,
-  Loader2,
-  Plus,
-  Search,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Clock3, Edit, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import { hrApi, getApiError } from "@/services/hr";
 
 const emptyForm = {
+  code: "",
   name: "",
   start_time: "",
   end_time: "",
-  description: "",
+  break_minutes: 0,
+  is_night_shift: false,
   is_active: true,
 };
 
@@ -60,16 +54,9 @@ export default function ShiftsPage() {
     }
 
     return shifts.filter((shift) => {
-      return [
-        shift.name,
-        shift.description,
-        shift.start_time,
-        shift.end_time,
-      ]
+      return [shift.code, shift.name, shift.start_time, shift.end_time]
         .filter(Boolean)
-        .some((value) =>
-          String(value).toLowerCase().includes(keyword),
-        );
+        .some((value) => String(value).toLowerCase().includes(keyword));
     });
   }, [search, shifts]);
 
@@ -85,10 +72,12 @@ export default function ShiftsPage() {
     setEditingShift(shift);
 
     setForm({
+      code: shift.code || "",
       name: shift.name || "",
       start_time: formatTimeForInput(shift.start_time),
       end_time: formatTimeForInput(shift.end_time),
-      description: shift.description || "",
+      break_minutes: shift.break_minutes ?? 0,
+      is_night_shift: shift.is_night_shift ?? false,
       is_active: shift.is_active ?? true,
     });
 
@@ -119,6 +108,11 @@ export default function ShiftsPage() {
   async function handleSubmit(event) {
     event.preventDefault();
 
+    if (!form.code.trim()) {
+      setError("Shift code is required.");
+      return;
+    }
+
     if (!form.name.trim()) {
       setError("Shift name is required.");
       return;
@@ -135,10 +129,12 @@ export default function ShiftsPage() {
       setSuccess("");
 
       const payload = {
+        code: form.code.trim().toUpperCase(),
         name: form.name.trim(),
         start_time: form.start_time,
         end_time: form.end_time,
-        description: form.description.trim(),
+        break_minutes: Number(form.break_minutes) || 0,
+        is_night_shift: form.is_night_shift,
         is_active: form.is_active,
       };
 
@@ -167,9 +163,7 @@ export default function ShiftsPage() {
   }
 
   async function handleDelete(shift) {
-    const confirmed = window.confirm(
-      `Delete the shift "${shift.name}"?`,
-    );
+    const confirmed = window.confirm(`Delete the shift "${shift.name}"?`);
 
     if (!confirmed) {
       return;
@@ -233,20 +227,11 @@ export default function ShiftsPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <SummaryCard
-          label="Total Shifts"
-          value={shifts.length}
-        />
+        <SummaryCard label="Total Shifts" value={shifts.length} />
 
-        <SummaryCard
-          label="Active Shifts"
-          value={activeCount}
-        />
+        <SummaryCard label="Active Shifts" value={activeCount} />
 
-        <SummaryCard
-          label="Inactive Shifts"
-          value={inactiveCount}
-        />
+        <SummaryCard label="Inactive Shifts" value={inactiveCount} />
       </div>
 
       {error && (
@@ -297,21 +282,13 @@ export default function ShiftsPage() {
             <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                 <tr>
-                  <th className="px-5 py-3 font-semibold">
-                    Shift
-                  </th>
+                  <th className="px-5 py-3 font-semibold">Shift</th>
 
-                  <th className="px-5 py-3 font-semibold">
-                    Start Time
-                  </th>
+                  <th className="px-5 py-3 font-semibold">Start Time</th>
 
-                  <th className="px-5 py-3 font-semibold">
-                    End Time
-                  </th>
+                  <th className="px-5 py-3 font-semibold">End Time</th>
 
-                  <th className="px-5 py-3 font-semibold">
-                    Status
-                  </th>
+                  <th className="px-5 py-3 font-semibold">Status</th>
 
                   <th className="px-5 py-3 text-right font-semibold">
                     Actions
@@ -321,20 +298,13 @@ export default function ShiftsPage() {
 
               <tbody className="divide-y">
                 {filteredShifts.map((shift) => (
-                  <tr
-                    key={shift.id}
-                    className="transition hover:bg-gray-50"
-                  >
+                  <tr key={shift.id} className="transition hover:bg-gray-50">
                     <td className="px-5 py-4">
                       <p className="font-semibold text-gray-900">
                         {shift.name}
                       </p>
 
-                      {shift.description && (
-                        <p className="mt-1 max-w-md truncate text-xs text-gray-500">
-                          {shift.description}
-                        </p>
-                      )}
+                      <p className="mt-1 text-xs text-gray-500">{shift.code}</p>
                     </td>
 
                     <td className="px-5 py-4 text-gray-700">
@@ -410,6 +380,26 @@ export default function ShiftsPage() {
               <div className="space-y-4 p-6">
                 <div>
                   <label
+                    htmlFor="code"
+                    className="mb-1.5 block text-sm font-medium text-gray-700"
+                  >
+                    Shift Code
+                  </label>
+
+                  <input
+                    id="code"
+                    name="code"
+                    value={form.code}
+                    onChange={handleChange}
+                    placeholder="Example: MORNING"
+                    maxLength={30}
+                    required
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm uppercase outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                  />
+                </div>
+
+                <div>
+                  <label
                     htmlFor="name"
                     className="mb-1.5 block text-sm font-medium text-gray-700"
                   >
@@ -469,22 +459,36 @@ export default function ShiftsPage() {
 
                 <div>
                   <label
-                    htmlFor="description"
+                    htmlFor="break_minutes"
                     className="mb-1.5 block text-sm font-medium text-gray-700"
                   >
-                    Description
+                    Break Minutes
                   </label>
 
-                  <textarea
-                    id="description"
-                    name="description"
-                    rows={3}
-                    value={form.description}
+                  <input
+                    id="break_minutes"
+                    name="break_minutes"
+                    type="number"
+                    min={0}
+                    value={form.break_minutes}
                     onChange={handleChange}
-                    placeholder="Optional shift description"
-                    className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                   />
                 </div>
+
+                <label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3">
+                  <input
+                    type="checkbox"
+                    name="is_night_shift"
+                    checked={form.is_night_shift}
+                    onChange={handleChange}
+                    className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                  />
+
+                  <span className="text-sm font-medium text-gray-800">
+                    Night Shift
+                  </span>
+                </label>
 
                 <label className="flex items-center gap-3 rounded-lg border border-gray-200 p-3">
                   <input
@@ -522,9 +526,7 @@ export default function ShiftsPage() {
                   disabled={isSaving}
                   className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isSaving && (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  )}
+                  {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
 
                   {editingShift ? "Update Shift" : "Create Shift"}
                 </button>
@@ -540,13 +542,9 @@ export default function ShiftsPage() {
 function SummaryCard({ label, value }) {
   return (
     <div className="rounded-xl border bg-white p-5 shadow-sm">
-      <p className="text-sm font-medium text-gray-500">
-        {label}
-      </p>
+      <p className="text-sm font-medium text-gray-500">{label}</p>
 
-      <p className="mt-2 text-3xl font-bold text-gray-900">
-        {value}
-      </p>
+      <p className="mt-2 text-3xl font-bold text-gray-900">{value}</p>
     </div>
   );
 }

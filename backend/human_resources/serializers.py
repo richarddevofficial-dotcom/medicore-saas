@@ -334,6 +334,28 @@ class ShiftSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["hospital", "created_at", "updated_at"]
 
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        hospital_id = (
+            get_user_hospital_id(user)
+            if user and user.is_authenticated
+            else None
+        )
+        code = attrs.get("code", getattr(self.instance, "code", ""))
+        duplicate_codes = Shift.objects.filter(
+            hospital_id=hospital_id,
+            code__iexact=code,
+        )
+        if self.instance:
+            duplicate_codes = duplicate_codes.exclude(pk=self.instance.pk)
+        if hospital_id and code and duplicate_codes.exists():
+            raise serializers.ValidationError(
+                {"code": "This shift code is already in use."}
+            )
+
+        return attrs
+
 
 class ShiftAssignmentSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(

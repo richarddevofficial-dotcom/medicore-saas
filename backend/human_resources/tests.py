@@ -127,6 +127,35 @@ class HRPermissionTests(TestCase):
 
 		self.assertEqual(response.status_code, 400)
 
+	def test_hr_manager_can_create_shift_and_duplicate_code_is_rejected(self):
+		self.client.force_authenticate(self.hr_manager)
+		payload = {
+			"code": "MORNING",
+			"name": "Morning Shift",
+			"start_time": "08:00",
+			"end_time": "16:00",
+			"break_minutes": 30,
+			"is_night_shift": False,
+			"is_active": True,
+		}
+
+		created = self.client.post(
+			"/api/v1/hr/shifts/",
+			payload,
+			format="json",
+		)
+		duplicate = self.client.post(
+			"/api/v1/hr/shifts/",
+			{**payload, "code": "morning", "name": "Another Shift"},
+			format="json",
+		)
+
+		self.assertEqual(created.status_code, 201, created.data)
+		self.assertEqual(created.data["code"], "MORNING")
+		self.assertEqual(created.data["break_minutes"], 30)
+		self.assertEqual(duplicate.status_code, 400)
+		self.assertIn("code", duplicate.data)
+
 	def test_leave_request_requires_a_balance_and_cannot_be_deleted(self):
 		employee = Employee.objects.create(
 			hospital=self.hospital,
