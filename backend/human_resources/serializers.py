@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -374,6 +375,39 @@ class ShiftAssignmentSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         validate_related_hospitals(self, attrs, "employee", "shift")
+        employee = attrs.get("employee", getattr(self.instance, "employee", None))
+        start_date = attrs.get(
+            "start_date",
+            getattr(self.instance, "start_date", None),
+        )
+        end_date = attrs.get("end_date", getattr(self.instance, "end_date", None))
+        is_active = attrs.get(
+            "is_active",
+            getattr(self.instance, "is_active", True),
+        )
+        if start_date and end_date and end_date < start_date:
+            raise serializers.ValidationError(
+                {"end_date": "End date cannot be before start date."}
+            )
+
+        if employee and start_date and is_active:
+            overlaps = ShiftAssignment.objects.filter(
+                employee=employee,
+                is_active=True,
+            ).filter(Q(end_date__isnull=True) | Q(end_date__gte=start_date))
+            if end_date:
+                overlaps = overlaps.filter(start_date__lte=end_date)
+            if self.instance:
+                overlaps = overlaps.exclude(pk=self.instance.pk)
+            if overlaps.exists():
+                raise serializers.ValidationError(
+                    {
+                        "start_date": (
+                            "This employee already has an active shift assignment "
+                            "during the selected date range."
+                        )
+                    }
+                )
         return attrs
 
 

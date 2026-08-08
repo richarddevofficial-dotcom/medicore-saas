@@ -236,6 +236,60 @@ class HRPermissionTests(TestCase):
 			doctor_employee.id,
 		)
 
+	def test_shift_assignments_cannot_overlap(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			employee_number="SHIFT-OVERLAP-001",
+			first_name="Shift",
+			last_name="Employee",
+		)
+		first_shift = Shift.objects.create(
+			hospital=self.hospital,
+			code="SHIFT-FIRST",
+			name="First Shift",
+			start_time="08:00",
+			end_time="16:00",
+		)
+		second_shift = Shift.objects.create(
+			hospital=self.hospital,
+			code="SHIFT-SECOND",
+			name="Second Shift",
+			start_time="10:00",
+			end_time="18:00",
+		)
+		ShiftAssignment.objects.create(
+			employee=employee,
+			shift=first_shift,
+			start_date="2026-08-01",
+			end_date="2026-08-31",
+		)
+		self.client.force_authenticate(self.hr_manager)
+
+		overlap = self.client.post(
+			"/api/v1/hr/shift-assignments/",
+			{
+				"employee": employee.id,
+				"shift": second_shift.id,
+				"start_date": "2026-08-31",
+				"end_date": "2026-09-30",
+			},
+			format="json",
+		)
+		adjacent = self.client.post(
+			"/api/v1/hr/shift-assignments/",
+			{
+				"employee": employee.id,
+				"shift": second_shift.id,
+				"start_date": "2026-09-01",
+				"end_date": "2026-09-30",
+			},
+			format="json",
+		)
+
+		self.assertEqual(overlap.status_code, 400)
+		self.assertIn("start_date", overlap.data)
+		self.assertEqual(adjacent.status_code, 201, adjacent.data)
+
 	def test_staff_can_submit_and_view_only_own_leave_requests(self):
 		doctor_employee = Employee.objects.create(
 			hospital=self.hospital,
@@ -456,6 +510,164 @@ class HRPermissionTests(TestCase):
 		self.assertEqual(response.status_code, 200, response.data)
 		attendance.refresh_from_db()
 		self.assertEqual(attendance.clock_out, clock_out)
+
+	def test_staff_can_complete_an_empty_attendance_row(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="CLOCK-EMPTY-001",
+			first_name="Clock",
+			last_name="Placeholder",
+		)
+		shift = Shift.objects.create(
+			hospital=self.hospital,
+			code="CLOCK-EMPTY",
+			name="Placeholder Shift",
+			start_time="08:00",
+			end_time="16:00",
+		)
+		ShiftAssignment.objects.create(
+			employee=employee,
+			shift=shift,
+			start_date="2026-08-01",
+		)
+		attendance = Attendance.objects.create(
+			employee=employee,
+			attendance_date="2026-08-08",
+			status="PRESENT",
+		)
+		now = timezone.make_aware(
+			datetime(2026, 8, 8, 8, 5),
+			timezone.get_current_timezone(),
+		)
+		self.client.force_authenticate(self.doctor)
+
+		with patch(
+			"human_resources.self_service_views.timezone.now",
+			return_value=now,
+		):
+			status_response = self.client.get(
+				"/api/v1/hr/me/attendance/status/",
+			)
+			response = self.client.post(
+				"/api/v1/hr/me/attendance/clock-in/",
+				{},
+				format="json",
+			)
+
+		self.assertTrue(status_response.data["can_clock_in"])
+		self.assertEqual(response.status_code, 200, response.data)
+		attendance.refresh_from_db()
+		self.assertEqual(attendance.clock_in, now)
+		self.assertEqual(attendance.shift, shift)
+
+	def test_staff_cannot_clock_out_yesterdays_day_shift(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="CLOCK-STALE-001",
+			first_name="Clock",
+			last_name="Stale",
+		)
+		shift = Shift.objects.create(
+			hospital=self.hospital,
+			code="CLOCK-STALE",
+			name="Stale Day Shift",
+			start_time="08:00",
+			end_time="16:00",
+		)
+		attendance = Attendance.objects.create(
+			employee=employee,
+			shift=shift,
+			attendance_date="2026-08-07",
+			clock_in=timezone.make_aware(
+				datetime(2026, 8, 7, 8, 0),
+				timezone.get_current_timezone(),
+			),
+			status="PRESENT",
+		)
+		now = timezone.make_aware(
+			datetime(2026, 8, 8, 8, 0),
+			timezone.get_current_timezone(),
+		)
+		self.client.force_authenticate(self.doctor)
+
+		with patch(
+			"human_resources.self_service_views.timezone.now",
+			return_value=now,
+		):
+			status_response = self.client.get(
+				"/api/v1/hr/me/attendance/status/",
+			)
+			response = self.client.post(
+				"/api/v1/hr/me/attendance/clock-out/",
+				{},
+				format="json",
+			)
+
+		self.assertFalse(status_response.data["can_clock_out"])
+		self.assertEqual(response.status_code, 400)
+		attendance.refresh_from_db()
+		self.assertIsNone(attendance.clock_out)
+
+	def test_open_overnight_attendance_blocks_another_clock_in(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="CLOCK-NIGHT-001",
+			first_name="Clock",
+			last_name="Night",
+		)
+		shift = Shift.objects.create(
+			hospital=self.hospital,
+			code="CLOCK-NIGHT",
+			name="Night Shift",
+			start_time="22:00",
+			end_time="06:00",
+			is_night_shift=True,
+		)
+		ShiftAssignment.objects.create(
+			employee=employee,
+			shift=shift,
+			start_date="2026-08-01",
+		)
+		Attendance.objects.create(
+			employee=employee,
+			shift=shift,
+			attendance_date="2026-08-07",
+			clock_in=timezone.make_aware(
+				datetime(2026, 8, 7, 22, 0),
+				timezone.get_current_timezone(),
+			),
+			status="PRESENT",
+		)
+		now = timezone.make_aware(
+			datetime(2026, 8, 8, 22, 0),
+			timezone.get_current_timezone(),
+		)
+		self.client.force_authenticate(self.doctor)
+
+		with patch(
+			"human_resources.self_service_views.timezone.now",
+			return_value=now,
+		):
+			status_response = self.client.get(
+				"/api/v1/hr/me/attendance/status/",
+			)
+			response = self.client.post(
+				"/api/v1/hr/me/attendance/clock-in/",
+				{},
+				format="json",
+			)
+
+		self.assertFalse(status_response.data["can_clock_in"])
+		self.assertTrue(status_response.data["can_clock_out"])
+		self.assertEqual(
+			status_response.data["shift"]["work_date"],
+			"2026-08-07",
+		)
+		self.assertEqual(response.status_code, 400)
+		self.assertEqual(Attendance.objects.filter(employee=employee).count(), 1)
 
 	def test_leave_request_requires_a_balance_and_cannot_be_deleted(self):
 		employee = Employee.objects.create(

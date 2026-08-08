@@ -79,6 +79,38 @@ def _shift_datetime(work_date, shift_time):
     )
 
 
+def _is_overnight_shift(shift):
+    return bool(
+        shift
+        and (
+            shift.is_night_shift
+            or shift.end_time <= shift.start_time
+        )
+    )
+
+
+def _get_open_attendance(employee, local_date):
+    attendance = (
+        Attendance.objects
+        .select_related("shift")
+        .filter(
+            employee=employee,
+            attendance_date__in=[local_date, local_date - timedelta(days=1)],
+            clock_in__isnull=False,
+            clock_out__isnull=True,
+        )
+        .order_by("-attendance_date")
+        .first()
+    )
+    if (
+        attendance
+        and attendance.attendance_date < local_date
+        and not _is_overnight_shift(attendance.shift)
+    ):
+        return None
+    return attendance
+
+
 def _attendance_windows(employee, now):
     local_now = timezone.localtime(now)
     today = local_now.date()
@@ -100,7 +132,7 @@ def _attendance_windows(employee, now):
 
     for assignment in assignments:
         shift = assignment.shift
-        overnight = shift.is_night_shift or shift.end_time <= shift.start_time
+        overnight = _is_overnight_shift(shift)
         work_dates = [today]
         if overnight:
             work_dates.append(previous_date)
@@ -141,22 +173,21 @@ def _serialize_attendance_status(employee, now):
     local_now = timezone.localtime(now)
     windows = _attendance_windows(employee, now)
     open_window = next((item for item in windows if item["is_open"]), None)
-    open_attendance = (
-        Attendance.objects
-        .select_related("shift")
-        .filter(
-            employee=employee,
-            attendance_date__in=[
-                local_now.date(),
-                local_now.date() - timedelta(days=1),
-            ],
-            clock_in__isnull=False,
-            clock_out__isnull=True,
-        )
-        .order_by("-attendance_date")
-        .first()
+    open_attendance = _get_open_attendance(employee, local_now.date())
+    attendance_window = next(
+        (
+            item for item in windows
+            if open_attendance
+            and item["work_date"] == open_attendance.attendance_date
+            and item["assignment"].shift_id == open_attendance.shift_id
+        ),
+        None,
     )
-    selected_window = open_window or (windows[0] if windows else None)
+    selected_window = (
+        attendance_window
+        or open_window
+        or (windows[0] if windows else None)
+    )
     window_attendance = (
         Attendance.objects
         .select_related("shift")
@@ -170,10 +201,20 @@ def _serialize_attendance_status(employee, now):
     )
     attendance = open_attendance or window_attendance
     already_clocked_in = bool(attendance and attendance.clock_in)
+    can_complete_placeholder = bool(
+        window_attendance
+        and not window_attendance.clock_in
+        and not window_attendance.clock_out
+        and window_attendance.status == "PRESENT"
+    )
 
     return {
         "server_time": local_now.isoformat(),
-        "can_clock_in": bool(open_window and not window_attendance),
+        "can_clock_in": bool(
+            open_window
+            and not open_attendance
+            and (not window_attendance or can_complete_placeholder)
+        ),
         "can_clock_out": bool(open_attendance),
         "attendance": (
             AttendanceSerializer(attendance).data if attendance else None
@@ -194,10 +235,14 @@ def _serialize_attendance_status(employee, now):
         "message": (
             "You are already clocked in."
             if already_clocked_in and attendance and not attendance.clock_out
+            else "Clock-in is open."
+            if (
+                open_window
+                and not open_attendance
+                and (not window_attendance or can_complete_placeholder)
+            )
             else "Attendance is already recorded for this shift."
             if window_attendance
-            else "Clock-in is open."
-            if open_window
             else "Clock-in is outside the allowed arrival window."
             if selected_window
             else "No active shift is assigned for today."
@@ -226,6 +271,12 @@ class MyAttendanceClockInView(EmployeeSelfServiceMixin, APIView):
             )
 
         now = timezone.now()
+        local_date = timezone.localtime(now).date()
+        if _get_open_attendance(employee, local_date):
+            return Response(
+                {"detail": "You are already clocked in."},
+                status=400,
+            )
         window = next(
             (item for item in _attendance_windows(employee, now) if item["is_open"]),
             None,
@@ -239,6 +290,7 @@ class MyAttendanceClockInView(EmployeeSelfServiceMixin, APIView):
         grace_deadline = window["shift_start"] + timedelta(
             minutes=settings.ATTENDANCE_LATE_GRACE_MINUTES
         )
+        attendance_status = "PRESENT" if now <= grace_deadline else "LATE"
         with transaction.atomic():
             attendance, created = Attendance.objects.get_or_create(
                 employee=employee,
@@ -246,16 +298,33 @@ class MyAttendanceClockInView(EmployeeSelfServiceMixin, APIView):
                 defaults={
                     "shift": window["assignment"].shift,
                     "clock_in": now,
-                    "status": "PRESENT" if now <= grace_deadline else "LATE",
+                    "status": attendance_status,
                 },
             )
             if not created:
-                return Response(
-                    {"detail": "Attendance is already recorded for this shift."},
-                    status=400,
+                attendance = Attendance.objects.select_for_update().get(
+                    pk=attendance.pk,
+                )
+                if (
+                    attendance.clock_in
+                    or attendance.clock_out
+                    or attendance.status != "PRESENT"
+                ):
+                    return Response(
+                        {"detail": "Attendance is already recorded for this shift."},
+                        status=400,
+                    )
+                attendance.shift = window["assignment"].shift
+                attendance.clock_in = now
+                attendance.status = attendance_status
+                attendance.save(
+                    update_fields=["shift", "clock_in", "status", "updated_at"],
                 )
 
-        return Response(AttendanceSerializer(attendance).data, status=201)
+        return Response(
+            AttendanceSerializer(attendance).data,
+            status=201 if created else 200,
+        )
 
 
 class MyAttendanceClockOutView(EmployeeSelfServiceMixin, APIView):
@@ -269,17 +338,7 @@ class MyAttendanceClockOutView(EmployeeSelfServiceMixin, APIView):
 
         now = timezone.now()
         local_date = timezone.localtime(now).date()
-        attendance = (
-            Attendance.objects
-            .filter(
-                employee=employee,
-                attendance_date__in=[local_date, local_date - timedelta(days=1)],
-                clock_in__isnull=False,
-                clock_out__isnull=True,
-            )
-            .order_by("-attendance_date")
-            .first()
-        )
+        attendance = _get_open_attendance(employee, local_date)
         if not attendance:
             return Response(
                 {"detail": "No open attendance record is available to clock out."},
