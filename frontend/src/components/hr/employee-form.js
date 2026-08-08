@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import apiClient from "@/lib/api-client";
+import { getDepartments, getPositions, normalizeResults } from "@/lib/api/hr";
 
 const initialForm = {
   user: "",
@@ -16,8 +17,8 @@ const initialForm = {
   hire_date: "",
   department: "",
   position: "",
-  employment_type: "full_time",
-  status: "active",
+  employment_type: "PERMANENT",
+  employment_status: "ACTIVE",
   address: "",
   emergency_contact_name: "",
   emergency_contact_phone: "",
@@ -32,12 +33,20 @@ export default function EmployeeForm({
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [staffAccounts, setStaffAccounts] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [positions, setPositions] = useState([]);
 
   useEffect(() => {
-    async function loadStaffAccounts() {
+    async function loadFormOptions() {
       try {
-        const response = await apiClient.get("/staff/?is_active=true");
-        const data = response.data;
+        const [staffResponse, departmentData, positionData] = await Promise.all(
+          [
+            apiClient.get("/staff/?is_active=true"),
+            getDepartments({ ordering: "name" }),
+            getPositions({ ordering: "title" }),
+          ],
+        );
+        const data = staffResponse.data;
         setStaffAccounts(
           Array.isArray(data)
             ? data
@@ -45,12 +54,16 @@ export default function EmployeeForm({
               ? data.results
               : [],
         );
+        setDepartments(normalizeResults(departmentData));
+        setPositions(normalizeResults(positionData));
       } catch {
         setStaffAccounts([]);
+        setDepartments([]);
+        setPositions([]);
       }
     }
 
-    loadStaffAccounts();
+    loadFormOptions();
   }, []);
 
   useEffect(() => {
@@ -59,8 +72,9 @@ export default function EmployeeForm({
     }
 
     setForm({
-      ...initialForm,
-      ...initialData,
+      ...Object.fromEntries(
+        Object.keys(initialForm).map((key) => [key, initialData[key]]),
+      ),
       department: initialData.department?.id ?? initialData.department ?? "",
       position: initialData.position?.id ?? initialData.position ?? "",
       user: initialData.user?.id ?? initialData.user ?? "",
@@ -83,11 +97,19 @@ export default function EmployeeForm({
       setSubmitting(true);
       setError("");
 
+      const nullableFields = new Set([
+        "user",
+        "date_of_birth",
+        "department",
+        "position",
+      ]);
       const payload = Object.fromEntries(
-        Object.entries(form).map(([key, value]) => [
-          key,
-          value === "" ? null : value,
-        ]),
+        Object.entries(form)
+          .filter(([key, value]) => key !== "hire_date" || value !== "")
+          .map(([key, value]) => [
+            key,
+            value === "" && nullableFields.has(key) ? null : value,
+          ]),
       );
 
       await onSubmit(payload);
@@ -128,6 +150,7 @@ export default function EmployeeForm({
               onChange={handleChange}
               className={inputClass}
               placeholder="EMP-001"
+              required
             />
           </label>
 
@@ -172,9 +195,10 @@ export default function EmployeeForm({
               className={inputClass}
             >
               <option value="">Select gender</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="other">Other</option>
+              <option value="MALE">Male</option>
+              <option value="FEMALE">Female</option>
+              <option value="OTHER">Other</option>
+              <option value="PREFER_NOT_TO_SAY">Prefer not to say</option>
             </select>
           </label>
 
@@ -278,55 +302,78 @@ export default function EmployeeForm({
           </label>
 
           <label className={labelClass}>
-            Department ID
-            <input
+            Department
+            <select
               name="department"
               value={form.department || ""}
               onChange={handleChange}
               className={inputClass}
-              placeholder="Department ID"
-            />
+            >
+              <option value="">No department</option>
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label className={labelClass}>
-            Position ID
-            <input
+            Position
+            <select
               name="position"
               value={form.position || ""}
               onChange={handleChange}
               className={inputClass}
-              placeholder="Position ID"
-            />
+            >
+              <option value="">No position</option>
+              {positions
+                .filter(
+                  (position) =>
+                    !form.department ||
+                    !position.department ||
+                    String(position.department) === String(form.department),
+                )
+                .map((position) => (
+                  <option key={position.id} value={position.id}>
+                    {position.title}
+                  </option>
+                ))}
+            </select>
           </label>
 
           <label className={labelClass}>
             Employment Type
             <select
               name="employment_type"
-              value={form.employment_type || "full_time"}
+              value={form.employment_type || "PERMANENT"}
               onChange={handleChange}
               className={inputClass}
             >
-              <option value="full_time">Full Time</option>
-              <option value="part_time">Part Time</option>
-              <option value="contract">Contract</option>
-              <option value="temporary">Temporary</option>
-              <option value="intern">Intern</option>
+              <option value="PERMANENT">Permanent</option>
+              <option value="CONTRACT">Contract</option>
+              <option value="PART_TIME">Part Time</option>
+              <option value="TEMPORARY">Temporary</option>
+              <option value="INTERN">Intern</option>
+              <option value="VOLUNTEER">Volunteer</option>
             </select>
           </label>
 
           <label className={labelClass}>
             Status
             <select
-              name="status"
-              value={form.status || "active"}
+              name="employment_status"
+              value={form.employment_status || "ACTIVE"}
               onChange={handleChange}
               className={inputClass}
             >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-              <option value="on_leave">On Leave</option>
-              <option value="terminated">Terminated</option>
+              <option value="ACTIVE">Active</option>
+              <option value="PROBATION">Probation</option>
+              <option value="SUSPENDED">Suspended</option>
+              <option value="ON_LEAVE">On Leave</option>
+              <option value="RESIGNED">Resigned</option>
+              <option value="TERMINATED">Terminated</option>
+              <option value="RETIRED">Retired</option>
             </select>
           </label>
         </div>

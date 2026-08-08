@@ -15,6 +15,14 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [canManageEmployees, setCanManageEmployees] = useState(false);
+
+  useEffect(() => {
+    const role = String(localStorage.getItem("role") || "").toLowerCase();
+    setCanManageEmployees(
+      ["admin", "hospital_admin", "hr_manager", "super_admin"].includes(role),
+    );
+  }, []);
 
   const loadEmployees = useCallback(async () => {
     try {
@@ -28,9 +36,7 @@ export default function EmployeesPage() {
       setEmployees(normalizeResults(data));
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load employees."
+        err instanceof Error ? err.message : "Unable to load employees.",
       );
     } finally {
       setLoading(false);
@@ -51,7 +57,7 @@ export default function EmployeesPage() {
       `${employee.first_name || ""} ${employee.last_name || ""}`.trim();
 
     const confirmed = window.confirm(
-      `Deactivate ${employeeName || "this employee"}?`
+      `Deactivate ${employeeName || "this employee"}?`,
     );
 
     if (!confirmed) {
@@ -63,9 +69,7 @@ export default function EmployeesPage() {
       await loadEmployees();
     } catch (err) {
       window.alert(
-        err instanceof Error
-          ? err.message
-          : "Unable to deactivate employee."
+        err instanceof Error ? err.message : "Unable to deactivate employee.",
       );
     }
   }
@@ -74,22 +78,22 @@ export default function EmployeesPage() {
     <div className="space-y-5">
       <div className="flex flex-col gap-4 rounded-xl border bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">
-            Employees
-          </h2>
+          <h2 className="text-xl font-bold text-gray-900">Employees</h2>
 
           <p className="mt-1 text-sm text-gray-500">
             Manage all hospital employees.
           </p>
         </div>
 
-        <Link
-          href="/hr/employees/new"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600"
-        >
-          <Plus size={18} />
-          Add Employee
-        </Link>
+        {canManageEmployees ? (
+          <Link
+            href="/hr/employees/new"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600"
+          >
+            <Plus size={18} />
+            Add Employee
+          </Link>
+        ) : null}
       </div>
 
       <div className="rounded-xl border bg-white p-4 shadow-sm">
@@ -120,6 +124,7 @@ export default function EmployeesPage() {
         <EmployeeTable
           employees={employees}
           onDeactivate={handleDeactivate}
+          canManage={canManageEmployees}
         />
       )}
     </div>

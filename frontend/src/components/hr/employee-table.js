@@ -8,11 +8,7 @@ function getEmployeeName(employee) {
     return employee.full_name;
   }
 
-  return [
-    employee.first_name,
-    employee.middle_name,
-    employee.last_name,
-  ]
+  return [employee.first_name, employee.middle_name, employee.last_name]
     .filter(Boolean)
     .join(" ");
 }
@@ -33,6 +29,7 @@ function getRelatedName(value) {
 export default function EmployeeTable({
   employees,
   onDeactivate,
+  canManage = false,
 }) {
   if (!employees.length) {
     return (
@@ -101,7 +98,9 @@ export default function EmployeeTable({
 
                 <td className="px-5 py-4">
                   <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold capitalize text-green-700">
-                    {(employee.status || "active").replaceAll("_", " ")}
+                    {(employee.employment_status || "ACTIVE")
+                      .toLowerCase()
+                      .replaceAll("_", " ")}
                   </span>
                 </td>
 
@@ -115,22 +114,26 @@ export default function EmployeeTable({
                       <Eye size={17} />
                     </Link>
 
-                    <Link
-                      href={`/hr/employees/${employee.id}/edit`}
-                      className="rounded-lg p-2 text-orange-600 hover:bg-orange-50"
-                      title="Edit"
-                    >
-                      <Pencil size={17} />
-                    </Link>
+                    {canManage ? (
+                      <>
+                        <Link
+                          href={`/hr/employees/${employee.id}/edit`}
+                          className="rounded-lg p-2 text-orange-600 hover:bg-orange-50"
+                          title="Edit"
+                        >
+                          <Pencil size={17} />
+                        </Link>
 
-                    <button
-                      type="button"
-                      onClick={() => onDeactivate(employee)}
-                      className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-                      title="Deactivate"
-                    >
-                      <UserX size={17} />
-                    </button>
+                        <button
+                          type="button"
+                          onClick={() => onDeactivate(employee)}
+                          className="rounded-lg p-2 text-red-600 hover:bg-red-50"
+                          title="Deactivate"
+                        >
+                          <UserX size={17} />
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </td>
               </tr>

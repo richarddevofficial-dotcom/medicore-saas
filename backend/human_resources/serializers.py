@@ -113,6 +113,76 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "position",
             "reports_to",
         )
+
+        request = self.context.get("request")
+        request_user = getattr(request, "user", None)
+        hospital_id = (
+            get_user_hospital_id(request_user)
+            if request_user and request_user.is_authenticated
+            else None
+        )
+        employee_number = attrs.get(
+            "employee_number",
+            getattr(self.instance, "employee_number", None),
+        )
+        duplicate_numbers = Employee.objects.filter(
+            hospital_id=hospital_id,
+            employee_number=employee_number,
+        )
+        if self.instance:
+            duplicate_numbers = duplicate_numbers.exclude(pk=self.instance.pk)
+        if hospital_id and employee_number and duplicate_numbers.exists():
+            raise serializers.ValidationError(
+                {
+                    "employee_number": (
+                        "This employee number is already in use."
+                    )
+                }
+            )
+
+        department = attrs.get(
+            "department",
+            getattr(self.instance, "department", None),
+        )
+        position = attrs.get(
+            "position",
+            getattr(self.instance, "position", None),
+        )
+        if (
+            department
+            and position
+            and position.department_id
+            and position.department_id != department.id
+        ):
+            raise serializers.ValidationError(
+                {
+                    "position": (
+                        "The selected position does not belong to "
+                        "the selected department."
+                    )
+                }
+            )
+
+        linked_user = attrs.get(
+            "user",
+            getattr(self.instance, "user", None),
+        )
+        if linked_user and request_user and not request_user.is_superuser:
+            linked_profile = getattr(linked_user, "staff_profile", None)
+            if (
+                not linked_profile
+                or linked_profile.hospital_id
+                != get_user_hospital_id(request_user)
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "user": (
+                            "The selected staff account belongs to "
+                            "another hospital."
+                        )
+                    }
+                )
+
         return attrs
 
 

@@ -4,9 +4,11 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from hospitals.models import Hospital
+from departments.models import Department
 from staff.models import StaffProfile
 from human_resources.models import (
 	Employee,
+	JobPosition,
 	LeaveBalance,
 	LeaveRequest,
 	LeaveType,
@@ -175,3 +177,134 @@ class HRPermissionTests(TestCase):
 			).status_code,
 			405,
 		)
+
+	def test_hr_manager_can_create_employee_with_form_contract(self):
+		department = Department.objects.create(
+			hospital=self.hospital,
+			name="Clinical Services",
+		)
+		position = JobPosition.objects.create(
+			hospital=self.hospital,
+			department=department,
+			title="Clinical Officer",
+			code="CLIN-OFF",
+		)
+		self.client.force_authenticate(self.hr_manager)
+
+		response = self.client.post(
+			"/api/v1/hr/employees/",
+			{
+				"employee_number": "EMP-100",
+				"first_name": "Valid",
+				"middle_name": "",
+				"last_name": "Employee",
+				"gender": "FEMALE",
+				"email": "",
+				"phone": "",
+				"address": "",
+				"department": department.id,
+				"position": position.id,
+				"employment_type": "PERMANENT",
+				"employment_status": "ACTIVE",
+				"emergency_contact_name": "",
+				"emergency_contact_phone": "",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 201, response.data)
+		employee = Employee.objects.get(employee_number="EMP-100")
+		self.assertEqual(employee.hospital, self.hospital)
+		self.assertEqual(employee.department, department)
+		self.assertEqual(employee.position, position)
+		self.assertEqual(employee.gender, "FEMALE")
+		self.assertEqual(employee.employment_type, "PERMANENT")
+		self.assertEqual(employee.employment_status, "ACTIVE")
+
+	def test_employee_number_must_be_unique_within_hospital(self):
+		Employee.objects.create(
+			hospital=self.hospital,
+			employee_number="EMP-101",
+			first_name="Existing",
+			last_name="Employee",
+		)
+		self.client.force_authenticate(self.hr_manager)
+
+		response = self.client.post(
+			"/api/v1/hr/employees/",
+			{
+				"employee_number": "EMP-101",
+				"first_name": "Duplicate",
+				"last_name": "Employee",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("employee_number", response.data)
+
+	def test_employee_rejects_mismatched_position_and_foreign_staff_user(self):
+		department = Department.objects.create(
+			hospital=self.hospital,
+			name="Administration",
+		)
+		other_department = Department.objects.create(
+			hospital=self.hospital,
+			name="Pharmacy",
+		)
+		position = JobPosition.objects.create(
+			hospital=self.hospital,
+			department=other_department,
+			title="Pharmacist",
+			code="PHARM",
+		)
+		other_hospital = Hospital.objects.create(
+			name="Foreign Staff Hospital",
+			slug="foreign-staff-hospital",
+			hospital_type="general",
+			registration_number="HR-PERM-003",
+			email="foreign-staff@example.com",
+			phone="1234567895",
+			address="789 Main Street",
+			city="Juba",
+			state="Central",
+			country="South Sudan",
+		)
+		foreign_user = User.objects.create_user(
+			username="foreign-staff-user",
+			password="Foreign@1234",
+		)
+		StaffProfile.objects.create(
+			user=foreign_user,
+			hospital=other_hospital,
+			role="doctor",
+			phone="1234567896",
+		)
+		self.client.force_authenticate(self.hr_manager)
+
+		mismatched_position = self.client.post(
+			"/api/v1/hr/employees/",
+			{
+				"employee_number": "EMP-102",
+				"first_name": "Wrong",
+				"last_name": "Position",
+				"department": department.id,
+				"position": position.id,
+			},
+			format="json",
+		)
+		foreign_account = self.client.post(
+			"/api/v1/hr/employees/",
+			{
+				"employee_number": "EMP-103",
+				"first_name": "Wrong",
+				"last_name": "Account",
+				"user": foreign_user.id,
+			},
+			format="json",
+		)
+
+		self.assertEqual(mismatched_position.status_code, 400)
+		self.assertIn("position", mismatched_position.data)
+		self.assertEqual(foreign_account.status_code, 400)
+		self.assertIn("user", foreign_account.data)

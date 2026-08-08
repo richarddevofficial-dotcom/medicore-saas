@@ -82,10 +82,22 @@ async function request(endpoint, options = {}) {
   }
 
   if (!response.ok) {
+    const fieldMessage =
+      data && typeof data === "object"
+        ? Object.entries(data)
+            .flatMap(([field, value]) => {
+              const messages = Array.isArray(value) ? value : [value];
+              return messages
+                .filter((item) => typeof item === "string")
+                .map((item) => `${field.replaceAll("_", " ")}: ${item}`);
+            })
+            .join(" ")
+        : "";
     const message =
       data?.detail ||
       data?.message ||
       data?.error ||
+      fieldMessage ||
       "The request could not be completed.";
 
     throw new Error(message);
