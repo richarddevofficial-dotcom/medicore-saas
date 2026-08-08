@@ -27,6 +27,14 @@ export default function ShiftsPage() {
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [canManageShifts, setCanManageShifts] = useState(false);
+
+  useEffect(() => {
+    const role = String(localStorage.getItem("role") || "").toLowerCase();
+    setCanManageShifts(
+      ["admin", "hospital_admin", "hr_manager", "super_admin"].includes(role),
+    );
+  }, []);
 
   const loadShifts = useCallback(async () => {
     try {
@@ -215,14 +223,16 @@ export default function ShiftsPage() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-700"
-          >
-            <Plus className="h-4 w-4" />
-            Add Shift
-          </button>
+          {canManageShifts && (
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-700"
+            >
+              <Plus className="h-4 w-4" />
+              Add Shift
+            </button>
+          )}
         </div>
       </div>
 
@@ -320,30 +330,36 @@ export default function ShiftsPage() {
                     </td>
 
                     <td className="px-5 py-4">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(shift)}
-                          className="rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
-                          title="Edit shift"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
+                      {canManageShifts ? (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(shift)}
+                            className="rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
+                            title="Edit shift"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(shift)}
-                          disabled={deletingId === shift.id}
-                          className="rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-                          title="Delete shift"
-                        >
-                          {deletingId === shift.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </button>
-                      </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(shift)}
+                            disabled={deletingId === shift.id}
+                            className="rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Delete shift"
+                          >
+                            {deletingId === shift.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="block text-right text-xs text-gray-400">
+                          Read only
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

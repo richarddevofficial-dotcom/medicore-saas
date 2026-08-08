@@ -60,6 +60,14 @@ export default function AttendancePage() {
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [canManageAttendance, setCanManageAttendance] = useState(false);
+
+  useEffect(() => {
+    const role = String(localStorage.getItem("role") || "").toLowerCase();
+    setCanManageAttendance(
+      ["admin", "hospital_admin", "hr_manager", "super_admin"].includes(role),
+    );
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -209,7 +217,11 @@ export default function AttendancePage() {
         status: form.status,
         notes: form.notes.trim(),
         clock_in: combineDateAndTime(form.attendance_date, form.clock_in),
-        clock_out: combineDateAndTime(form.attendance_date, form.clock_out),
+        clock_out: combineDateAndTime(
+          form.attendance_date,
+          form.clock_out,
+          isOvernightClockOut(form, shifts),
+        ),
       };
 
       if (form.shift) {
@@ -300,14 +312,16 @@ export default function AttendancePage() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-700"
-          >
-            <Plus className="h-4 w-4" />
-            Record Attendance
-          </button>
+          {canManageAttendance && (
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-700"
+            >
+              <Plus className="h-4 w-4" />
+              Record Attendance
+            </button>
+          )}
         </div>
       </div>
 
@@ -418,6 +432,8 @@ export default function AttendancePage() {
 
                   <th className="px-5 py-3 font-semibold">Check Out</th>
 
+                  <th className="px-5 py-3 font-semibold">Worked Hours</th>
+
                   <th className="px-5 py-3 font-semibold">Status</th>
 
                   <th className="px-5 py-3 text-right font-semibold">
@@ -455,35 +471,45 @@ export default function AttendancePage() {
                       {formatTimeForDisplay(record.clock_out)}
                     </td>
 
+                    <td className="px-5 py-4 font-medium text-gray-700">
+                      {formatWorkedHours(record.clock_in, record.clock_out)}
+                    </td>
+
                     <td className="px-5 py-4">
                       <AttendanceBadge status={record.status} />
                     </td>
 
                     <td className="px-5 py-4">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(record)}
-                          className="rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
-                          title="Edit attendance"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
+                      {canManageAttendance ? (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(record)}
+                            className="rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600"
+                            title="Edit attendance"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(record)}
-                          disabled={deletingId === record.id}
-                          className="rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-                          title="Delete attendance"
-                        >
-                          {deletingId === record.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </button>
-                      </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(record)}
+                            disabled={deletingId === record.id}
+                            className="rounded-lg border border-gray-200 p-2 text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Delete attendance"
+                          >
+                            {deletingId === record.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="block text-right text-xs text-gray-400">
+                          Read only
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -564,6 +590,11 @@ export default function AttendancePage() {
                     />
                   </div>
                 </div>
+
+                <p className="text-xs text-gray-500">
+                  For an overnight shift, a check-out time earlier than the
+                  check-in time is saved on the following day.
+                </p>
 
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
@@ -827,13 +858,8 @@ function formatTimeForInput(value) {
     return "";
   }
 
-  const date = new Date(value);
-
-  if (!Number.isNaN(date.getTime())) {
-    return date.toTimeString().slice(0, 5);
-  }
-
-  return String(value).slice(0, 5);
+  const time = String(value).match(/(?:T|^)(\d{2}):(\d{2})/);
+  return time ? `${time[1]}:${time[2]}` : "";
 }
 
 function formatTimeForDisplay(value) {
@@ -841,24 +867,49 @@ function formatTimeForDisplay(value) {
     return "—";
   }
 
-  const date = new Date(value);
+  const time = String(value).match(/(?:T|^)(\d{2}):(\d{2})/);
+  if (!time) return "—";
 
-  if (!Number.isNaN(date.getTime())) {
-    return date.toLocaleTimeString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  }
-
-  return String(value).slice(0, 5);
+  const hour = Number(time[1]);
+  return `${hour % 12 || 12}:${time[2]} ${hour < 12 ? "AM" : "PM"}`;
 }
 
-function combineDateAndTime(date, time) {
+function combineDateAndTime(date, time, followingDay = false) {
   if (!date || !time) {
     return null;
   }
 
-  return new Date(`${date}T${time}:00`).toISOString();
+  let attendanceDate = date;
+  if (followingDay) {
+    const [year, month, day] = date.split("-").map(Number);
+    const nextDay = new Date(Date.UTC(year, month - 1, day + 1));
+    attendanceDate = nextDay.toISOString().slice(0, 10);
+  }
+
+  return `${attendanceDate}T${time}:00`;
+}
+
+function isOvernightClockOut(form, shifts) {
+  if (!form.clock_in || !form.clock_out || form.clock_out > form.clock_in) {
+    return false;
+  }
+
+  const shift = shifts.find((item) => String(item.id) === String(form.shift));
+  return Boolean(
+    shift && (shift.is_night_shift || shift.end_time <= shift.start_time),
+  );
+}
+
+function formatWorkedHours(clockIn, clockOut) {
+  if (!clockIn || !clockOut) return "—";
+
+  const milliseconds = new Date(clockOut) - new Date(clockIn);
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) return "—";
+
+  const totalMinutes = Math.round(milliseconds / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
 }
 
 function formatDate(value) {

@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from rest_framework.test import APIClient
@@ -510,6 +510,54 @@ class HRPermissionTests(TestCase):
 		self.assertEqual(response.status_code, 200, response.data)
 		attendance.refresh_from_db()
 		self.assertEqual(attendance.clock_out, clock_out)
+
+	def test_only_hr_manager_can_adjust_attendance_working_hours(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			employee_number="ADJUST-HOURS-001",
+			first_name="Adjust",
+			last_name="Hours",
+		)
+		shift = Shift.objects.create(
+			hospital=self.hospital,
+			code="ADJUST-NIGHT",
+			name="Adjustable Night Shift",
+			start_time="22:00",
+			end_time="06:00",
+			is_night_shift=True,
+		)
+		attendance = Attendance.objects.create(
+			employee=employee,
+			shift=shift,
+			attendance_date="2026-08-08",
+			status="PRESENT",
+		)
+		payload = {
+			"clock_in": "2026-08-08T22:15:00+05:30",
+			"clock_out": "2026-08-09T06:10:00+05:30",
+		}
+
+		self.client.force_authenticate(self.hr_officer)
+		forbidden = self.client.patch(
+			f"/api/v1/hr/attendance/{attendance.id}/",
+			payload,
+			format="json",
+		)
+
+		self.client.force_authenticate(self.hr_manager)
+		updated = self.client.patch(
+			f"/api/v1/hr/attendance/{attendance.id}/",
+			payload,
+			format="json",
+		)
+
+		self.assertEqual(forbidden.status_code, 403)
+		self.assertEqual(updated.status_code, 200, updated.data)
+		attendance.refresh_from_db()
+		self.assertEqual(
+			attendance.clock_out - attendance.clock_in,
+			timedelta(hours=7, minutes=55),
+		)
 
 	def test_staff_can_complete_an_empty_attendance_row(self):
 		employee = Employee.objects.create(
