@@ -1,50 +1,4 @@
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://api.medicorecloud.com/api/v1";
-
-function getAccessToken() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return (
-    localStorage.getItem("access_token") ||
-    localStorage.getItem("access") ||
-    localStorage.getItem("token")
-  );
-}
-
-function getCsrfToken() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const prefix = "csrftoken=";
-  const cookie = document.cookie
-    .split("; ")
-    .find((entry) => entry.startsWith(prefix));
-
-  return (
-    (cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null) ||
-    sessionStorage.getItem("csrf_token")
-  );
-}
-
-function getHeaders(customHeaders = {}, body = null, method = "GET") {
-  const token = getAccessToken();
-  const csrfToken = getCsrfToken();
-  const normalizedMethod = method.toUpperCase();
-  const requiresCsrf = !["GET", "HEAD", "OPTIONS"].includes(normalizedMethod);
-
-  const isFormData =
-    typeof FormData !== "undefined" && body instanceof FormData;
-
-  return {
-    ...(isFormData ? {} : { "Content-Type": "application/json" }),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(requiresCsrf && csrfToken ? { "X-CSRFToken": csrfToken } : {}),
-    ...customHeaders,
-  };
-}
+import apiClient from "@/lib/api-client";
 
 function serializeBody(payload) {
   const isFormData =
@@ -58,30 +12,21 @@ function serializeBody(payload) {
     return undefined;
   }
 
-  return JSON.stringify(payload);
+  return payload;
 }
 
 async function request(endpoint, options = {}) {
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: getHeaders(options.headers, options.body, options.method),
-    credentials: "include",
-    cache: "no-store",
-  });
-
-  if (response.status === 204) {
-    return null;
-  }
-
-  let data = null;
-
   try {
-    data = await response.json();
-  } catch {
-    data = null;
-  }
+    const response = await apiClient.request({
+      url: endpoint,
+      method: options.method || "GET",
+      data: options.body,
+      headers: options.headers,
+    });
 
-  if (!response.ok) {
+    return response.status === 204 ? null : response.data;
+  } catch (error) {
+    const data = error?.response?.data;
     const fieldMessage =
       data && typeof data === "object"
         ? Object.entries(data)
@@ -102,8 +47,6 @@ async function request(endpoint, options = {}) {
 
     throw new Error(message);
   }
-
-  return data;
 }
 
 export function normalizeResults(data) {
