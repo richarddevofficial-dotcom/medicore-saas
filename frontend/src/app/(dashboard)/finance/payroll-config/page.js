@@ -113,8 +113,8 @@ export default function PayrollConfigPage() {
           <li className="flex items-start gap-2">
             <span className="font-bold">4.</span>
             <span>
-              Assign employees to salary structures in the Payroll Processing
-              section
+              HR assigns employees to salary structures before payroll
+              processing
             </span>
           </li>
         </ul>
