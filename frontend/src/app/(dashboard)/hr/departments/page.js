@@ -17,6 +17,9 @@ import { getApiError, hrApi } from "@/services/hr";
 
 const emptyForm = {
   name: "",
+  description: "",
+  rooms: 1,
+  is_active: true,
 };
 
 export default function DepartmentsPage() {
@@ -27,6 +30,19 @@ export default function DepartmentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [canManage, setCanManage] = useState(false);
+
+  useEffect(() => {
+    const role = localStorage.getItem("role");
+    const isSuperuser =
+      (localStorage.getItem("is_superuser") || "").toLowerCase() === "true";
+    setCanManage(
+      isSuperuser ||
+        ["admin", "hospital_admin", "hr_manager", "super_admin"].includes(
+          (role || "").toLowerCase(),
+        ),
+    );
+  }, []);
 
   const loadDepartments = useCallback(async () => {
     try {
@@ -38,9 +54,7 @@ export default function DepartmentsPage() {
 
       setDepartments(data);
     } catch (error) {
-      toast.error(
-        getApiError(error, "Unable to load departments."),
-      );
+      toast.error(getApiError(error, "Unable to load departments."));
     } finally {
       setLoading(false);
     }
@@ -72,6 +86,9 @@ export default function DepartmentsPage() {
     setEditing(department);
     setForm({
       name: department.name || "",
+      description: department.description || "",
+      rooms: department.rooms ?? 1,
+      is_active: department.is_active !== false,
     });
     setShowForm(true);
   };
@@ -96,21 +113,25 @@ export default function DepartmentsPage() {
 
     try {
       setSaving(true);
+      const payload = {
+        name,
+        description: form.description.trim(),
+        rooms: Number(form.rooms),
+        is_active: form.is_active,
+      };
 
       if (editing) {
-        await hrApi.updateDepartment(editing.id, { name });
+        await hrApi.updateDepartment(editing.id, payload);
         toast.success("Department updated.");
       } else {
-        await hrApi.createDepartment({ name });
+        await hrApi.createDepartment(payload);
         toast.success("Department created.");
       }
 
       closeForm();
       await loadDepartments();
     } catch (error) {
-      toast.error(
-        getApiError(error, "Unable to save department."),
-      );
+      toast.error(getApiError(error, "Unable to save department."));
     } finally {
       setSaving(false);
     }
@@ -129,10 +150,7 @@ export default function DepartmentsPage() {
       await loadDepartments();
     } catch (error) {
       toast.error(
-        getApiError(
-          error,
-          "Unable to delete department. It may be in use.",
-        ),
+        getApiError(error, "Unable to delete department. It may be in use."),
       );
     }
   };
@@ -151,8 +169,7 @@ export default function DepartmentsPage() {
             </h1>
 
             <p className="mt-1 text-sm text-slate-500">
-              Manage hospital departments used by employees and
-              job positions.
+              Manage hospital departments used by employees and job positions.
             </p>
           </div>
 
@@ -173,14 +190,16 @@ export default function DepartmentsPage() {
               Refresh
             </button>
 
-            <button
-              type="button"
-              onClick={openCreate}
-              className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700"
-            >
-              <Plus className="h-4 w-4" />
-              Add Department
-            </button>
+            {canManage && (
+              <button
+                type="button"
+                onClick={openCreate}
+                className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700"
+              >
+                <Plus className="h-4 w-4" />
+                Add Department
+              </button>
+            )}
           </div>
         </div>
 
@@ -188,9 +207,7 @@ export default function DepartmentsPage() {
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-500">
-                  Total Departments
-                </p>
+                <p className="text-sm text-slate-500">Total Departments</p>
                 <p className="mt-2 text-3xl font-bold text-slate-900">
                   {departments.length}
                 </p>
@@ -239,9 +256,17 @@ export default function DepartmentsPage() {
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Department
                     </th>
-                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Actions
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Rooms
                     </th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Status
+                    </th>
+                    {canManage && (
+                      <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Actions
+                      </th>
+                    )}
                   </tr>
                 </thead>
 
@@ -259,35 +284,51 @@ export default function DepartmentsPage() {
                               {department.name}
                             </p>
                             <p className="text-xs text-slate-500">
-                              ID: {department.id}
+                              {department.description || "No description"}
                             </p>
                           </div>
                         </div>
                       </td>
 
-                      <td className="px-5 py-4">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openEdit(department)}
-                            className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50"
-                            title="Edit department"
-                          >
-                            <Edit3 className="h-4 w-4" />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              deleteDepartment(department)
-                            }
-                            className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
-                            title="Delete department"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
+                      <td className="px-5 py-4 text-sm text-slate-600">
+                        {department.rooms}
                       </td>
+
+                      <td className="px-5 py-4 text-sm">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                            department.is_active
+                              ? "bg-green-50 text-green-700"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {department.is_active ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+
+                      {canManage && (
+                        <td className="px-5 py-4">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openEdit(department)}
+                              className="rounded-lg border border-slate-300 p-2 text-slate-600 hover:bg-slate-50"
+                              title="Edit department"
+                            >
+                              <Edit3 className="h-4 w-4" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => deleteDepartment(department)}
+                              className="rounded-lg border border-red-200 p-2 text-red-600 hover:bg-red-50"
+                              title="Delete department"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -302,13 +343,11 @@ export default function DepartmentsPage() {
               <form onSubmit={submitForm}>
                 <div className="border-b border-slate-200 p-5">
                   <h2 className="text-lg font-semibold text-slate-900">
-                    {editing
-                      ? "Edit Department"
-                      : "Add Department"}
+                    {editing ? "Edit Department" : "Add Department"}
                   </h2>
                 </div>
 
-                <div className="p-5">
+                <div className="space-y-4 p-5">
                   <label className="block text-sm font-medium text-slate-700">
                     Department name
                   </label>
@@ -317,11 +356,52 @@ export default function DepartmentsPage() {
                     autoFocus
                     value={form.name}
                     onChange={(event) =>
-                      setForm({ name: event.target.value })
+                      setForm({ ...form, name: event.target.value })
                     }
                     placeholder="Example: Human Resources"
                     className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                   />
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Description
+                    </label>
+                    <textarea
+                      value={form.description}
+                      onChange={(event) =>
+                        setForm({ ...form, description: event.target.value })
+                      }
+                      rows={3}
+                      className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700">
+                      Rooms
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={form.rooms}
+                      onChange={(event) =>
+                        setForm({ ...form, rooms: event.target.value })
+                      }
+                      className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={form.is_active}
+                      onChange={(event) =>
+                        setForm({ ...form, is_active: event.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                    />
+                    Active department
+                  </label>
                 </div>
 
                 <div className="flex justify-end gap-3 border-t border-slate-200 p-5">

@@ -1,7 +1,7 @@
 from rest_framework import viewsets, filters
-from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
-from human_resources.permissions import IsHRManager
+from human_resources.permissions import IsHRManager, IsHRUser
 from .models import Department
 from .serializers import DepartmentSerializer, DepartmentDetailSerializer
 
@@ -21,10 +21,16 @@ def _resolve_request_hospital(request):
 
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.all()
-    permission_classes = [IsAuthenticated, IsHRManager]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
     ordering_fields = ['name', 'created_at']
+
+    def get_permissions(self):
+        if self.action in {'list', 'retrieve'}:
+            permission_classes = [IsAuthenticated, IsHRUser]
+        else:
+            permission_classes = [IsAuthenticated, IsHRManager]
+        return [permission() for permission in permission_classes]
 
     def get_queryset(self):
         hospital = _resolve_request_hospital(self.request)
@@ -42,6 +48,15 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         hospital = _resolve_request_hospital(self.request)
         if not hospital:
-            from rest_framework.exceptions import ValidationError
             raise ValidationError('Hospital context is required')
         serializer.save(hospital=hospital)
+
+    def perform_destroy(self, instance):
+        if (
+            instance.budget_allocations.exists()
+            or instance.budget_forecasts.exists()
+        ):
+            raise ValidationError(
+                'Deactivate this department instead. It has linked budget records.'
+            )
+        instance.delete()
