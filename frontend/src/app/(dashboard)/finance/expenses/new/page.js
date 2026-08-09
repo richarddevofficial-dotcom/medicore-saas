@@ -1,15 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { createExpense } from "@/lib/api/finance";
+import { createExpense, getExpenseCategories } from "@/lib/api/finance";
 import toast from "react-hot-toast";
 
 export default function CreateExpensePage() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
+  const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
 
   const [formData, setFormData] = useState({
@@ -17,10 +18,25 @@ export default function CreateExpensePage() {
     description: "",
     amount: "",
     expense_date: new Date().toISOString().split("T")[0],
-    payment_method: "cash",
-    status: "pending",
+    vendor_name: "",
+    invoice_number: "",
     notes: "",
   });
+
+  useEffect(() => {
+    async function loadCategories() {
+      try {
+        const data = await getExpenseCategories({ is_active: true });
+        setCategories(Array.isArray(data) ? data : data.results || []);
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to load categories",
+        );
+      }
+    }
+
+    loadCategories();
+  }, []);
 
   function handleChange(e) {
     const { name, value } = e.target;
@@ -42,6 +58,7 @@ export default function CreateExpensePage() {
 
     // Validation
     const newErrors = {};
+    if (!formData.category) newErrors.category = "Category is required";
     if (!formData.description)
       newErrors.description = "Description is required";
     if (!formData.amount) newErrors.amount = "Amount is required";
@@ -58,7 +75,7 @@ export default function CreateExpensePage() {
       const data = await createExpense({
         ...formData,
         amount: parseFloat(formData.amount),
-        category: formData.category ? parseInt(formData.category) : null,
+        category: parseInt(formData.category, 10),
       });
       toast.success("Expense created successfully");
       router.push(`/finance/expenses/${data.id}`);
@@ -89,6 +106,32 @@ export default function CreateExpensePage() {
         <p className="text-gray-600 mb-6">Record a new expense entry</p>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label
+              htmlFor="category"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Category *
+            </label>
+            <select
+              id="category"
+              name="category"
+              value={formData.category}
+              onChange={handleChange}
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.category ? "border-red-500" : "border-gray-300"}`}
+            >
+              <option value="">Select a category</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.code} - {category.name}
+                </option>
+              ))}
+            </select>
+            {errors.category && (
+              <p className="text-red-600 text-sm mt-1">{errors.category}</p>
+            )}
+          </div>
+
           <div>
             <label
               htmlFor="description"
@@ -142,7 +185,7 @@ export default function CreateExpensePage() {
                 htmlFor="expense_date"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Expense Date
+                Expense Date *
               </label>
               <input
                 type="date"
@@ -158,42 +201,34 @@ export default function CreateExpensePage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label
-                htmlFor="payment_method"
+                htmlFor="vendor_name"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Payment Method
+                Vendor
               </label>
-              <select
-                id="payment_method"
-                name="payment_method"
-                value={formData.payment_method}
+              <input
+                id="vendor_name"
+                name="vendor_name"
+                value={formData.vendor_name}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="cash">Cash</option>
-                <option value="check">Check</option>
-                <option value="transfer">Bank Transfer</option>
-                <option value="credit_card">Credit Card</option>
-              </select>
+              />
             </div>
 
             <div>
               <label
-                htmlFor="status"
+                htmlFor="invoice_number"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Status
+                Invoice Number
               </label>
-              <select
-                id="status"
-                name="status"
-                value={formData.status}
+              <input
+                id="invoice_number"
+                name="invoice_number"
+                value={formData.invoice_number}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="pending">Pending Approval</option>
-                <option value="approved">Approved</option>
-              </select>
+              />
             </div>
           </div>
 

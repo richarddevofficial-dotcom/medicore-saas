@@ -20,6 +20,7 @@ export default function NewSalaryStructurePage() {
   const [formData, setFormData] = useState({
     name: "",
     description: "",
+    base_salary: "",
     is_active: true,
     allowances: [],
     deductions: [],
@@ -70,10 +71,17 @@ export default function NewSalaryStructurePage() {
   }
 
   function addAllowance(allowanceId) {
-    if (!formData.allowances.includes(allowanceId)) {
+    if (
+      !formData.allowances.some(
+        (item) => item.allowance_type_id === allowanceId,
+      )
+    ) {
       setFormData((prev) => ({
         ...prev,
-        allowances: [...prev.allowances, allowanceId],
+        allowances: [
+          ...prev.allowances,
+          { allowance_type_id: allowanceId, amount: "", is_percentage: false },
+        ],
       }));
     }
   }
@@ -81,15 +89,24 @@ export default function NewSalaryStructurePage() {
   function removeAllowance(allowanceId) {
     setFormData((prev) => ({
       ...prev,
-      allowances: prev.allowances.filter((id) => id !== allowanceId),
+      allowances: prev.allowances.filter(
+        (item) => item.allowance_type_id !== allowanceId,
+      ),
     }));
   }
 
   function addDeduction(deductionId) {
-    if (!formData.deductions.includes(deductionId)) {
+    if (
+      !formData.deductions.some(
+        (item) => item.deduction_type_id === deductionId,
+      )
+    ) {
       setFormData((prev) => ({
         ...prev,
-        deductions: [...prev.deductions, deductionId],
+        deductions: [
+          ...prev.deductions,
+          { deduction_type_id: deductionId, amount: "", is_percentage: false },
+        ],
       }));
     }
   }
@@ -97,7 +114,20 @@ export default function NewSalaryStructurePage() {
   function removeDeduction(deductionId) {
     setFormData((prev) => ({
       ...prev,
-      deductions: prev.deductions.filter((id) => id !== deductionId),
+      deductions: prev.deductions.filter(
+        (item) => item.deduction_type_id !== deductionId,
+      ),
+    }));
+  }
+
+  function updateComponent(collection, typeId, field, value) {
+    const idField =
+      collection === "allowances" ? "allowance_type_id" : "deduction_type_id";
+    setFormData((previous) => ({
+      ...previous,
+      [collection]: previous[collection].map((item) =>
+        item[idField] === typeId ? { ...item, [field]: value } : item,
+      ),
     }));
   }
 
@@ -107,6 +137,14 @@ export default function NewSalaryStructurePage() {
     // Validation
     const newErrors = {};
     if (!formData.name.trim()) newErrors.name = "Structure name is required";
+    if (!formData.base_salary || parseFloat(formData.base_salary) < 0)
+      newErrors.base_salary = "Enter a valid base salary";
+    if (
+      [...formData.allowances, ...formData.deductions].some(
+        (item) => item.amount === "" || parseFloat(item.amount) < 0,
+      )
+    )
+      newErrors.components = "Enter an amount for every selected component";
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -118,9 +156,16 @@ export default function NewSalaryStructurePage() {
       await createSalaryStructure({
         name: formData.name,
         description: formData.description,
+        base_salary: parseFloat(formData.base_salary),
         is_active: formData.is_active,
-        allowances: formData.allowances,
-        deductions: formData.deductions,
+        allowances: formData.allowances.map((item) => ({
+          ...item,
+          amount: parseFloat(item.amount),
+        })),
+        deductions: formData.deductions.map((item) => ({
+          ...item,
+          amount: parseFloat(item.amount),
+        })),
       });
       toast.success("Salary structure created successfully");
       router.push("/finance/payroll-config/structures");
@@ -183,6 +228,28 @@ export default function NewSalaryStructurePage() {
             )}
           </div>
 
+          <div>
+            <label
+              htmlFor="base_salary"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Base Salary *
+            </label>
+            <input
+              type="number"
+              id="base_salary"
+              name="base_salary"
+              value={formData.base_salary}
+              onChange={handleChange}
+              min="0"
+              step="0.01"
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.base_salary ? "border-red-500" : "border-gray-300"}`}
+            />
+            {errors.base_salary && (
+              <p className="text-red-600 text-sm mt-1">{errors.base_salary}</p>
+            )}
+          </div>
+
           {/* Description */}
           <div>
             <label
@@ -231,12 +298,16 @@ export default function NewSalaryStructurePage() {
                   <div
                     key={allowance.id}
                     className={`p-3 border rounded flex items-center justify-between cursor-pointer ${
-                      formData.allowances.includes(allowance.id)
+                      formData.allowances.some(
+                        (item) => item.allowance_type_id === allowance.id,
+                      )
                         ? "border-blue-500 bg-blue-50"
                         : "border-gray-200 hover:bg-gray-50"
                     }`}
                     onClick={() =>
-                      formData.allowances.includes(allowance.id)
+                      formData.allowances.some(
+                        (item) => item.allowance_type_id === allowance.id,
+                      )
                         ? removeAllowance(allowance.id)
                         : addAllowance(allowance.id)
                     }
@@ -244,7 +315,9 @@ export default function NewSalaryStructurePage() {
                     <div className="flex items-center gap-3 flex-1">
                       <input
                         type="checkbox"
-                        checked={formData.allowances.includes(allowance.id)}
+                        checked={formData.allowances.some(
+                          (item) => item.allowance_type_id === allowance.id,
+                        )}
                         onChange={() => {}}
                         className="w-4 h-4 rounded"
                       />
@@ -257,6 +330,62 @@ export default function NewSalaryStructurePage() {
                         </p>
                       </div>
                     </div>
+                    {formData.allowances.some(
+                      (item) => item.allowance_type_id === allowance.id,
+                    ) && (
+                      <div
+                        className="flex items-center gap-3"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          type="number"
+                          min="0"
+                          max={
+                            formData.allowances.find(
+                              (item) => item.allowance_type_id === allowance.id,
+                            )?.is_percentage
+                              ? "100"
+                              : undefined
+                          }
+                          step="0.01"
+                          value={
+                            formData.allowances.find(
+                              (item) => item.allowance_type_id === allowance.id,
+                            )?.amount || ""
+                          }
+                          onChange={(event) =>
+                            updateComponent(
+                              "allowances",
+                              allowance.id,
+                              "amount",
+                              event.target.value,
+                            )
+                          }
+                          className="w-28 rounded border border-gray-300 px-3 py-2"
+                          placeholder="Amount"
+                        />
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={
+                              formData.allowances.find(
+                                (item) =>
+                                  item.allowance_type_id === allowance.id,
+                              )?.is_percentage || false
+                            }
+                            onChange={(event) =>
+                              updateComponent(
+                                "allowances",
+                                allowance.id,
+                                "is_percentage",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          Percentage
+                        </label>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -283,12 +412,16 @@ export default function NewSalaryStructurePage() {
                   <div
                     key={deduction.id}
                     className={`p-3 border rounded flex items-center justify-between cursor-pointer ${
-                      formData.deductions.includes(deduction.id)
+                      formData.deductions.some(
+                        (item) => item.deduction_type_id === deduction.id,
+                      )
                         ? "border-red-500 bg-red-50"
                         : "border-gray-200 hover:bg-gray-50"
                     }`}
                     onClick={() =>
-                      formData.deductions.includes(deduction.id)
+                      formData.deductions.some(
+                        (item) => item.deduction_type_id === deduction.id,
+                      )
                         ? removeDeduction(deduction.id)
                         : addDeduction(deduction.id)
                     }
@@ -296,7 +429,9 @@ export default function NewSalaryStructurePage() {
                     <div className="flex items-center gap-3 flex-1">
                       <input
                         type="checkbox"
-                        checked={formData.deductions.includes(deduction.id)}
+                        checked={formData.deductions.some(
+                          (item) => item.deduction_type_id === deduction.id,
+                        )}
                         onChange={() => {}}
                         className="w-4 h-4 rounded"
                       />
@@ -309,6 +444,62 @@ export default function NewSalaryStructurePage() {
                         </p>
                       </div>
                     </div>
+                    {formData.deductions.some(
+                      (item) => item.deduction_type_id === deduction.id,
+                    ) && (
+                      <div
+                        className="flex items-center gap-3"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          type="number"
+                          min="0"
+                          max={
+                            formData.deductions.find(
+                              (item) => item.deduction_type_id === deduction.id,
+                            )?.is_percentage
+                              ? "100"
+                              : undefined
+                          }
+                          step="0.01"
+                          value={
+                            formData.deductions.find(
+                              (item) => item.deduction_type_id === deduction.id,
+                            )?.amount || ""
+                          }
+                          onChange={(event) =>
+                            updateComponent(
+                              "deductions",
+                              deduction.id,
+                              "amount",
+                              event.target.value,
+                            )
+                          }
+                          className="w-28 rounded border border-gray-300 px-3 py-2"
+                          placeholder="Amount"
+                        />
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={
+                              formData.deductions.find(
+                                (item) =>
+                                  item.deduction_type_id === deduction.id,
+                              )?.is_percentage || false
+                            }
+                            onChange={(event) =>
+                              updateComponent(
+                                "deductions",
+                                deduction.id,
+                                "is_percentage",
+                                event.target.checked,
+                              )
+                            }
+                          />
+                          Percentage
+                        </label>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -323,6 +514,10 @@ export default function NewSalaryStructurePage() {
               </p>
             </div>
           </div>
+
+          {errors.components && (
+            <p className="text-red-600 text-sm">{errors.components}</p>
+          )}
 
           {/* Form Actions */}
           <div className="flex gap-3 pt-6 border-t">

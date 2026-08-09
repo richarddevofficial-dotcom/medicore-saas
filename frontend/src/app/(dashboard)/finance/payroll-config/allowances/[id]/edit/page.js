@@ -3,18 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { getAllowanceTypes, updateAllowanceType } from "@/lib/api/finance";
+import { getAllowanceType, updateAllowanceType } from "@/lib/api/finance";
 import toast from "react-hot-toast";
 import { useRouter, useParams } from "next/navigation";
-
-const ALLOWANCE_TYPES = [
-  { value: "BASIC", label: "Basic Salary" },
-  { value: "DEARNESS", label: "Dearness Allowance" },
-  { value: "HOUSE_RENT", label: "House Rent Allowance" },
-  { value: "CONVEYANCE", label: "Conveyance Allowance" },
-  { value: "SPECIAL", label: "Special Allowance" },
-  { value: "OTHER", label: "Other Allowance" },
-];
 
 export default function EditAllowanceTypePage() {
   const router = useRouter();
@@ -23,9 +14,9 @@ export default function EditAllowanceTypePage() {
 
   const [formData, setFormData] = useState({
     name: "",
+    code: "",
     description: "",
-    allowance_type: "OTHER",
-    is_taxable: false,
+    is_active: true,
   });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -41,17 +32,14 @@ export default function EditAllowanceTypePage() {
     try {
       setLoading(true);
       setError("");
-      const data = await getAllowanceTypes({ id: allowanceId });
-      const allowance = Array.isArray(data)
-        ? data.find((a) => a.id === parseInt(allowanceId))
-        : data.results?.find((a) => a.id === parseInt(allowanceId));
+      const allowance = await getAllowanceType(allowanceId);
 
       if (allowance) {
         setFormData({
           name: allowance.name || "",
+          code: allowance.code || "",
           description: allowance.description || "",
-          allowance_type: allowance.allowance_type || "OTHER",
-          is_taxable: allowance.is_taxable ?? false,
+          is_active: allowance.is_active ?? true,
         });
       }
     } catch (err) {
@@ -84,8 +72,7 @@ export default function EditAllowanceTypePage() {
     // Validation
     const newErrors = {};
     if (!formData.name.trim()) newErrors.name = "Allowance name is required";
-    if (!formData.allowance_type)
-      newErrors.allowance_type = "Allowance type is required";
+    if (!formData.code.trim()) newErrors.code = "Allowance code is required";
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -162,30 +149,22 @@ export default function EditAllowanceTypePage() {
           {/* Allowance Type */}
           <div>
             <label
-              htmlFor="allowance_type"
+              htmlFor="code"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
-              Allowance Type *
+              Allowance Code *
             </label>
-            <select
-              id="allowance_type"
-              name="allowance_type"
-              value={formData.allowance_type}
+            <input
+              id="code"
+              name="code"
+              value={formData.code}
               onChange={handleChange}
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.allowance_type ? "border-red-500" : "border-gray-300"
+                errors.code ? "border-red-500" : "border-gray-300"
               }`}
-            >
-              {ALLOWANCE_TYPES.map((type) => (
-                <option key={type.value} value={type.value}>
-                  {type.label}
-                </option>
-              ))}
-            </select>
-            {errors.allowance_type && (
-              <p className="text-red-600 text-sm mt-1">
-                {errors.allowance_type}
-              </p>
+            />
+            {errors.code && (
+              <p className="text-red-600 text-sm mt-1">{errors.code}</p>
             )}
           </div>
 
@@ -211,17 +190,17 @@ export default function EditAllowanceTypePage() {
           <div className="flex items-center gap-3">
             <input
               type="checkbox"
-              id="is_taxable"
-              name="is_taxable"
-              checked={formData.is_taxable}
+              id="is_active"
+              name="is_active"
+              checked={formData.is_active}
               onChange={handleChange}
               className="w-4 h-4 rounded border-gray-300"
             />
             <label
-              htmlFor="is_taxable"
+              htmlFor="is_active"
               className="text-sm font-medium text-gray-700"
             >
-              Is Taxable (Subject to income tax)
+              Active
             </label>
           </div>
 

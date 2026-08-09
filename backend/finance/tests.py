@@ -7,7 +7,18 @@ from rest_framework.test import APIClient
 
 from hospitals.models import Hospital
 from staff.models import StaffProfile
-from finance.models import AccountCategory, ChartOfAccount, JournalEntry
+from human_resources.models import Employee
+from finance.models import (
+	AccountCategory,
+	AllowanceType,
+	ChartOfAccount,
+	DeductionType,
+	EmployeeSalary,
+	JournalEntry,
+	SalaryPayment,
+	SalarySlip,
+	SalaryStructure,
+)
 
 
 
@@ -437,3 +448,215 @@ class PayrollPermissionsTests(TestCase):
 		)
 
 		self.assertEqual(response.status_code, 403)
+
+
+class PayrollSecurityWorkflowTests(TestCase):
+	def setUp(self):
+		self.client = APIClient()
+		self.hospital = Hospital.objects.create(
+			name="Payroll Security Hospital",
+			slug="payroll-security-hospital",
+			registration_number="PAYROLL-SEC-001",
+			email="payroll-security@example.com",
+			phone="700003001",
+		)
+		self.other_hospital = Hospital.objects.create(
+			name="Other Payroll Hospital",
+			slug="other-payroll-hospital",
+			registration_number="PAYROLL-SEC-002",
+			email="other-payroll@example.com",
+			phone="700003002",
+		)
+		self.admin = User.objects.create_user(
+			username="payroll-security-admin",
+			password="TestPassword123!",
+		)
+		StaffProfile.objects.create(
+			user=self.admin,
+			hospital=self.hospital,
+			role="admin",
+			phone="700003003",
+		)
+		self.employee = Employee.objects.create(
+			hospital=self.hospital,
+			employee_number="PAY-001",
+			first_name="Payroll",
+			last_name="Employee",
+		)
+		self.structure = SalaryStructure.objects.create(
+			hospital=self.hospital,
+			name="Standard",
+			base_salary="1000.00",
+		)
+		self.other_structure = SalaryStructure.objects.create(
+			hospital=self.other_hospital,
+			name="Other Standard",
+			base_salary="1000.00",
+		)
+
+	def test_salary_assignment_rejects_cross_hospital_structure(self):
+		self.client.force_authenticate(self.admin)
+
+		response = self.client.post(
+			"/api/v1/finance/employee-salaries/",
+			{
+				"employee": self.employee.id,
+				"salary_structure_id": self.other_structure.id,
+				"effective_from": "2026-01-01",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertFalse(EmployeeSalary.objects.exists())
+
+	def test_approved_salary_slip_creates_and_protects_payment(self):
+		self.client.force_authenticate(self.admin)
+		created = self.client.post(
+			"/api/v1/finance/salary-slips/",
+			{
+				"employee": self.employee.id,
+				"month": "2026-08-01",
+				"salary_structure": self.structure.id,
+				"status": "paid",
+			},
+			format="json",
+		)
+		self.assertEqual(created.status_code, 201, created.data)
+		self.assertEqual(created.data["status"], "generated")
+		slip_id = created.data["id"]
+
+		approved = self.client.post(
+			f"/api/v1/finance/salary-slips/{slip_id}/approve/"
+		)
+		updated = self.client.patch(
+			f"/api/v1/finance/salary-slips/{slip_id}/",
+			{"notes": "Changed after approval"},
+			format="json",
+		)
+		rejected = self.client.post(
+			f"/api/v1/finance/salary-slips/{slip_id}/reject/"
+		)
+		deleted = self.client.delete(
+			f"/api/v1/finance/salary-slips/{slip_id}/"
+		)
+
+		self.assertEqual(approved.status_code, 200, approved.data)
+		self.assertEqual(updated.status_code, 400)
+		self.assertEqual(rejected.status_code, 400)
+		self.assertEqual(deleted.status_code, 400)
+		self.assertEqual(SalaryPayment.objects.filter(salary_slip_id=slip_id).count(), 1)
+		self.assertEqual(
+			SalaryPayment.objects.get(salary_slip_id=slip_id).status,
+			"pending",
+		)
+		self.assertEqual(SalarySlip.objects.get(id=slip_id).status, "approved")
+
+	def test_salary_payment_is_action_only_and_cannot_be_processed_twice(self):
+		self.client.force_authenticate(self.admin)
+		slip = SalarySlip.objects.create(
+			employee=self.employee,
+			month="2026-09-01",
+			salary_structure=self.structure,
+			base_salary="1000.00",
+			total_allowances="0.00",
+			gross_salary="1000.00",
+			total_deductions="0.00",
+			net_salary="1000.00",
+			status="approved",
+		)
+		payment = SalaryPayment.objects.create(
+			salary_slip=slip,
+			status="pending",
+		)
+
+		created = self.client.post(
+			"/api/v1/finance/salary-payments/",
+			{"salary_slip": slip.id},
+			format="json",
+		)
+		updated = self.client.patch(
+			f"/api/v1/finance/salary-payments/{payment.id}/",
+			{"status": "processed"},
+			format="json",
+		)
+		deleted = self.client.delete(
+			f"/api/v1/finance/salary-payments/{payment.id}/"
+		)
+		processed = self.client.post(
+			f"/api/v1/finance/salary-payments/{payment.id}/mark_paid/",
+			{"payment_method": "bank_transfer", "reference_number": "PAY-001"},
+			format="json",
+		)
+		repeated = self.client.post(
+			f"/api/v1/finance/salary-payments/{payment.id}/mark_paid/",
+			{"payment_method": "cash"},
+			format="json",
+		)
+
+		self.assertEqual(created.status_code, 405)
+		self.assertEqual(updated.status_code, 405)
+		self.assertEqual(deleted.status_code, 405)
+		self.assertEqual(processed.status_code, 200, processed.data)
+		self.assertEqual(repeated.status_code, 400)
+		payment.refresh_from_db()
+		slip.refresh_from_db()
+		self.assertEqual(payment.status, "processed")
+		self.assertEqual(payment.payment_method, "bank_transfer")
+		self.assertEqual(slip.status, "paid")
+
+	def test_salary_structure_persists_components_and_rejects_other_hospital(self):
+		self.client.force_authenticate(self.admin)
+		allowance = AllowanceType.objects.create(
+			hospital=self.hospital,
+			code="HOUSING",
+			name="Housing",
+		)
+		deduction = DeductionType.objects.create(
+			hospital=self.hospital,
+			code="TAX",
+			name="Tax",
+		)
+		other_allowance = AllowanceType.objects.create(
+			hospital=self.other_hospital,
+			code="OTHER",
+			name="Other",
+		)
+
+		created = self.client.post(
+			"/api/v1/finance/salary-structures/",
+			{
+				"name": "Clinical",
+				"base_salary": "2000.00",
+				"allowances": [{
+					"allowance_type_id": allowance.id,
+					"amount": "10.00",
+					"is_percentage": True,
+				}],
+				"deductions": [{
+					"deduction_type_id": deduction.id,
+					"amount": "50.00",
+					"is_percentage": False,
+				}],
+			},
+			format="json",
+		)
+		cross_hospital = self.client.post(
+			"/api/v1/finance/salary-structures/",
+			{
+				"name": "Invalid",
+				"base_salary": "1000.00",
+				"allowances": [{
+					"allowance_type_id": other_allowance.id,
+					"amount": "5.00",
+					"is_percentage": True,
+				}],
+			},
+			format="json",
+		)
+
+		self.assertEqual(created.status_code, 201, created.data)
+		structure = SalaryStructure.objects.get(id=created.data["id"])
+		self.assertEqual(structure.allowances.count(), 1)
+		self.assertEqual(structure.deductions.count(), 1)
+		self.assertEqual(cross_hospital.status_code, 400)

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.db import transaction
 from django.db.models import Sum
+from human_resources.permissions import get_user_hospital_id
 from budgets.models import (
     BudgetYear, BudgetTemplate, BudgetAllocation,
     BudgetVariance, BudgetRevision, BudgetForecast,
@@ -13,6 +14,23 @@ def format_currency(amount):
     if amount is None or amount == 0:
         return 'SSP 0.00'
     return f"SSP {amount:,.2f}"
+
+
+def validate_request_hospital(serializer, hospital_ids):
+    hospital_ids = {hospital_id for hospital_id in hospital_ids if hospital_id}
+    if len(hospital_ids) > 1:
+        raise serializers.ValidationError(
+            "All selected records must belong to the same hospital."
+        )
+
+    request = serializer.context.get('request')
+    user = getattr(request, 'user', None)
+    if user and user.is_authenticated and not user.is_superuser:
+        user_hospital_id = get_user_hospital_id(user)
+        if not user_hospital_id or hospital_ids != {user_hospital_id}:
+            raise serializers.ValidationError(
+                "The selected record belongs to another hospital."
+            )
 
 
 class BudgetYearSerializer(serializers.ModelSerializer):
@@ -36,6 +54,21 @@ class BudgetYearSerializer(serializers.ModelSerializer):
     def get_formatted_total_allocated(self, obj):
         total = self.get_total_allocated(obj)
         return format_currency(total)
+
+    def validate(self, attrs):
+        start_date = attrs.get('start_date', getattr(self.instance, 'start_date', None))
+        end_date = attrs.get('end_date', getattr(self.instance, 'end_date', None))
+        if start_date and end_date and start_date > end_date:
+            raise serializers.ValidationError(
+                {'end_date': 'End date must be on or after start date.'}
+            )
+        if self.instance and self.instance.is_locked:
+            changed_fields = set(attrs) - {'is_locked'}
+            if changed_fields:
+                raise serializers.ValidationError(
+                    'Unlock this budget year before changing its details.'
+                )
+        return attrs
 
 
 class BudgetTemplateSerializer(serializers.ModelSerializer):
@@ -66,7 +99,42 @@ class BudgetAllocationSerializer(serializers.ModelSerializer):
             'status', 'notes', 'submitted_by', 'approved_by', 'approved_date',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['submitted_by', 'approved_by', 'approved_date', 'created_at', 'updated_at']
+        read_only_fields = ['status', 'submitted_by', 'approved_by', 'approved_date', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        budget_year = attrs.get('budget_year', getattr(self.instance, 'budget_year', None))
+        department = attrs.get('department', getattr(self.instance, 'department', None))
+        category = attrs.get('category', getattr(self.instance, 'category', None))
+        validate_request_hospital(
+            self,
+            [
+                getattr(budget_year, 'hospital_id', None),
+                getattr(department, 'hospital_id', None),
+                getattr(category, 'hospital_id', None),
+            ],
+        )
+        if budget_year and budget_year.is_locked:
+            raise serializers.ValidationError(
+                'Allocations cannot be changed in a locked budget year.'
+            )
+        if self.instance and self.instance.status != 'draft':
+            raise serializers.ValidationError(
+                'Only draft allocations can be edited.'
+            )
+        period_start = attrs.get('period_start', getattr(self.instance, 'period_start', None))
+        period_end = attrs.get('period_end', getattr(self.instance, 'period_end', None))
+        if period_start and period_end and period_start > period_end:
+            raise serializers.ValidationError(
+                {'period_end': 'Period end must be on or after period start.'}
+            )
+        if budget_year and period_start and period_end and (
+            period_start < budget_year.start_date
+            or period_end > budget_year.end_date
+        ):
+            raise serializers.ValidationError(
+                'The allocation period must fall within its budget year.'
+            )
+        return attrs
     
     def get_actual_spent(self, obj):
         return obj.get_actual_spent()
@@ -171,7 +239,24 @@ class BudgetRevisionSerializer(serializers.ModelSerializer):
             'approved_by', 'approved_by_name', 'approved_date', 'approval_notes',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['original_amount', 'requested_by', 'requested_date', 'approved_by', 'approved_date', 'created_at', 'updated_at']
+        read_only_fields = ['original_amount', 'status', 'requested_by', 'requested_date', 'approved_by', 'approved_date', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        allocation = attrs.get('allocation', getattr(self.instance, 'allocation', None))
+        if allocation:
+            validate_request_hospital(
+                self,
+                [allocation.budget_year.hospital_id],
+            )
+            if allocation.budget_year.is_locked:
+                raise serializers.ValidationError(
+                    'Revisions cannot be changed in a locked budget year.'
+                )
+        if self.instance and self.instance.status != 'draft':
+            raise serializers.ValidationError(
+                'Only draft revisions can be edited.'
+            )
+        return attrs
     
     def get_formatted_original_amount(self, obj):
         return format_currency(obj.original_amount)
@@ -195,6 +280,31 @@ class BudgetForecastSerializer(serializers.ModelSerializer):
             'created_by', 'created_by_name', 'created_at', 'updated_at'
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        budget_year = attrs.get('budget_year', getattr(self.instance, 'budget_year', None))
+        department = attrs.get('department', getattr(self.instance, 'department', None))
+        category = attrs.get('category', getattr(self.instance, 'category', None))
+        validate_request_hospital(
+            self,
+            [
+                getattr(budget_year, 'hospital_id', None),
+                getattr(department, 'hospital_id', None),
+                getattr(category, 'hospital_id', None),
+            ],
+        )
+        if budget_year and budget_year.is_locked:
+            raise serializers.ValidationError(
+                'Forecasts cannot be changed in a locked budget year.'
+            )
+        month = attrs.get('month', getattr(self.instance, 'month', None))
+        if budget_year and month and not (
+            budget_year.start_date <= month <= budget_year.end_date
+        ):
+            raise serializers.ValidationError(
+                {'month': 'Forecast month must fall within its budget year.'}
+            )
+        return attrs
     
     def get_formatted_forecasted_amount(self, obj):
         return format_currency(obj.forecasted_amount)
@@ -212,4 +322,16 @@ class BudgetAlertSerializer(serializers.ModelSerializer):
             'severity', 'status', 'triggered_at', 'acknowledged_by',
             'acknowledged_by_name', 'acknowledged_at', 'created_at'
         ]
-        read_only_fields = ['triggered_at', 'created_at']
+        read_only_fields = [
+            'status', 'acknowledged_by', 'acknowledged_at',
+            'triggered_at', 'created_at',
+        ]
+
+    def validate(self, attrs):
+        allocation = attrs.get('allocation', getattr(self.instance, 'allocation', None))
+        if allocation:
+            validate_request_hospital(
+                self,
+                [allocation.budget_year.hospital_id],
+            )
+        return attrs

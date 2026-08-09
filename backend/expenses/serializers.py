@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.db import transaction
 from django.db.models import Sum
+from human_resources.permissions import get_user_hospital_id
 from expenses.models import (
     ExpenseCategory, Expense, ExpenseApprovalLog,
     ExpenseBudget, ExpensePayment
@@ -8,6 +9,13 @@ from expenses.models import (
 
 
 class ExpenseCategorySerializer(serializers.ModelSerializer):
+    budget_limit = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=0,
+        allow_null=True,
+        required=False,
+    )
     class Meta:
         model = ExpenseCategory
         fields = ['id', 'code', 'name', 'description', 'is_active', 'budget_limit', 'created_at', 'updated_at']
@@ -27,6 +35,7 @@ class ExpensePaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ExpensePayment
         fields = ['id', 'payment_date', 'payment_method', 'reference_number', 'status', 'notes']
+        read_only_fields = fields
 
 
 class ExpenseSerializer(serializers.ModelSerializer):
@@ -43,7 +52,33 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'status', 'notes', 'approved_by', 'approved_by_name', 'approval_date',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['submitted_by', 'approved_by', 'approval_date', 'created_at', 'updated_at']
+        read_only_fields = ['status', 'submitted_by', 'approved_by', 'approval_date', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        category = attrs.get('category', getattr(self.instance, 'category', None))
+        department = attrs.get('department', getattr(self.instance, 'department', None))
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        hospital_id = get_user_hospital_id(user)
+        related_ids = {
+            related_id
+            for related_id in (
+                getattr(category, 'hospital_id', None),
+                getattr(department, 'hospital_id', None),
+            )
+            if related_id
+        }
+        if len(related_ids) > 1 or (
+            user and not user.is_superuser and related_ids != {hospital_id}
+        ):
+            raise serializers.ValidationError(
+                'The selected record belongs to another hospital.'
+            )
+        if self.instance and self.instance.status != 'draft':
+            raise serializers.ValidationError(
+                'Only draft expenses can be edited.'
+            )
+        return attrs
 
 
 class ExpenseDetailSerializer(serializers.ModelSerializer):
@@ -82,6 +117,33 @@ class ExpenseBudgetSerializer(serializers.ModelSerializer):
             'spent_percentage', 'is_exceeded', 'created_at', 'updated_at'
         ]
         read_only_fields = ['spent_amount', 'remaining_budget', 'spent_percentage', 'is_exceeded', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        category = attrs.get('category', getattr(self.instance, 'category', None))
+        department = attrs.get('department', getattr(self.instance, 'department', None))
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        hospital_id = get_user_hospital_id(user)
+        related_ids = {
+            related_id
+            for related_id in (
+                getattr(category, 'hospital_id', None),
+                getattr(department, 'hospital_id', None),
+            )
+            if related_id
+        }
+        if len(related_ids) > 1 or (
+            user and not user.is_superuser and related_ids != {hospital_id}
+        ):
+            raise serializers.ValidationError(
+                'The selected record belongs to another hospital.'
+            )
+        month = attrs.get('month', getattr(self.instance, 'month', None))
+        if month and month.day != 1:
+            raise serializers.ValidationError(
+                {'month': 'Month must be the first day of the month.'}
+            )
+        return attrs
     
     def get_spent_amount(self, obj):
         return obj.get_spent_amount()

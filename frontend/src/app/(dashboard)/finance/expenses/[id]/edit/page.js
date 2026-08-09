@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { getExpense, updateExpense } from "@/lib/api/finance";
+import {
+  getExpense,
+  getExpenseCategories,
+  updateExpense,
+} from "@/lib/api/finance";
 import toast from "react-hot-toast";
 import { useRouter, useParams } from "next/navigation";
 
@@ -17,9 +21,12 @@ export default function EditExpensePage() {
     amount: "",
     description: "",
     expense_date: new Date().toISOString().split("T")[0],
-    payment_method: "bank_transfer",
-    status: "pending",
+    vendor_name: "",
+    invoice_number: "",
+    notes: "",
   });
+  const [categories, setCategories] = useState([]);
+  const [expenseStatus, setExpenseStatus] = useState("draft");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
@@ -33,15 +40,25 @@ export default function EditExpensePage() {
     try {
       setLoading(true);
       setError("");
-      const data = await getExpense(expenseId);
+      const [data, categoriesData] = await Promise.all([
+        getExpense(expenseId),
+        getExpenseCategories({ is_active: true }),
+      ]);
+      setCategories(
+        Array.isArray(categoriesData)
+          ? categoriesData
+          : categoriesData.results || [],
+      );
+      setExpenseStatus(data.status || "draft");
       setFormData({
-        category: data.category || "",
+        category: data.category?.id || data.category || "",
         amount: data.amount || "",
         description: data.description || "",
         expense_date:
           data.expense_date || new Date().toISOString().split("T")[0],
-        payment_method: data.payment_method || "bank_transfer",
-        status: data.status || "pending",
+        vendor_name: data.vendor_name || "",
+        invoice_number: data.invoice_number || "",
+        notes: data.notes || "",
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load expense");
@@ -87,8 +104,13 @@ export default function EditExpensePage() {
     try {
       setSubmitting(true);
       await updateExpense(expenseId, {
-        ...formData,
+        category: parseInt(formData.category, 10),
+        description: formData.description,
         amount: parseFloat(formData.amount),
+        expense_date: formData.expense_date,
+        vendor_name: formData.vendor_name,
+        invoice_number: formData.invoice_number,
+        notes: formData.notes,
       });
       toast.success("Expense updated successfully");
       router.push("/finance/expenses");
@@ -128,6 +150,12 @@ export default function EditExpensePage() {
           </div>
         )}
 
+        {expenseStatus !== "draft" && (
+          <div className="mb-6 p-4 rounded-lg bg-amber-50 text-amber-800 border border-amber-200">
+            Only draft expenses can be edited.
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label
@@ -136,17 +164,22 @@ export default function EditExpensePage() {
             >
               Category *
             </label>
-            <input
-              type="text"
+            <select
               id="category"
               name="category"
               value={formData.category}
               onChange={handleChange}
-              placeholder="e.g., Office Supplies, Travel"
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                 errors.category ? "border-red-500" : "border-gray-300"
               }`}
-            />
+            >
+              <option value="">Select a category</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.code} - {category.name}
+                </option>
+              ))}
+            </select>
             {errors.category && (
               <p className="text-red-600 text-sm mt-1">{errors.category}</p>
             )}
@@ -228,51 +261,58 @@ export default function EditExpensePage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label
-                htmlFor="payment_method"
+                htmlFor="vendor_name"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Payment Method
+                Vendor
               </label>
-              <select
-                id="payment_method"
-                name="payment_method"
-                value={formData.payment_method}
+              <input
+                id="vendor_name"
+                name="vendor_name"
+                value={formData.vendor_name}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="cash">Cash</option>
-                <option value="credit_card">Credit Card</option>
-                <option value="check">Check</option>
-              </select>
+              />
             </div>
 
             <div>
               <label
-                htmlFor="status"
+                htmlFor="invoice_number"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Status
+                Invoice Number
               </label>
-              <select
-                id="status"
-                name="status"
-                value={formData.status}
+              <input
+                id="invoice_number"
+                name="invoice_number"
+                value={formData.invoice_number}
                 onChange={handleChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="paid">Paid</option>
-                <option value="rejected">Rejected</option>
-              </select>
+              />
             </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="notes"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Notes
+            </label>
+            <textarea
+              id="notes"
+              name="notes"
+              value={formData.notes}
+              onChange={handleChange}
+              rows="3"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
 
           <div className="flex gap-4">
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || expenseStatus !== "draft"}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
             >
               {submitting ? "Updating..." : "Update Expense"}

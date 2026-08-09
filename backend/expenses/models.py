@@ -146,7 +146,7 @@ class ExpensePayment(TimestampedModel):
         ('failed', 'Failed'),
     ]
     
-    expense = models.OneToOneField(Expense, on_delete=models.CASCADE, related_name='payment')
+    expense = models.OneToOneField(Expense, on_delete=models.PROTECT, related_name='payment')
     payment_date = models.DateField(null=True, blank=True)
     payment_method = models.CharField(max_length=50)  # 'bank_transfer', 'check', 'cash'
     reference_number = models.CharField(max_length=100, blank=True)

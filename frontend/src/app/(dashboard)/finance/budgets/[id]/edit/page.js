@@ -13,11 +13,12 @@ export default function EditBudgetPage() {
   const budgetId = params.id;
 
   const [formData, setFormData] = useState({
-    name: "",
-    fiscal_year: new Date().getFullYear().toString(),
-    total_amount: "",
-    status: "draft",
-    description: "",
+    year: "",
+    start_date: "",
+    end_date: "",
+    total_budget: "",
+    is_active: true,
+    is_locked: false,
   });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -34,11 +35,12 @@ export default function EditBudgetPage() {
       setError("");
       const data = await getBudget(budgetId);
       setFormData({
-        name: data.name || "",
-        fiscal_year: data.fiscal_year || new Date().getFullYear().toString(),
-        total_amount: data.total_amount || "",
-        status: data.status || "draft",
-        description: data.description || "",
+        year: String(data.year || ""),
+        start_date: data.start_date || "",
+        end_date: data.end_date || "",
+        total_budget: data.total_budget || "",
+        is_active: data.is_active ?? true,
+        is_locked: data.is_locked ?? false,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load budget");
@@ -67,13 +69,15 @@ export default function EditBudgetPage() {
 
     // Validation
     const newErrors = {};
-    if (!formData.name) newErrors.name = "Budget name is required";
-    if (!formData.fiscal_year)
-      newErrors.fiscal_year = "Fiscal year is required";
-    if (!formData.total_amount)
-      newErrors.total_amount = "Total amount is required";
-    if (parseFloat(formData.total_amount) <= 0)
-      newErrors.total_amount = "Amount must be greater than 0";
+    if (!formData.year) newErrors.year = "Budget year is required";
+    if (!formData.start_date) newErrors.start_date = "Start date is required";
+    if (!formData.end_date) newErrors.end_date = "End date is required";
+    if (formData.start_date > formData.end_date)
+      newErrors.end_date = "End date must be on or after the start date";
+    if (!formData.total_budget)
+      newErrors.total_budget = "Total budget is required";
+    if (parseFloat(formData.total_budget) <= 0)
+      newErrors.total_budget = "Amount must be greater than 0";
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -83,8 +87,11 @@ export default function EditBudgetPage() {
     try {
       setSubmitting(true);
       await updateBudget(budgetId, {
-        ...formData,
-        total_amount: parseFloat(formData.total_amount),
+        year: parseInt(formData.year, 10),
+        start_date: formData.start_date,
+        end_date: formData.end_date,
+        total_budget: parseFloat(formData.total_budget),
+        is_active: formData.is_active,
       });
       toast.success("Budget updated successfully");
       router.push("/finance/budgets");
@@ -127,122 +134,123 @@ export default function EditBudgetPage() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label
-              htmlFor="name"
+              htmlFor="year"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
-              Budget Name *
+              Budget Year *
             </label>
             <input
-              type="text"
-              id="name"
-              name="name"
-              value={formData.name}
+              type="number"
+              id="year"
+              name="year"
+              value={formData.year}
               onChange={handleChange}
-              placeholder="e.g., FY 2024-2025 Operations"
+              disabled={formData.is_locked}
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.name ? "border-red-500" : "border-gray-300"
+                errors.year ? "border-red-500" : "border-gray-300"
               }`}
             />
-            {errors.name && (
-              <p className="text-red-600 text-sm mt-1">{errors.name}</p>
+            {errors.year && (
+              <p className="text-red-600 text-sm mt-1">{errors.year}</p>
             )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label
-                htmlFor="fiscal_year"
+                htmlFor="start_date"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Fiscal Year *
+                Start Date *
               </label>
               <input
-                type="text"
-                id="fiscal_year"
-                name="fiscal_year"
-                value={formData.fiscal_year}
+                type="date"
+                id="start_date"
+                name="start_date"
+                value={formData.start_date}
                 onChange={handleChange}
-                placeholder="2024"
+                disabled={formData.is_locked}
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.fiscal_year ? "border-red-500" : "border-gray-300"
+                  errors.start_date ? "border-red-500" : "border-gray-300"
                 }`}
               />
-              {errors.fiscal_year && (
-                <p className="text-red-600 text-sm mt-1">
-                  {errors.fiscal_year}
-                </p>
+              {errors.start_date && (
+                <p className="text-red-600 text-sm mt-1">{errors.start_date}</p>
               )}
             </div>
 
             <div>
               <label
-                htmlFor="total_amount"
+                htmlFor="end_date"
                 className="block text-sm font-medium text-gray-700 mb-2"
               >
-                Total Amount *
+                End Date *
               </label>
               <input
-                type="number"
-                id="total_amount"
-                name="total_amount"
-                value={formData.total_amount}
+                type="date"
+                id="end_date"
+                name="end_date"
+                value={formData.end_date}
                 onChange={handleChange}
+                disabled={formData.is_locked}
                 placeholder="0"
                 step="0.01"
                 className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.total_amount ? "border-red-500" : "border-gray-300"
+                  errors.end_date ? "border-red-500" : "border-gray-300"
                 }`}
               />
-              {errors.total_amount && (
-                <p className="text-red-600 text-sm mt-1">
-                  {errors.total_amount}
-                </p>
+              {errors.end_date && (
+                <p className="text-red-600 text-sm mt-1">{errors.end_date}</p>
               )}
             </div>
           </div>
 
           <div>
             <label
-              htmlFor="status"
+              htmlFor="total_budget"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
-              Status
+              Total Budget *
             </label>
-            <select
-              id="status"
-              name="status"
-              value={formData.status}
+            <input
+              type="number"
+              id="total_budget"
+              name="total_budget"
+              value={formData.total_budget}
               onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="draft">Draft</option>
-              <option value="approved">Approved</option>
-              <option value="active">Active</option>
-            </select>
+              disabled={formData.is_locked}
+              min="0"
+              step="0.01"
+              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.total_budget ? "border-red-500" : "border-gray-300"}`}
+            />
           </div>
 
           <div>
-            <label
-              htmlFor="description"
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
-              Description
+            <label className="flex items-center gap-3 text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                checked={formData.is_active}
+                disabled={formData.is_locked}
+                onChange={(event) =>
+                  setFormData((previous) => ({
+                    ...previous,
+                    is_active: event.target.checked,
+                  }))
+                }
+              />
+              Active budget year
             </label>
-            <textarea
-              id="description"
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              placeholder="Enter budget description..."
-              rows="4"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            {formData.is_locked && (
+              <p className="mt-2 text-sm text-amber-700">
+                Unlock this budget year before editing its details.
+              </p>
+            )}
           </div>
 
           <div className="flex gap-4">
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || formData.is_locked}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400"
             >
               {submitting ? "Updating..." : "Update Budget"}

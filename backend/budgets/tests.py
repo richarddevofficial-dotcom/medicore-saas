@@ -8,6 +8,7 @@ from rest_framework import status
 
 from hospitals.models import Hospital
 from departments.models import Department
+from staff.models import StaffProfile
 from expenses.models import Expense, ExpenseCategory, ExpenseBudget
 from budgets.models import (
     BudgetYear, BudgetTemplate, BudgetAllocation,
@@ -19,6 +20,143 @@ from budgets.serializers import (
     BudgetAllocationDetailSerializer, BudgetRevisionSerializer,
     BudgetForecastSerializer, BudgetAlertSerializer
 )
+
+
+class BudgetSecurityWorkflowTests(APITestCase):
+    def setUp(self):
+        self.hospital = Hospital.objects.create(
+            name="Budget Security Hospital",
+            slug="budget-security-hospital",
+            registration_number="BUDGET-SEC-001",
+            email="budget-security@example.com",
+            phone="700001001",
+        )
+        self.other_hospital = Hospital.objects.create(
+            name="Other Budget Hospital",
+            slug="other-budget-hospital",
+            registration_number="BUDGET-SEC-002",
+            email="other-budget@example.com",
+            phone="700001002",
+        )
+        self.department = Department.objects.create(
+            hospital=self.hospital,
+            name="Finance",
+        )
+        self.other_department = Department.objects.create(
+            hospital=self.other_hospital,
+            name="Other Finance",
+        )
+        self.budget_year = BudgetYear.objects.create(
+            hospital=self.hospital,
+            year=2026,
+            start_date="2026-01-01",
+            end_date="2026-12-31",
+            total_budget="100000.00",
+        )
+        self.other_budget_year = BudgetYear.objects.create(
+            hospital=self.other_hospital,
+            year=2026,
+            start_date="2026-01-01",
+            end_date="2026-12-31",
+            total_budget="100000.00",
+        )
+        self.finance_user = User.objects.create_user(
+            username="budget-finance-user",
+            password="TestPassword123!",
+        )
+        StaffProfile.objects.create(
+            user=self.finance_user,
+            hospital=self.hospital,
+            role="finance",
+            phone="700001003",
+        )
+        self.finance_manager = User.objects.create_user(
+            username="budget-finance-manager",
+            password="TestPassword123!",
+        )
+        StaffProfile.objects.create(
+            user=self.finance_manager,
+            hospital=self.hospital,
+            role="finance_manager",
+            phone="700001004",
+        )
+
+    def allocation_payload(self, **overrides):
+        payload = {
+            "budget_year": self.budget_year.id,
+            "department": self.department.id,
+            "period_type": "year",
+            "period_start": "2026-01-01",
+            "period_end": "2026-12-31",
+            "allocated_amount": "50000.00",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_finance_user_creates_only_same_hospital_draft_allocation(self):
+        self.client.force_authenticate(self.finance_user)
+
+        created = self.client.post(
+            "/api/v1/budgets/allocations/",
+            self.allocation_payload(status="approved"),
+            format="json",
+        )
+        cross_tenant = self.client.post(
+            "/api/v1/budgets/allocations/",
+            self.allocation_payload(department=self.other_department.id),
+            format="json",
+        )
+
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertEqual(created.data["status"], "draft")
+        self.assertEqual(cross_tenant.status_code, 400)
+        allocation = BudgetAllocation.objects.get(id=created.data["id"])
+        self.assertEqual(allocation.budget_year.hospital, self.hospital)
+
+    def test_finance_manager_approves_without_django_group(self):
+        allocation = BudgetAllocation.objects.create(
+            budget_year=self.budget_year,
+            department=self.department,
+            period_type="year",
+            period_start="2026-01-01",
+            period_end="2026-12-31",
+            allocated_amount="50000.00",
+            status="submitted",
+        )
+        self.client.force_authenticate(self.finance_manager)
+
+        approved = self.client.post(
+            f"/api/v1/budgets/allocations/{allocation.id}/approve/"
+        )
+        update = self.client.patch(
+            f"/api/v1/budgets/allocations/{allocation.id}/",
+            {"allocated_amount": "1.00"},
+            format="json",
+        )
+        deleted = self.client.delete(
+            f"/api/v1/budgets/allocations/{allocation.id}/"
+        )
+
+        self.assertEqual(approved.status_code, 200, approved.data)
+        self.assertEqual(update.status_code, 400)
+        self.assertEqual(deleted.status_code, 400)
+        allocation.refresh_from_db()
+        self.assertEqual(allocation.status, "approved")
+        self.assertEqual(allocation.allocated_amount, Decimal("50000.00"))
+
+    def test_locked_budget_year_rejects_new_allocation(self):
+        self.budget_year.is_locked = True
+        self.budget_year.save(update_fields=["is_locked", "updated_at"])
+        self.client.force_authenticate(self.finance_user)
+
+        response = self.client.post(
+            "/api/v1/budgets/allocations/",
+            self.allocation_payload(),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(BudgetAllocation.objects.exists())
 
 
 class BudgetModelTests(TestCase):

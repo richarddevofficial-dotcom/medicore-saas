@@ -113,10 +113,10 @@ export default function DeductionTypesPage() {
                   Description
                 </th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Type
+                  Code
                 </th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Limit
+                  Mandatory
                 </th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">
                   Actions
@@ -134,13 +134,11 @@ export default function DeductionTypesPage() {
                   </td>
                   <td className="px-6 py-4 text-sm">
                     <span className="inline-block px-2 py-1 rounded bg-red-100 text-red-700 text-xs font-medium">
-                      {deduction.deduction_type}
+                      {deduction.code}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
-                    {deduction.limit_percentage
-                      ? `${deduction.limit_percentage}%`
-                      : "—"}
+                    {deduction.is_mandatory ? "Yes" : "No"}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">

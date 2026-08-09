@@ -113,10 +113,10 @@ export default function AllowanceTypesPage() {
                   Description
                 </th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Type
+                  Code
                 </th>
                 <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">
-                  Taxable
+                  Status
                 </th>
                 <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">
                   Actions
@@ -134,18 +134,18 @@ export default function AllowanceTypesPage() {
                   </td>
                   <td className="px-6 py-4 text-sm">
                     <span className="inline-block px-2 py-1 rounded bg-blue-100 text-blue-700 text-xs font-medium">
-                      {allowance.allowance_type}
+                      {allowance.code}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm">
                     <span
                       className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                        allowance.is_taxable
-                          ? "bg-orange-100 text-orange-700"
-                          : "bg-green-100 text-green-700"
+                        allowance.is_active
+                          ? "bg-green-100 text-green-700"
+                          : "bg-gray-100 text-gray-700"
                       }`}
                     >
-                      {allowance.is_taxable ? "Yes" : "No"}
+                      {allowance.is_active ? "Active" : "Inactive"}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">

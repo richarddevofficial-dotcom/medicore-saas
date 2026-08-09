@@ -7,31 +7,23 @@ import { createDeductionType } from "@/lib/api/finance";
 import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 
-const DEDUCTION_TYPES = [
-  { value: "PROVIDENT_FUND", label: "Provident Fund (PF)" },
-  { value: "INCOME_TAX", label: "Income Tax (IT)" },
-  { value: "ESI", label: "Employee State Insurance (ESI)" },
-  { value: "PROFESSIONAL_TAX", label: "Professional Tax" },
-  { value: "UNION_FUND", label: "Union Fund" },
-  { value: "OTHER", label: "Other Deduction" },
-];
-
 export default function NewDeductionTypePage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     name: "",
+    code: "",
     description: "",
-    deduction_type: "OTHER",
-    limit_percentage: "",
+    is_mandatory: false,
+    is_active: true,
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
   function handleChange(e) {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: type === "checkbox" ? checked : value,
     }));
     if (errors[name]) {
       setErrors((prev) => {
@@ -48,8 +40,7 @@ export default function NewDeductionTypePage() {
     // Validation
     const newErrors = {};
     if (!formData.name.trim()) newErrors.name = "Deduction name is required";
-    if (!formData.deduction_type)
-      newErrors.deduction_type = "Deduction type is required";
+    if (!formData.code.trim()) newErrors.code = "Deduction code is required";
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -58,12 +49,7 @@ export default function NewDeductionTypePage() {
 
     try {
       setLoading(true);
-      await createDeductionType({
-        ...formData,
-        limit_percentage: formData.limit_percentage
-          ? parseFloat(formData.limit_percentage)
-          : null,
-      });
+      await createDeductionType(formData);
       toast.success("Deduction type created successfully");
       router.push("/finance/payroll-config/deductions");
     } catch (err) {
@@ -115,33 +101,26 @@ export default function NewDeductionTypePage() {
             )}
           </div>
 
-          {/* Deduction Type */}
+          {/* Deduction Code */}
           <div>
             <label
-              htmlFor="deduction_type"
+              htmlFor="code"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
-              Deduction Type *
+              Deduction Code *
             </label>
-            <select
-              id="deduction_type"
-              name="deduction_type"
-              value={formData.deduction_type}
+            <input
+              id="code"
+              name="code"
+              value={formData.code}
               onChange={handleChange}
+              placeholder="e.g., TAX"
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.deduction_type ? "border-red-500" : "border-gray-300"
+                errors.code ? "border-red-500" : "border-gray-300"
               }`}
-            >
-              {DEDUCTION_TYPES.map((type) => (
-                <option key={type.value} value={type.value}>
-                  {type.label}
-                </option>
-              ))}
-            </select>
-            {errors.deduction_type && (
-              <p className="text-red-600 text-sm mt-1">
-                {errors.deduction_type}
-              </p>
+            />
+            {errors.code && (
+              <p className="text-red-600 text-sm mt-1">{errors.code}</p>
             )}
           </div>
 
@@ -164,28 +143,25 @@ export default function NewDeductionTypePage() {
             />
           </div>
 
-          {/* Limit Percentage */}
-          <div>
-            <label
-              htmlFor="limit_percentage"
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
-              Limit Percentage (Optional)
+          <div className="flex items-center gap-6">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                name="is_mandatory"
+                checked={formData.is_mandatory}
+                onChange={handleChange}
+              />
+              Mandatory
             </label>
-            <input
-              type="number"
-              id="limit_percentage"
-              name="limit_percentage"
-              value={formData.limit_percentage}
-              onChange={handleChange}
-              placeholder="e.g., 10.5"
-              step="0.01"
-              min="0"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-sm text-gray-500 mt-1">
-              Maximum percentage of salary that can be deducted
-            </p>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                name="is_active"
+                checked={formData.is_active}
+                onChange={handleChange}
+              />
+              Active
+            </label>
           </div>
 
           {/* Form Actions */}

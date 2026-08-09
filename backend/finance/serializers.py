@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.db import transaction
+from human_resources.permissions import get_user_hospital_id
 from finance.models import (
     PayrollYear,
     AllowanceType,
@@ -44,6 +45,13 @@ class SalaryStructureAllowanceSerializer(serializers.ModelSerializer):
         fields = ['id', 'allowance_type', 'allowance_type_id', 'amount', 'is_percentage', 'created_at']
         read_only_fields = ['created_at']
 
+    def validate(self, attrs):
+        if attrs.get('is_percentage') and attrs.get('amount', 0) > 100:
+            raise serializers.ValidationError(
+                {'amount': 'Percentage allowances cannot exceed 100.'}
+            )
+        return attrs
+
 
 class SalaryStructureDeductionSerializer(serializers.ModelSerializer):
     deduction_type = DeductionTypeSerializer(read_only=True)
@@ -58,10 +66,17 @@ class SalaryStructureDeductionSerializer(serializers.ModelSerializer):
         fields = ['id', 'deduction_type', 'deduction_type_id', 'amount', 'is_percentage', 'created_at']
         read_only_fields = ['created_at']
 
+    def validate(self, attrs):
+        if attrs.get('is_percentage') and attrs.get('amount', 0) > 100:
+            raise serializers.ValidationError(
+                {'amount': 'Percentage deductions cannot exceed 100.'}
+            )
+        return attrs
+
 
 class SalaryStructureSerializer(serializers.ModelSerializer):
-    allowances = SalaryStructureAllowanceSerializer(many=True, read_only=True)
-    deductions = SalaryStructureDeductionSerializer(many=True, read_only=True)
+    allowances = SalaryStructureAllowanceSerializer(many=True, required=False)
+    deductions = SalaryStructureDeductionSerializer(many=True, required=False)
     total_allowances_amount = serializers.SerializerMethodField()
     total_deductions_amount = serializers.SerializerMethodField()
     
@@ -73,6 +88,65 @@ class SalaryStructureSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        hospital_id = get_user_hospital_id(user)
+        component_hospital_ids = {
+            item['allowance_type'].hospital_id
+            for item in attrs.get('allowances', [])
+        } | {
+            item['deduction_type'].hospital_id
+            for item in attrs.get('deductions', [])
+        }
+        if (
+            user
+            and not user.is_superuser
+            and component_hospital_ids - {hospital_id}
+        ):
+            raise serializers.ValidationError(
+                'All salary components must belong to your hospital.'
+            )
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        allowances = validated_data.pop('allowances', [])
+        deductions = validated_data.pop('deductions', [])
+        structure = SalaryStructure.objects.create(**validated_data)
+        for allowance in allowances:
+            SalaryStructureAllowance.objects.create(
+                salary_structure=structure,
+                **allowance,
+            )
+        for deduction in deductions:
+            SalaryStructureDeduction.objects.create(
+                salary_structure=structure,
+                **deduction,
+            )
+        return structure
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        allowances = validated_data.pop('allowances', None)
+        deductions = validated_data.pop('deductions', None)
+        instance = super().update(instance, validated_data)
+        if allowances is not None:
+            instance.allowances.all().delete()
+            for allowance in allowances:
+                SalaryStructureAllowance.objects.create(
+                    salary_structure=instance,
+                    **allowance,
+                )
+        if deductions is not None:
+            instance.deductions.all().delete()
+            for deduction in deductions:
+                SalaryStructureDeduction.objects.create(
+                    salary_structure=instance,
+                    **deduction,
+                )
+        return instance
     
     def get_total_allowances_amount(self, obj):
         """Calculate total allowances"""
@@ -119,6 +193,40 @@ class EmployeeSalarySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['created_at', 'updated_at']
 
+    def validate(self, attrs):
+        employee = attrs.get('employee', getattr(self.instance, 'employee', None))
+        structure = attrs.get(
+            'salary_structure',
+            getattr(self.instance, 'salary_structure', None),
+        )
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        hospital_id = get_user_hospital_id(user)
+        related_ids = {
+            getattr(employee, 'hospital_id', None),
+            getattr(structure, 'hospital_id', None),
+        }
+        related_ids.discard(None)
+        if len(related_ids) > 1 or (
+            user and not user.is_superuser and related_ids != {hospital_id}
+        ):
+            raise serializers.ValidationError(
+                'The selected record belongs to another hospital.'
+            )
+        effective_from = attrs.get(
+            'effective_from',
+            getattr(self.instance, 'effective_from', None),
+        )
+        effective_to = attrs.get(
+            'effective_to',
+            getattr(self.instance, 'effective_to', None),
+        )
+        if effective_from and effective_to and effective_from > effective_to:
+            raise serializers.ValidationError(
+                {'effective_to': 'Effective end must be on or after the start.'}
+            )
+        return attrs
+
 
 class SalarySlipEarningSerializer(serializers.ModelSerializer):
     allowance_type = AllowanceTypeSerializer(read_only=True)
@@ -150,6 +258,7 @@ class SalaryPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = SalaryPayment
         fields = ['id', 'salary_slip', 'payment_date', 'payment_method', 'reference_number', 'status', 'notes']
+        read_only_fields = fields
 
 
 class SalarySlipDetailSerializer(serializers.ModelSerializer):
@@ -183,7 +292,38 @@ class SalarySlipSerializer(serializers.ModelSerializer):
             'base_salary', 'total_allowances', 'gross_salary', 'total_deductions',
             'net_salary', 'status', 'notes', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['base_salary', 'total_allowances', 'gross_salary', 'total_deductions', 'net_salary', 'created_at', 'updated_at']
+        read_only_fields = ['status', 'base_salary', 'total_allowances', 'gross_salary', 'total_deductions', 'net_salary', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        employee = attrs.get('employee', getattr(self.instance, 'employee', None))
+        structure = attrs.get(
+            'salary_structure',
+            getattr(self.instance, 'salary_structure', None),
+        )
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        hospital_id = get_user_hospital_id(user)
+        related_ids = {
+            getattr(employee, 'hospital_id', None),
+            getattr(structure, 'hospital_id', None),
+        }
+        related_ids.discard(None)
+        if len(related_ids) > 1 or (
+            user and not user.is_superuser and related_ids != {hospital_id}
+        ):
+            raise serializers.ValidationError(
+                'The selected record belongs to another hospital.'
+            )
+        if self.instance:
+            if self.instance.status != 'generated':
+                raise serializers.ValidationError(
+                    'Approved or paid salary slips cannot be edited.'
+                )
+            if set(attrs) - {'notes'}:
+                raise serializers.ValidationError(
+                    'Only notes can be changed after a salary slip is generated.'
+                )
+        return attrs
     
     @transaction.atomic
     def create(self, validated_data):
@@ -195,54 +335,54 @@ class SalarySlipSerializer(serializers.ModelSerializer):
         base_salary = salary_structure.base_salary
         total_allowances = 0
         total_deductions = 0
-        
-        # Create salary slip
-        salary_slip = SalarySlip.objects.create(
-            base_salary=base_salary,
-            total_allowances=0,  # Will update below
-            gross_salary=0,
-            total_deductions=0,
-            **validated_data
-        )
-        
-        # Add allowances
+
+        allowances = []
         for structure_allowance in salary_structure.allowances.all():
             if structure_allowance.is_percentage:
                 amount = (base_salary * structure_allowance.amount) / 100
             else:
                 amount = structure_allowance.amount
-            
-            SalarySlipEarning.objects.create(
-                salary_slip=salary_slip,
-                allowance_type=structure_allowance.allowance_type,
-                amount=amount
-            )
+            allowances.append((structure_allowance, amount))
             total_allowances += amount
-        
-        # Add deductions
+
+        deductions = []
         for structure_deduction in salary_structure.deductions.all():
             if structure_deduction.is_percentage:
                 amount = (base_salary * structure_deduction.amount) / 100
             else:
                 amount = structure_deduction.amount
-            
+            deductions.append((structure_deduction, amount))
+            total_deductions += amount
+
+        gross_salary = base_salary + total_allowances
+        net_salary = gross_salary - total_deductions
+        
+        # Create salary slip
+        salary_slip = SalarySlip.objects.create(
+            base_salary=base_salary,
+            total_allowances=total_allowances,
+            gross_salary=gross_salary,
+            total_deductions=total_deductions,
+            net_salary=net_salary,
+            status='generated',
+            **validated_data
+        )
+        
+        # Add allowances
+        for structure_allowance, amount in allowances:
+            SalarySlipEarning.objects.create(
+                salary_slip=salary_slip,
+                allowance_type=structure_allowance.allowance_type,
+                amount=amount
+            )
+        
+        # Add deductions
+        for structure_deduction, amount in deductions:
             SalarySlipDeduction.objects.create(
                 salary_slip=salary_slip,
                 deduction_type=structure_deduction.deduction_type,
                 amount=amount
             )
-            total_deductions += amount
-        
-        # Update totals
-        gross_salary = base_salary + total_allowances
-        net_salary = gross_salary - total_deductions
-        
-        salary_slip.total_allowances = total_allowances
-        salary_slip.gross_salary = gross_salary
-        salary_slip.total_deductions = total_deductions
-        salary_slip.net_salary = net_salary
-        salary_slip.status = 'generated'
-        salary_slip.save()
         
         return salary_slip
 

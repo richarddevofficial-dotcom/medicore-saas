@@ -128,14 +128,17 @@ export default function BudgetDetailPage() {
       <div className="rounded-lg border bg-white p-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{budget.name}</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              FY {budget.year}
+            </h1>
             <p className="text-gray-600 text-sm mt-1">ID: {budget.id}</p>
           </div>
           {!isEditing && (
             <div className="flex gap-2">
               <button
-                onClick={() => setIsEditing(true)}
+                onClick={() => router.push(`/finance/budgets/${budgetId}/edit`)}
                 className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                title="Edit budget year"
               >
                 <Edit2 size={20} />
               </button>
@@ -156,29 +159,27 @@ export default function BudgetDetailPage() {
               <div className="rounded-lg bg-gray-50 p-4">
                 <p className="text-sm text-gray-600">Fiscal Year</p>
                 <p className="text-lg font-semibold text-gray-900 mt-1">
-                  {budget.fiscal_year}
+                  {budget.year}
                 </p>
               </div>
               <div className="rounded-lg bg-gray-50 p-4">
                 <p className="text-sm text-gray-600">Total Amount</p>
                 <p className="text-lg font-semibold text-gray-900 mt-1">
-                  ₹{budget.total_amount?.toLocaleString()}
+                  {budget.formatted_total_budget ||
+                    `SSP ${budget.total_budget}`}
                 </p>
               </div>
               <div className="rounded-lg bg-gray-50 p-4">
-                <p className="text-sm text-gray-600">Status</p>
+                <p className="text-sm text-gray-600">State</p>
                 <p className="text-lg font-semibold text-gray-900 mt-1">
                   <span
                     className={`px-3 py-1 rounded-full text-sm ${
-                      budget.status === "approved"
-                        ? "bg-green-100 text-green-800"
-                        : budget.status === "rejected"
-                          ? "bg-red-100 text-red-800"
-                          : "bg-yellow-100 text-yellow-800"
+                      budget.is_locked
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-green-100 text-green-800"
                     }`}
                   >
-                    {budget.status?.charAt(0).toUpperCase() +
-                      budget.status?.slice(1)}
+                    {budget.is_locked ? "Locked" : "Open"}
                   </span>
                 </p>
               </div>
@@ -189,12 +190,15 @@ export default function BudgetDetailPage() {
                 </p>
               </div>
             </div>
-            {budget.description && (
+            {budget.start_date && budget.end_date && (
               <div className="rounded-lg bg-blue-50 p-4 border border-blue-200">
                 <p className="text-sm text-blue-600 font-semibold">
-                  Description
+                  Budget Period
                 </p>
-                <p className="text-gray-700 mt-1">{budget.description}</p>
+                <p className="text-gray-700 mt-1">
+                  {new Date(budget.start_date).toLocaleDateString()} -{" "}
+                  {new Date(budget.end_date).toLocaleDateString()}
+                </p>
               </div>
             )}
           </div>

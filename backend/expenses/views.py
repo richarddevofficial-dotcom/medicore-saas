@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from human_resources.permissions import IsHRUser, IsHRManager
 from human_resources.views import HospitalScopedViewSet
+from finance.accounting_permissions import IsFinanceUser, IsFinanceManager
 from expenses.models import (
     ExpenseCategory, Expense, ExpenseApprovalLog,
     ExpenseBudget, ExpensePayment
@@ -21,7 +22,7 @@ class ExpenseCategoryViewSet(HospitalScopedViewSet):
     """Manage expense categories"""
     queryset = ExpenseCategory.objects.all()
     serializer_class = ExpenseCategorySerializer
-    permission_classes = [permissions.IsAuthenticated, IsHRManager]
+    permission_classes = [permissions.IsAuthenticated, IsHRManager | IsFinanceManager]
     filterset_fields = ['code', 'is_active']
     search_fields = ['code', 'name']
 
@@ -29,14 +30,30 @@ class ExpenseCategoryViewSet(HospitalScopedViewSet):
 class ExpenseViewSet(HospitalScopedViewSet):
     """Manage expenses with approval workflow"""
     queryset = Expense.objects.all()
-    permission_classes = [permissions.IsAuthenticated, IsHRUser]
+    permission_classes = [permissions.IsAuthenticated, IsHRUser | IsFinanceUser]
     filterset_fields = ['category', 'department', 'status', 'expense_date']
     search_fields = ['description', 'vendor_name', 'invoice_number']
     ordering_fields = ['-expense_date', 'amount', 'status']
     ordering = ['-expense_date']
 
     def _is_hr_manager(self):
-        return IsHRManager().has_permission(self.request, self)
+        return (
+            IsHRManager().has_permission(self.request, self)
+            or IsFinanceManager().has_permission(self.request, self)
+        )
+
+    def get_permissions(self):
+        if self.action in {'approve', 'reject'}:
+            permission_classes = [
+                permissions.IsAuthenticated,
+                IsHRManager | IsFinanceManager,
+            ]
+        else:
+            permission_classes = [
+                permissions.IsAuthenticated,
+                IsHRUser | IsFinanceUser,
+            ]
+        return [permission() for permission in permission_classes]
     
     def get_serializer_class(self):
         """Use detail serializer for retrieve"""
@@ -56,7 +73,7 @@ class ExpenseViewSet(HospitalScopedViewSet):
         """Auto-set submitted_by and hospital"""
         serializer.save(
             submitted_by=self.request.user,
-            hospital_id=self.get_user_hospital_id()
+            hospital_id=self.get_hospital_id()
         )
     
     @action(detail=True, methods=['post'])
@@ -169,7 +186,7 @@ class ExpenseViewSet(HospitalScopedViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        hospital_id = self.get_user_hospital_id()
+        hospital_id = self.get_hospital_id()
         expenses = Expense.objects.filter(
             hospital_id=hospital_id,
             status__in=['submitted', 'revised']
@@ -178,11 +195,17 @@ class ExpenseViewSet(HospitalScopedViewSet):
         serializer = self.get_serializer(expenses, many=True)
         return Response(serializer.data)
 
+    def perform_destroy(self, instance):
+        if instance.status != 'draft':
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError('Only draft expenses can be deleted.')
+        instance.delete()
+
 
 class ExpenseBudgetViewSet(HospitalScopedViewSet):
     """Manage expense budgets"""
     queryset = ExpenseBudget.objects.all()
-    permission_classes = [permissions.IsAuthenticated, IsHRManager]
+    permission_classes = [permissions.IsAuthenticated, IsHRManager | IsFinanceManager]
     filterset_fields = ['category', 'department', 'month']
     search_fields = ['category__name']
     ordering = ['-month']
@@ -195,12 +218,12 @@ class ExpenseBudgetViewSet(HospitalScopedViewSet):
     
     def perform_create(self, serializer):
         """Auto-set hospital"""
-        serializer.save(hospital_id=self.get_user_hospital_id())
+        serializer.save(hospital_id=self.get_hospital_id())
     
     @action(detail=False, methods=['get'])
     def exceeded(self, request):
         """Get all budgets that are exceeded"""
-        hospital_id = self.get_user_hospital_id()
+        hospital_id = self.get_hospital_id()
         budgets = ExpenseBudget.objects.filter(hospital_id=hospital_id)
         
         exceeded = []
@@ -215,7 +238,7 @@ class ExpenseBudgetViewSet(HospitalScopedViewSet):
     def current_month(self, request):
         """Get budget for current month"""
         from datetime import datetime
-        hospital_id = self.get_user_hospital_id()
+        hospital_id = self.get_hospital_id()
         
         current_month = datetime.now().replace(day=1).date()
         budgets = ExpenseBudget.objects.filter(
@@ -256,10 +279,29 @@ class ExpenseBudgetViewSet(HospitalScopedViewSet):
 class ExpensePaymentViewSet(HospitalScopedViewSet):
     """Manage expense payments"""
     queryset = ExpensePayment.objects.all()
+    hospital_lookup = 'expense__hospital_id'
     serializer_class = ExpensePaymentSerializer
-    permission_classes = [permissions.IsAuthenticated, IsHRManager]
+    permission_classes = [permissions.IsAuthenticated, IsHRManager | IsFinanceManager]
     filterset_fields = ['status', 'payment_method']
     ordering = ['-payment_date']
+
+    def create(self, request, *args, **kwargs):
+        return Response(
+            {'detail': 'Payments are created when an expense is approved.'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def update(self, request, *args, **kwargs):
+        return Response(
+            {'detail': 'Use payment actions to change payment status.'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        return Response(
+            {'detail': 'Expense payment records cannot be deleted.'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
     
     @action(detail=True, methods=['post'])
     def mark_paid(self, request, pk=None):

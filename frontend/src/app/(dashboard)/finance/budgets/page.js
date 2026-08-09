@@ -108,27 +108,40 @@ export default function BudgetsPage() {
             >
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900">{budget.name}</h3>
+                  <h3 className="font-semibold text-gray-900">
+                    FY {budget.year}
+                    {budget.is_locked && (
+                      <span className="ml-2 text-xs font-medium text-amber-700">
+                        Locked
+                      </span>
+                    )}
+                  </h3>
                   <p className="mt-1 text-sm text-gray-600">
-                    {budget.description}
+                    {new Date(budget.start_date).toLocaleDateString()} -{" "}
+                    {new Date(budget.end_date).toLocaleDateString()}
                   </p>
                   <div className="mt-3 flex gap-4">
                     <div>
                       <p className="text-xs text-gray-500">Allocated</p>
                       <p className="font-semibold text-gray-900">
-                        {budget.allocated_amount || "SSP 0"}
+                        {budget.formatted_total_allocated || "SSP 0.00"}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500">Spent</p>
+                      <p className="text-xs text-gray-500">Total Budget</p>
                       <p className="font-semibold text-gray-900">
-                        {budget.spent_amount || "SSP 0"}
+                        {budget.formatted_total_budget || "SSP 0.00"}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-500">Remaining</p>
                       <p className="font-semibold text-green-600">
-                        {budget.remaining_amount || "SSP 0"}
+                        SSP{" "}
+                        {Math.max(
+                          Number(budget.total_budget || 0) -
+                            Number(budget.total_allocated || 0),
+                          0,
+                        ).toLocaleString()}
                       </p>
                     </div>
                   </div>
@@ -138,7 +151,12 @@ export default function BudgetsPage() {
                     <div
                       className="h-full rounded-full bg-blue-600"
                       style={{
-                        width: `${budget.percentage_used || 0}%`,
+                        width: `${Math.min(
+                          (Number(budget.total_allocated || 0) /
+                            Number(budget.total_budget || 1)) *
+                            100,
+                          100,
+                        )}%`,
                       }}
                     />
                   </div>
@@ -152,7 +170,12 @@ export default function BudgetsPage() {
                   </Link>
                   <button
                     onClick={() => handleDelete(budget.id)}
-                    disabled={deleting === budget.id}
+                    disabled={deleting === budget.id || budget.is_locked}
+                    title={
+                      budget.is_locked
+                        ? "Unlock before deleting"
+                        : "Delete budget year"
+                    }
                     className="p-2 text-gray-600 hover:text-red-600 disabled:opacity-50"
                   >
                     <Trash2 size={18} />

@@ -88,6 +88,17 @@ export async function deleteBudget(id) {
 }
 
 // Expenses (from expenses app)
+export async function getExpenseCategories(params = {}) {
+  try {
+    const response = await apiClient.get("/expenses/categories/", { params });
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.detail || "Failed to load expense categories",
+    );
+  }
+}
+
 export async function getExpenses(params = {}) {
   try {
     const response = await apiClient.get("/expenses/expenses/", { params });
@@ -324,6 +335,17 @@ export async function getAllowanceTypes(params = {}) {
   }
 }
 
+export async function getAllowanceType(id) {
+  try {
+    const response = await apiClient.get(`/finance/allowance-types/${id}/`);
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.detail || "Failed to load allowance type",
+    );
+  }
+}
+
 export async function createAllowanceType(data) {
   try {
     const response = await apiClient.post("/finance/allowance-types/", data);
@@ -369,6 +391,17 @@ export async function getDeductionTypes(params = {}) {
   } catch (error) {
     throw new Error(
       error.response?.data?.detail || "Failed to load deduction types",
+    );
+  }
+}
+
+export async function getDeductionType(id) {
+  try {
+    const response = await apiClient.get(`/finance/deduction-types/${id}/`);
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.detail || "Failed to load deduction type",
     );
   }
 }

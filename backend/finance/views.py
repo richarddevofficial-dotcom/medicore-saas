@@ -110,6 +110,7 @@ class SalaryStructureViewSet(HospitalScopedViewSet):
 class EmployeeSalaryViewSet(HospitalScopedViewSet):
     """Manage employee salary assignments"""
     queryset = EmployeeSalary.objects.all()
+    hospital_lookup = 'employee__hospital_id'
     serializer_class = EmployeeSalarySerializer
     permission_classes = [IsAuthenticated, IsHRManager]
     filterset_fields = ['employee', 'salary_structure']
@@ -178,7 +179,7 @@ class SalarySlipViewSet(HospitalScopedViewSet):
         except ValueError:
             return Response({'error': 'Invalid date format, use YYYY-MM-DD'}, status=status.HTTP_400_BAD_REQUEST)
         
-        hospital_id = self.get_user_hospital_id()
+        hospital_id = self.get_hospital_id()
         created_count = 0
         failed_count = 0
         
@@ -284,8 +285,13 @@ class SalarySlipViewSet(HospitalScopedViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        salary_slip.status = 'approved'
-        salary_slip.save()
+        with transaction.atomic():
+            salary_slip.status = 'approved'
+            salary_slip.save(update_fields=['status', 'updated_at'])
+            SalaryPayment.objects.get_or_create(
+                salary_slip=salary_slip,
+                defaults={'status': 'pending'},
+            )
         
         return Response(SalarySlipDetailSerializer(salary_slip).data)
     
@@ -299,9 +305,9 @@ class SalarySlipViewSet(HospitalScopedViewSet):
         salary_slip = self.get_object()
         reason = request.data.get('reason', '')
         
-        if salary_slip.status not in ['generated', 'approved']:
+        if salary_slip.status != 'generated':
             return Response(
-                {'error': 'Can only reject generated or approved slips'},
+            {'error': 'Can only reject generated slips'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -311,32 +317,63 @@ class SalarySlipViewSet(HospitalScopedViewSet):
         
         return Response(SalarySlipDetailSerializer(salary_slip).data)
 
+    def perform_destroy(self, instance):
+        if instance.status not in {'draft', 'generated'}:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                'Approved or paid salary slips cannot be deleted.'
+            )
+        instance.delete()
+
 
 class SalaryPaymentViewSet(HospitalScopedViewSet):
     """Manage salary payments"""
     queryset = SalaryPayment.objects.all()
+    hospital_lookup = 'salary_slip__employee__hospital_id'
     serializer_class = SalaryPaymentSerializer
     permission_classes = [IsAuthenticated, IsHRManager]
     filterset_fields = ['status', 'payment_method']
     search_fields = ['reference_number', 'salary_slip__employee__user__first_name']
+
+    def create(self, request, *args, **kwargs):
+        return Response(
+            {'detail': 'Payments are created when a salary slip is approved.'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def update(self, request, *args, **kwargs):
+        return Response(
+            {'detail': 'Use the payment actions to change payment status.'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        return Response(
+            {'detail': 'Salary payment records cannot be deleted.'},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
     
     @action(detail=True, methods=['post'])
     def mark_paid(self, request, pk=None):
         """Mark salary payment as paid"""
-        payment = self.get_object()
-        
-        if payment.status == 'paid':
-            return Response({'error': 'Already marked as paid'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        payment.payment_date = timezone.localdate()
-        payment.payment_method = request.data.get('payment_method', payment.payment_method)
-        payment.reference_number = request.data.get('reference_number', payment.reference_number)
-        payment.status = 'processed'
-        payment.save()
-        
-        # Update salary slip status
-        payment.salary_slip.status = 'paid'
-        payment.salary_slip.save()
+        with transaction.atomic():
+            payment = SalaryPayment.objects.select_for_update().get(
+                pk=self.get_object().pk
+            )
+            if payment.status != 'pending':
+                return Response(
+                    {'error': 'Only pending payments can be marked as paid'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            payment.payment_date = timezone.localdate()
+            payment.payment_method = request.data.get('payment_method', payment.payment_method)
+            payment.reference_number = request.data.get('reference_number', payment.reference_number)
+            payment.status = 'processed'
+            payment.save()
+
+            payment.salary_slip.status = 'paid'
+            payment.salary_slip.save(update_fields=['status', 'updated_at'])
         
         return Response(SalaryPaymentSerializer(payment).data)
 

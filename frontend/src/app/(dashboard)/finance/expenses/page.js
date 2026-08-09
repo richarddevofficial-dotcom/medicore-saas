@@ -87,19 +87,21 @@ export default function ExpensesPage() {
 
       {/* Filters */}
       <div className="flex gap-2 border-b">
-        {["all", "pending", "approved", "rejected"].map((status) => (
-          <button
-            key={status}
-            onClick={() => setFilter(status)}
-            className={`px-4 py-2 font-medium text-sm ${
-              filter === status
-                ? "border-b-2 border-blue-600 text-blue-600"
-                : "text-gray-600 hover:text-gray-900"
-            }`}
-          >
-            {status.charAt(0).toUpperCase() + status.slice(1)}
-          </button>
-        ))}
+        {["all", "draft", "submitted", "approved", "rejected", "paid"].map(
+          (status) => (
+            <button
+              key={status}
+              onClick={() => setFilter(status)}
+              className={`px-4 py-2 font-medium text-sm ${
+                filter === status
+                  ? "border-b-2 border-blue-600 text-blue-600"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              {status.charAt(0).toUpperCase() + status.slice(1)}
+            </button>
+          ),
+        )}
       </div>
 
       {error && (
@@ -153,10 +155,10 @@ export default function ExpensesPage() {
                     {expense.description}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
-                    {expense.category}
+                    {expense.category_name}
                   </td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                    {expense.amount}
+                    SSP {Number(expense.amount || 0).toLocaleString()}
                   </td>
                   <td className="px-6 py-4 text-sm">
                     <span
@@ -172,18 +174,27 @@ export default function ExpensesPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
-                    {expense.date}
+                    {new Date(expense.expense_date).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      <Link href={`/finance/expenses/${expense.id}/edit`}>
-                        <button className="p-2 text-gray-600 hover:text-blue-600">
-                          <Edit size={18} />
-                        </button>
-                      </Link>
+                      {expense.status === "draft" && (
+                        <Link href={`/finance/expenses/${expense.id}/edit`}>
+                          <button className="p-2 text-gray-600 hover:text-blue-600">
+                            <Edit size={18} />
+                          </button>
+                        </Link>
+                      )}
                       <button
                         onClick={() => handleDelete(expense.id)}
-                        disabled={deleting === expense.id}
+                        disabled={
+                          deleting === expense.id || expense.status !== "draft"
+                        }
+                        title={
+                          expense.status === "draft"
+                            ? "Delete expense"
+                            : "Only draft expenses can be deleted"
+                        }
                         className="p-2 text-gray-600 hover:text-red-600 disabled:opacity-50"
                       >
                         <Trash2 size={18} />

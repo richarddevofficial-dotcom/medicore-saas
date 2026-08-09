@@ -137,21 +137,34 @@ export default function ExpenseDetailPage() {
               {expense.description}
             </h1>
             <p className="text-gray-600 text-sm mt-1">
-              ₹{expense.amount?.toLocaleString()} •{" "}
+              SSP {Number(expense.amount || 0).toLocaleString()} |{" "}
               {expense.category?.name || "Uncategorized"}
             </p>
           </div>
           {!isEditing && (
             <div className="flex gap-2">
               <button
-                onClick={() => setIsEditing(true)}
-                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                onClick={() =>
+                  router.push(`/finance/expenses/${expenseId}/edit`)
+                }
+                disabled={expense.status !== "draft"}
+                title={
+                  expense.status === "draft"
+                    ? "Edit expense"
+                    : "Only draft expenses can be edited"
+                }
+                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-40"
               >
                 <Edit2 size={20} />
               </button>
               <button
                 onClick={handleDelete}
-                disabled={submitting}
+                disabled={submitting || expense.status !== "draft"}
+                title={
+                  expense.status === "draft"
+                    ? "Delete expense"
+                    : "Only draft expenses can be deleted"
+                }
                 className="p-2 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
               >
                 <Trash2 size={20} />
@@ -166,7 +179,7 @@ export default function ExpenseDetailPage() {
               <div className="rounded-lg bg-gray-50 p-4">
                 <p className="text-sm text-gray-600">Amount</p>
                 <p className="text-lg font-semibold text-gray-900 mt-1">
-                  ₹{expense.amount?.toLocaleString()}
+                  SSP {Number(expense.amount || 0).toLocaleString()}
                 </p>
               </div>
               <div className="rounded-lg bg-gray-50 p-4">
