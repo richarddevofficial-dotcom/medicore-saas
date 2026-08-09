@@ -3,40 +3,48 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
-import Button from "@/components/ui/Button";
 import AdminBackButton from "@/components/ui/AdminBackButton";
 import Badge from "@/components/ui/Badge";
-import Input from "@/components/ui/Input";
 import Spinner from "@/components/ui/Spinner";
 import EmptyState from "@/components/ui/EmptyState";
-import { Search, Database } from "lucide-react";
+import { AlertCircle, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import apiClient from "@/lib/api-client";
 
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
+    const controller = new AbortController();
     const fetchLogs = async () => {
       try {
-        const { data } = await apiClient.get("/audit-logs/");
+        setLoading(true);
+        setError("");
+        const { data } = await apiClient.get("/audit-logs/", {
+          params: { page, search: searchTerm || undefined },
+          signal: controller.signal,
+        });
         setLogs(Array.isArray(data) ? data : data.results || []);
+        setTotal(Array.isArray(data) ? data.length : data.count || 0);
+        setHasNext(Boolean(data.next));
       } catch (err) {
-        console.error("Failed to load logs");
+        if (err.name !== "CanceledError") {
+          setError(err.response?.data?.detail || "Unable to load audit logs.");
+        }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
     fetchLogs();
-  }, []);
-
-  const filtered = logs.filter(
-    (log) =>
-      (log.user || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (log.action || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (log.target || "").toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+    return () => {
+      controller.abort();
+    };
+  }, [page, searchTerm]);
 
   const typeVariant = (type) => {
     if (type === "create") return "success";
@@ -63,7 +71,7 @@ export default function AuditLogsPage() {
             <div>
               <h1 className="text-2xl font-bold">Audit Logs</h1>
               <p className="text-sm text-gray-500">
-                {logs.length} activities recorded
+                {total} activities recorded
               </p>
             </div>
           </div>
@@ -75,10 +83,20 @@ export default function AuditLogsPage() {
             type="text"
             placeholder="Search logs..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setPage(1);
+            }}
             className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm"
           />
         </div>
+
+        {error && (
+          <div className="flex items-center gap-3 border-l-2 border-red-500 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <AlertCircle size={18} />
+            {error}
+          </div>
+        )}
 
         <Card padding={false}>
           <div className="overflow-x-auto">
@@ -106,7 +124,7 @@ export default function AuditLogsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filtered.length === 0 ? (
+                {logs.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="text-center py-12 text-gray-500">
                       <EmptyState
@@ -119,7 +137,7 @@ export default function AuditLogsPage() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((log, i) => (
+                  logs.map((log, i) => (
                     <tr key={log.id || i} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium">
                         {log.user}
@@ -146,6 +164,28 @@ export default function AuditLogsPage() {
             </table>
           </div>
         </Card>
+
+        <div className="flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            disabled={page === 1}
+            className="rounded-md border p-2 text-gray-600 disabled:opacity-40"
+            title="Previous page"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <span className="text-sm text-gray-600">Page {page}</span>
+          <button
+            type="button"
+            onClick={() => setPage((current) => current + 1)}
+            disabled={!hasNext}
+            className="rounded-md border p-2 text-gray-600 disabled:opacity-40"
+            title="Next page"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
       </div>
     </DashboardLayout>
   );

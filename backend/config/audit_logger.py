@@ -3,11 +3,32 @@ Enhanced audit logging for sensitive operations.
 Logs all CRUD operations with user context, IP, timestamp, and changes.
 """
 
-from django.utils import timezone
-from django.contrib.auth.models import User
 from auditlog.models import AuditLog
-import json
-import hashlib
+
+
+SENSITIVE_FIELD_PARTS = {
+    'authorization',
+    'cookie',
+    'otp',
+    'password',
+    'secret',
+    'token',
+}
+
+
+def _sanitize_audit_values(value):
+    if isinstance(value, dict):
+        return {
+            key: (
+                '[REDACTED]'
+                if any(part in str(key).lower() for part in SENSITIVE_FIELD_PARTS)
+                else _sanitize_audit_values(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_audit_values(item) for item in value]
+    return value
 
 
 class AuditLogger:
@@ -68,34 +89,39 @@ class AuditLogger:
                 ip_address = ip_address or _get_client_ip(request)
                 user_agent = user_agent or request.META.get('HTTP_USER_AGENT', '')[:500]
             
-            # Prepare audit log data
-            changes = None
-            if old_values or new_values:
-                changes = {
-                    'old': old_values or {},
-                    'new': new_values or {},
-                }
+            staff_profile = getattr(user, 'staff_profile', None) if user else None
+            hospital = hospital or getattr(staff_profile, 'hospital', None)
+            role = getattr(staff_profile, 'role', '')
+            user_label = (
+                getattr(user, 'email', '')
+                or getattr(user, 'username', '')
+                or str(user or 'anonymous')
+            )
+            changes = {
+                'old': _sanitize_audit_values(old_values or {}),
+                'new': _sanitize_audit_values(new_values or {}),
+            } if old_values or new_values else {}
             
             # Create audit log entry
-            audit_log = AuditLog(
-                user=user,
-                action=f'{action}:{target}',
-                target=target,
+            audit_log = AuditLog.objects.create(
+                user=user_label[:200],
+                role=str(role)[:50],
+                action=f'{action}:{target}'[:200],
+                target=str(target)[:200],
                 action_detail=AuditLogger.SENSITIVE_OPERATIONS.get(action, action),
-                status=status,
-                changes=json.dumps(changes) if changes else None,
-                error_message=error_message,
+                action_type='security',
+                status=str(status)[:20],
+                changes=changes,
+                error_message=error_message or '',
                 ip_address=ip_address,
-                user_agent=user_agent,
+                user_agent=user_agent or '',
                 hospital=hospital,
-                created_at=timezone.now(),
             )
-            audit_log.save()
             
             return audit_log
         except Exception as exc:
             # Log audit failures to prevent audit system from crashing app
-            print(f"❌ Audit logging failed: {exc}")
+            print(f"Audit logging failed: {exc}")
             return None
     
     @staticmethod

@@ -1,9 +1,12 @@
 from django.contrib.auth.models import User
 from django.test import TestCase
+from unittest.mock import patch
 from rest_framework.test import APIClient
 
 from hospitals.models import Hospital
 from staff.models import StaffProfile
+from config.activity_monitor import ActivityMonitor
+from config.audit_logger import AuditLogger
 from .models import AuditLog
 
 
@@ -77,7 +80,10 @@ class AuditLogAccessTests(TestCase):
 		response = self.client.get('/api/v1/audit-logs/')
 
 		self.assertEqual(response.status_code, 200)
-		self.assertEqual([log['id'] for log in response.data], [self.primary_log.id])
+		self.assertEqual(
+			[log['id'] for log in response.data['results']],
+			[self.primary_log.id],
+		)
 
 	def test_non_admin_staff_cannot_list_audit_logs(self):
 		self.client.force_authenticate(user=self.doctor.user)
@@ -94,4 +100,90 @@ class AuditLogAccessTests(TestCase):
 		)
 
 		self.assertEqual(response.status_code, 200)
-		self.assertEqual([log['id'] for log in response.data], [self.other_log.id])
+		self.assertEqual(
+			[log['id'] for log in response.data['results']],
+			[self.other_log.id],
+		)
+
+	def test_super_admin_filters_action_type_and_rejects_invalid_hospital(self):
+		self.client.force_authenticate(user=self.super_admin)
+
+		filtered = self.client.get('/api/v1/audit-logs/?action_type=governance')
+		invalid = self.client.get('/api/v1/audit-logs/?hospital_id=invalid')
+
+		self.assertEqual(filtered.status_code, 200)
+		self.assertEqual(filtered.data['count'], 2)
+		self.assertEqual(invalid.status_code, 400)
+		self.assertIn('hospital_id', invalid.data)
+
+	def test_central_audit_logger_persists_structured_event(self):
+		entry = AuditLogger.log_audit(
+			user=self.admin.user,
+			action='config_change',
+			target='payroll',
+			old_values={'enabled': False},
+			new_values={'enabled': True},
+			ip_address='127.0.0.1',
+		)
+
+		self.assertIsNotNone(entry)
+		self.assertEqual(entry.hospital, self.primary_hospital)
+		self.assertEqual(entry.user, self.admin.user.email)
+		self.assertEqual(entry.role, 'admin')
+		self.assertEqual(entry.action_type, 'security')
+		self.assertEqual(entry.changes['new'], {'enabled': True})
+
+	def test_central_audit_logger_redacts_sensitive_values(self):
+		entry = AuditLogger.log_audit(
+			user=self.admin.user,
+			action='config_change',
+			target='authentication',
+			new_values={
+				'password': 'do-not-store',
+				'nested': {'access_token': 'do-not-store'},
+				'enabled': True,
+			},
+		)
+
+		self.assertEqual(entry.changes['new']['password'], '[REDACTED]')
+		self.assertEqual(
+			entry.changes['new']['nested']['access_token'],
+			'[REDACTED]',
+		)
+		self.assertIs(entry.changes['new']['enabled'], True)
+
+	def test_activity_monitor_persists_anonymous_failed_login(self):
+		entry = ActivityMonitor.log_event(
+			user=None,
+			event_type='failed_login',
+			details={'email': 'unknown@example.com'},
+			severity='MEDIUM',
+			ip_address='127.0.0.1',
+		)
+
+		self.assertIsNotNone(entry)
+		self.assertEqual(entry.user, 'anonymous')
+		self.assertEqual(entry.action_type, 'security')
+		self.assertEqual(entry.status, 'MEDIUM')
+		self.assertEqual(entry.changes, {'email': 'unknown@example.com'})
+
+	@patch.object(ActivityMonitor, '_send_alert')
+	def test_failed_login_threshold_is_scoped_by_ip(self, send_alert):
+		for attempt in range(5):
+			ActivityMonitor.log_event(
+				user=None,
+				event_type='failed_login',
+				details={'attempt': attempt},
+				severity='MEDIUM',
+				ip_address='127.0.0.1',
+			)
+		ActivityMonitor.log_event(
+			user=None,
+			event_type='failed_login',
+			details={'attempt': 1},
+			severity='MEDIUM',
+			ip_address='127.0.0.2',
+		)
+
+		send_alert.assert_called_once()
+		self.assertEqual(send_alert.call_args.args[2], 5)

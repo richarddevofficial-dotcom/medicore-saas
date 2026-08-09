@@ -9,7 +9,6 @@ from django.core.mail import send_mail
 from django.conf import settings
 from auditlog.models import AuditLog, NotificationEvent
 from datetime import timedelta
-import json
 
 
 class ActivityMonitor:
@@ -17,22 +16,22 @@ class ActivityMonitor:
     
     # Alert thresholds
     ALERTS = {
-        'failed_login_attempts': {
+        'failed_login': {
             'threshold': 5,              # 5 failed attempts
             'window_seconds': 300,       # In 5 minutes
             'severity': 'HIGH',
         },
-        'password_changes': {
+        'password_change': {
             'threshold': 3,              # 3 changes
             'window_seconds': 3600,      # In 1 hour
             'severity': 'MEDIUM',
         },
-        'data_exports': {
+        'data_export': {
             'threshold': 10,             # 10 exports
             'window_seconds': 3600,      # In 1 hour
             'severity': 'MEDIUM',
         },
-        'permission_changes': {
+        'permission_change': {
             'threshold': 5,              # 5 changes
             'window_seconds': 3600,      # In 1 hour
             'severity': 'HIGH',
@@ -70,30 +69,44 @@ class ActivityMonitor:
             ip_address: Client IP
         """
         try:
+            staff_profile = getattr(user, 'staff_profile', None) if user else None
+            hospital = hospital or getattr(staff_profile, 'hospital', None)
+            user_label = (
+                getattr(user, 'email', '')
+                or getattr(user, 'username', '')
+                or str(user or 'anonymous')
+            )
             # Create audit log
             audit_entry = AuditLog.objects.create(
-                user=user,
+                user=user_label,
+                role=getattr(staff_profile, 'role', ''),
                 action=f'event:{event_type}',
                 target='activity_monitor',
+                action_type='security',
                 status=severity,
-                changes=json.dumps(details or {}),
+                changes=details or {},
                 ip_address=ip_address,
                 hospital=hospital,
-                created_at=timezone.now(),
             )
             
             # Check if alert threshold exceeded
             ActivityMonitor._check_alert_threshold(
-                event_type, user, hospital, severity
+                event_type, user, hospital, severity, ip_address
             )
             
             return audit_entry
         except Exception as exc:
-            print(f"❌ Activity logging failed: {exc}")
+            print(f"Activity logging failed: {exc}")
             return None
     
     @staticmethod
-    def _check_alert_threshold(event_type, user, hospital, severity):
+    def _check_alert_threshold(
+        event_type,
+        user,
+        hospital,
+        severity,
+        ip_address=None,
+    ):
         """Check if alert threshold exceeded and send alert."""
         if event_type not in ActivityMonitor.ALERTS:
             return
@@ -105,11 +118,20 @@ class ActivityMonitor:
         
         # Count recent events
         cutoff_time = timezone.now() - timedelta(seconds=window)
-        recent_count = AuditLog.objects.filter(
-            user=user,
+        recent_events = AuditLog.objects.filter(
+            user=(
+                getattr(user, 'email', '')
+                or getattr(user, 'username', '')
+                or str(user or 'anonymous')
+            ),
             action__contains=f'event:{event_type}',
             created_at__gte=cutoff_time,
-        ).count()
+        )
+        if hospital:
+            recent_events = recent_events.filter(hospital=hospital)
+        if not user and ip_address:
+            recent_events = recent_events.filter(ip_address=ip_address)
+        recent_count = recent_events.count()
         
         # Trigger alert if threshold exceeded
         if recent_count >= threshold:
@@ -135,9 +157,15 @@ class ActivityMonitor:
             
             # Compose alert
             subject = f"🚨 SECURITY ALERT - {event_type.upper()} ({severity})"
+            user_name = (
+                user.get_full_name() or user.username
+                if user
+                else 'Anonymous user'
+            )
+            user_email = user.email if user else 'N/A'
             message = (
-                f"User: {user.get_full_name() or user.username}\n"
-                f"Email: {user.email}\n"
+                f"User: {user_name}\n"
+                f"Email: {user_email}\n"
                 f"Event: {event_type}\n"
                 f"Count: {count} (threshold: {threshold})\n"
                 f"Severity: {severity}\n"
@@ -162,10 +190,10 @@ class ActivityMonitor:
                 recipient=', '.join(admin_emails),
                 subject=subject,
                 status='sent',
-                reference=f'alert:{event_type}:{user.id}',
+                reference=f'alert:{event_type}:{user.id if user else "anonymous"}',
             )
         except Exception as exc:
-            print(f"❌ Alert sending failed: {exc}")
+            print(f"Alert sending failed: {exc}")
     
     @staticmethod
     def log_export(user, export_type, record_count, hospital=None, ip_address=None):

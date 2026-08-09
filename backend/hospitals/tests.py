@@ -132,7 +132,10 @@ class HospitalSettingsAndBrandingTests(TestCase):
 		self.assertEqual(response.data["secondary_color"], "#222222")
 		self.assertEqual(response.data["custom_domain"], "one.example.com")
 		self.assertEqual(response.data["timezone"], "Africa/Juba")
-		self.assertEqual(response.data["platform_subdomain"], "hospital-one.medicore.com")
+		self.assertEqual(
+			response.data["platform_subdomain"],
+			"hospital-one.medicorecloud.com",
+		)
 
 	def test_domain_setup_generates_verification_token(self):
 		self.client.force_authenticate(user=self.user)
