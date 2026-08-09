@@ -271,7 +271,7 @@ if not DEBUG:
     X_FRAME_OPTIONS = "DENY"             # Prevent clickjacking
     
     # Referrer Policy: Don't leak URLs in referer headers
-    REFERRER_POLICY = "strict-origin-when-cross-origin"
+    SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
