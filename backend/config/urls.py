@@ -88,6 +88,13 @@ TRUSTED_DEVICE_MAX_AGE_SECONDS = int(
 TRUSTED_DEVICE_SIGNER = TimestampSigner(salt='trusted-device-login')
 
 
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def health_check(request):
+    return Response({'status': 'ok'})
+
+
 def _get_client_ip(request):
     return get_client_ip(request)
 
@@ -1061,6 +1068,7 @@ router.register(r'subscription-payments', SubscriptionPaymentViewSet, basename='
 router.register(r'audit-logs', AuditLogViewSet, basename='audit-log')
 
 urlpatterns = [
+    path('api/v1/health/', health_check, name='health-check'),
     path('api/v1/hr/', include('human_resources.urls')),
     path('api/v1/finance/', include('finance.urls')),
     path('api/v1/expenses/', include('expenses.urls')),
