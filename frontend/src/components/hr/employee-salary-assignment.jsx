@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BadgeDollarSign } from "lucide-react";
+import { AlertCircle, BadgeDollarSign, CheckCircle2 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
   createEmployeeSalaryAssignment,
@@ -24,6 +24,13 @@ export default function EmployeeSalaryAssignment({ employeeId }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const hasUnsavedChanges = Boolean(
+    assignment &&
+    (structureId !== assignment.salary_structure?.id?.toString() ||
+      effectiveFrom !== (assignment.effective_from || "") ||
+      effectiveTo !== (assignment.effective_to || "")),
+  );
 
   useEffect(() => {
     const role = String(localStorage.getItem("role") || "").toLowerCase();
@@ -97,6 +104,9 @@ export default function EmployeeSalaryAssignment({ employeeId }) {
             employee: employeeId,
           });
       setAssignment(saved);
+      setStructureId(saved.salary_structure?.id?.toString() || structureId);
+      setEffectiveFrom(saved.effective_from || "");
+      setEffectiveTo(saved.effective_to || "");
       toast.success(
         assignment
           ? "Payroll assignment updated"
@@ -135,6 +145,34 @@ export default function EmployeeSalaryAssignment({ employeeId }) {
         <p className="text-sm text-gray-500">Loading payroll assignment...</p>
       ) : (
         <form onSubmit={handleSubmit} className="grid gap-4 lg:grid-cols-4">
+          {assignment && (
+            <div
+              className={`flex items-start gap-3 border-l-2 px-3 py-2 lg:col-span-4 ${
+                hasUnsavedChanges
+                  ? "border-amber-500 bg-amber-50 text-amber-800"
+                  : "border-emerald-600 bg-emerald-50 text-emerald-800"
+              }`}
+            >
+              {hasUnsavedChanges ? (
+                <AlertCircle className="mt-0.5 shrink-0" size={18} />
+              ) : (
+                <CheckCircle2 className="mt-0.5 shrink-0" size={18} />
+              )}
+              <div>
+                <p className="text-sm font-semibold">
+                  {hasUnsavedChanges ? "Unsaved changes" : "Assignment saved"}
+                </p>
+                <p className="text-xs opacity-80">
+                  {assignment.salary_structure?.name} effective from{" "}
+                  {assignment.effective_from}
+                  {assignment.effective_to
+                    ? ` to ${assignment.effective_to}`
+                    : " with no end date"}
+                </p>
+              </div>
+            </div>
+          )}
+
           <label className="text-sm font-medium text-gray-700 lg:col-span-2">
             Salary Structure
             <select
@@ -179,13 +217,19 @@ export default function EmployeeSalaryAssignment({ employeeId }) {
 
           <button
             type="submit"
-            disabled={saving || structures.length === 0}
+            disabled={
+              saving ||
+              structures.length === 0 ||
+              Boolean(assignment && !hasUnsavedChanges)
+            }
             className="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving
               ? "Saving..."
               : assignment
-                ? "Update Assignment"
+                ? hasUnsavedChanges
+                  ? "Save Changes"
+                  : "Saved"
                 : "Assign Structure"}
           </button>
         </form>
