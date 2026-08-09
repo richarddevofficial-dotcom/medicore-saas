@@ -1,5 +1,16 @@
 import apiClient from "@/lib/api-client";
 
+function getApiErrorMessage(error, fallback) {
+  const data = error.response?.data;
+  if (typeof data?.detail === "string") return data.detail;
+  if (typeof data?.error === "string") return data.error;
+  if (data && typeof data === "object") {
+    const messages = Object.values(data).flat().filter(Boolean);
+    if (messages.length > 0) return messages.join(" ");
+  }
+  return fallback;
+}
+
 // Finance Dashboard
 export async function getFinanceDashboard() {
   try {
@@ -326,7 +337,7 @@ export async function getEmployeeSalaryAssignments(params = {}) {
     return response.data;
   } catch (error) {
     throw new Error(
-      error.response?.data?.detail || "Failed to load salary assignment",
+      getApiErrorMessage(error, "Failed to load salary assignment"),
     );
   }
 }
@@ -337,7 +348,7 @@ export async function createEmployeeSalaryAssignment(data) {
     return response.data;
   } catch (error) {
     throw new Error(
-      error.response?.data?.detail || "Failed to assign salary structure",
+      getApiErrorMessage(error, "Failed to assign salary structure"),
     );
   }
 }
@@ -351,7 +362,7 @@ export async function updateEmployeeSalaryAssignment(id, data) {
     return response.data;
   } catch (error) {
     throw new Error(
-      error.response?.data?.detail || "Failed to update salary assignment",
+      getApiErrorMessage(error, "Failed to update salary assignment"),
     );
   }
 }

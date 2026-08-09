@@ -561,6 +561,59 @@ class PayrollSecurityWorkflowTests(TestCase):
 		self.assertEqual(assignment.salary_structure, replacement_structure)
 		self.assertEqual(str(assignment.effective_from), "2026-08-01")
 
+	def test_repeated_salary_assignment_save_updates_existing_record(self):
+		self.client.force_authenticate(self.admin)
+		payload = {
+			"employee": self.employee.id,
+			"salary_structure_id": self.structure.id,
+			"effective_from": "2026-01-01",
+		}
+		created = self.client.post(
+			"/api/v1/finance/employee-salaries/",
+			payload,
+			format="json",
+		)
+		payload["effective_from"] = "2026-08-01"
+		updated = self.client.post(
+			"/api/v1/finance/employee-salaries/",
+			payload,
+			format="json",
+		)
+
+		self.assertEqual(created.status_code, 201, created.data)
+		self.assertEqual(updated.status_code, 200, updated.data)
+		self.assertEqual(EmployeeSalary.objects.count(), 1)
+		self.assertEqual(updated.data["effective_from"], "2026-08-01")
+
+	def test_finance_manager_can_view_but_not_change_salary_assignments(self):
+		finance_manager = User.objects.create_user(
+			username="payroll-finance-manager",
+			password="TestPassword123!",
+		)
+		StaffProfile.objects.create(
+			user=finance_manager,
+			hospital=self.hospital,
+			role="finance_manager",
+			phone="700003004",
+		)
+		assignment = EmployeeSalary.objects.create(
+			employee=self.employee,
+			salary_structure=self.structure,
+			effective_from="2026-01-01",
+		)
+		self.client.force_authenticate(finance_manager)
+
+		listed = self.client.get("/api/v1/finance/employee-salaries/")
+		changed = self.client.patch(
+			f"/api/v1/finance/employee-salaries/{assignment.id}/",
+			{"effective_from": "2026-08-01"},
+			format="json",
+		)
+
+		self.assertEqual(listed.status_code, 200, listed.data)
+		self.assertEqual(len(listed.data["results"]), 1)
+		self.assertEqual(changed.status_code, 403, changed.data)
+
 	def test_approved_salary_slip_creates_and_protects_payment(self):
 		self.client.force_authenticate(self.admin)
 		created = self.client.post(

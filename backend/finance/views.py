@@ -107,16 +107,6 @@ class SalaryStructureViewSet(HospitalScopedViewSet):
         })
 
 
-class EmployeeSalaryViewSet(HospitalScopedViewSet):
-    """Manage employee salary assignments"""
-    queryset = EmployeeSalary.objects.all()
-    hospital_lookup = 'employee__hospital_id'
-    serializer_class = EmployeeSalarySerializer
-    permission_classes = [IsAuthenticated, IsHRManager]
-    filterset_fields = ['employee', 'salary_structure']
-    search_fields = ['employee__user__first_name', 'employee__user__last_name']
-
-
 class IsPayrollViewer(BasePermission):
     """Allow HR and finance staff to view hospital payroll records."""
 
@@ -127,6 +117,38 @@ class IsPayrollViewer(BasePermission):
             IsHRUser().has_permission(request, view)
             or IsFinanceUser().has_permission(request, view)
         )
+
+
+class EmployeeSalaryViewSet(HospitalScopedViewSet):
+    """Manage employee salary assignments"""
+    queryset = EmployeeSalary.objects.order_by('employee__employee_number')
+    hospital_lookup = 'employee__hospital_id'
+    serializer_class = EmployeeSalarySerializer
+    filterset_fields = ['employee', 'salary_structure']
+    search_fields = ['employee__user__first_name', 'employee__user__last_name']
+
+    def get_permissions(self):
+        permission_class = (
+            IsPayrollViewer
+            if self.action in ('list', 'retrieve')
+            else IsHRManager
+        )
+        return [IsAuthenticated(), permission_class()]
+
+    def create(self, request, *args, **kwargs):
+        employee_id = request.data.get('employee')
+        existing = self.get_queryset().filter(employee_id=employee_id).first()
+        if existing:
+            serializer = self.get_serializer(
+                existing,
+                data=request.data,
+                partial=True,
+            )
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return super().create(request, *args, **kwargs)
 
 
 class SalarySlipViewSet(HospitalScopedViewSet):
