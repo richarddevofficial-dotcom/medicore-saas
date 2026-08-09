@@ -406,6 +406,32 @@ class HRPermissionTests(TestCase):
 			1,
 		)
 
+	def test_balance_migration_backfills_positive_entitlements(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			employee_number="MIGRATION-BALANCE-001",
+			first_name="Migration",
+			last_name="Balance",
+		)
+		migration = import_module(
+			"human_resources.migrations.0008_backfill_leave_balances"
+		)
+
+		migration.backfill_leave_balances(apps, None)
+
+		balances = LeaveBalance.objects.filter(
+			employee=employee,
+			year=timezone.localdate().year,
+		)
+		self.assertSetEqual(
+			set(balances.values_list("leave_type__code", flat=True)),
+			{"ANNUAL", "SICK", "MATERNITY", "PATERNITY"},
+		)
+		self.assertEqual(
+			balances.get(leave_type__code="ANNUAL").allocated_days,
+			21,
+		)
+
 	def test_sick_leave_requires_three_months_of_service(self):
 		employee = Employee.objects.create(
 			hospital=self.hospital,
@@ -449,6 +475,76 @@ class HRPermissionTests(TestCase):
 		self.assertEqual(too_early.status_code, 400)
 		self.assertIn("leave_type", too_early.data)
 		self.assertEqual(eligible.status_code, 201, eligible.data)
+
+	def test_missing_positive_leave_balance_is_allocated_when_requested(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="AUTO-BALANCE-001",
+			first_name="Auto",
+			last_name="Balance",
+			hire_date="2025-01-01",
+		)
+		annual_leave = LeaveType.objects.get(
+			hospital=self.hospital,
+			code="ANNUAL",
+		)
+		self.client.force_authenticate(self.doctor)
+
+		response = self.client.post(
+			"/api/v1/hr/me/leave-requests/",
+			{
+				"leave_type": annual_leave.id,
+				"start_date": "2026-10-01",
+				"end_date": "2026-10-02",
+				"reason": "Annual leave",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 201, response.data)
+		balance = LeaveBalance.objects.get(
+			employee=employee,
+			leave_type=annual_leave,
+			year=2026,
+		)
+		self.assertEqual(balance.allocated_days, 21)
+		self.assertEqual(balance.pending_days, 2)
+
+	def test_policy_leave_without_balance_still_requires_hr_allocation(self):
+		Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="POLICY-BALANCE-001",
+			first_name="Policy",
+			last_name="Balance",
+		)
+		policy_leave = LeaveType.objects.get(
+			hospital=self.hospital,
+			code="BEREAVEMENT",
+		)
+		self.client.force_authenticate(self.doctor)
+
+		response = self.client.post(
+			"/api/v1/hr/me/leave-requests/",
+			{
+				"leave_type": policy_leave.id,
+				"start_date": "2026-10-01",
+				"end_date": "2026-10-01",
+				"reason": "Family bereavement",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertIn("allocated by HR", str(response.data["leave_type"]))
+		self.assertFalse(
+			LeaveBalance.objects.filter(
+				employee__user=self.doctor,
+				leave_type=policy_leave,
+				year=2026,
+			).exists()
+		)
 
 	def test_self_service_requires_authentication_and_employee_link(self):
 		unauthenticated = self.client.get("/api/v1/hr/me/shifts/")
@@ -954,7 +1050,7 @@ class HRPermissionTests(TestCase):
 		self.assertEqual(response.status_code, 400)
 		self.assertEqual(Attendance.objects.filter(employee=employee).count(), 1)
 
-	def test_leave_request_requires_a_balance_and_cannot_be_deleted(self):
+	def test_leave_request_allocates_a_balance_and_cannot_be_deleted(self):
 		employee = Employee.objects.create(
 			hospital=self.hospital,
 			employee_number="LEAVE-001",
@@ -975,26 +1071,20 @@ class HRPermissionTests(TestCase):
 			"reason": "Annual leave",
 		}
 
-		missing_balance = self.client.post(
-			"/api/v1/hr/leave-requests/",
-			payload,
-			format="json",
-		)
-
-		self.assertEqual(missing_balance.status_code, 400)
-		LeaveBalance.objects.create(
-			employee=employee,
-			leave_type=leave_type,
-			year=2026,
-			allocated_days=21,
-		)
 		created = self.client.post(
 			"/api/v1/hr/leave-requests/",
 			payload,
 			format="json",
 		)
 
-		self.assertEqual(created.status_code, 201)
+		self.assertEqual(created.status_code, 201, created.data)
+		balance = LeaveBalance.objects.get(
+			employee=employee,
+			leave_type=leave_type,
+			year=2026,
+		)
+		self.assertEqual(balance.allocated_days, 21)
+		self.assertEqual(balance.pending_days, 2)
 		leave_request = LeaveRequest.objects.get()
 		self.assertEqual(
 			self.client.delete(

@@ -662,19 +662,33 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         )
         if employee and leave_type and total_days and not self.instance:
             year = start_date.year if start_date else timezone.localdate().year
-            balance = LeaveBalance.objects.filter(
-                employee=employee,
-                leave_type=leave_type,
-                year=year,
-                is_active=True,
-            ).first()
+            if leave_type.days_allowed > 0:
+                balance, _ = LeaveBalance.objects.get_or_create(
+                    employee=employee,
+                    leave_type=leave_type,
+                    year=year,
+                    defaults={"allocated_days": leave_type.days_allowed},
+                )
+            else:
+                balance = LeaveBalance.objects.filter(
+                    employee=employee,
+                    leave_type=leave_type,
+                    year=year,
+                ).first()
+
             if balance is None:
                 raise serializers.ValidationError(
                     {
                         "leave_type": (
-                            "No active leave balance exists for this employee."
+                            "This leave type must be allocated by HR before "
+                            "it can be requested."
                         )
                     }
+                )
+
+            if not balance.is_active:
+                raise serializers.ValidationError(
+                    {"leave_type": "This employee's leave balance is inactive."}
                 )
 
             if balance.available_days < total_days:
