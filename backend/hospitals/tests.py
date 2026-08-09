@@ -11,6 +11,7 @@ from hospitals.models import Hospital
 from staff.models import StaffProfile
 from auditlog.models import AuditLog
 from config.middleware import TenantDomainMiddleware, DynamicTenantCorsGuardMiddleware
+from config.timezones import timezone_for_country
 
 
 class HospitalSettingsAndBrandingTests(TestCase):
@@ -68,6 +69,12 @@ class HospitalSettingsAndBrandingTests(TestCase):
 
 		self.assertEqual(response.status_code, 401)
 
+	def test_country_timezone_mapping_supports_east_africa(self):
+		self.assertEqual(timezone_for_country("South Sudan"), "Africa/Juba")
+		self.assertEqual(timezone_for_country("kenya"), "Africa/Nairobi")
+		self.assertEqual(timezone_for_country("Uganda"), "Africa/Kampala")
+		self.assertEqual(timezone_for_country("Unknown"), "Africa/Juba")
+
 	def test_hospital_settings_updates_only_authenticated_users_hospital(self):
 		self.client.force_authenticate(user=self.user)
 
@@ -93,6 +100,27 @@ class HospitalSettingsAndBrandingTests(TestCase):
 		self.assertEqual(self.hospital_one.secondary_color, "#334455")
 		self.assertEqual(self.hospital_two.custom_domain, "two.example.com")
 
+	def test_hospital_settings_validates_timezone(self):
+		self.client.force_authenticate(user=self.user)
+
+		updated = self.client.put(
+			"/api/v1/hospitals/settings/",
+			{"timezone": "Africa/Nairobi"},
+			format="json",
+		)
+		invalid = self.client.put(
+			"/api/v1/hospitals/settings/",
+			{"timezone": "UTC+3"},
+			format="json",
+		)
+
+		self.assertEqual(updated.status_code, 200, updated.data)
+		self.assertEqual(updated.data["timezone"], "Africa/Nairobi")
+		self.assertEqual(invalid.status_code, 400)
+		self.assertIn("timezone", invalid.data)
+		self.hospital_one.refresh_from_db()
+		self.assertEqual(self.hospital_one.timezone, "Africa/Nairobi")
+
 	def test_my_hospital_returns_branding_fields(self):
 		self.client.force_authenticate(user=self.user)
 
@@ -103,6 +131,7 @@ class HospitalSettingsAndBrandingTests(TestCase):
 		self.assertEqual(response.data["primary_color"], "#111111")
 		self.assertEqual(response.data["secondary_color"], "#222222")
 		self.assertEqual(response.data["custom_domain"], "one.example.com")
+		self.assertEqual(response.data["timezone"], "Africa/Juba")
 		self.assertEqual(response.data["platform_subdomain"], "hospital-one.medicore.com")
 
 	def test_domain_setup_generates_verification_token(self):

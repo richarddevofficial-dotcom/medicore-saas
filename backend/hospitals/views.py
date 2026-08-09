@@ -52,6 +52,7 @@ class HospitalViewSet(viewsets.ModelViewSet):
                 'phone': hospital.phone,
                 'subscription_plan': hospital.subscription_plan,
                 'subscription_status': hospital.subscription_status,
+                'timezone': hospital.timezone,
                 'trial_end': hospital.trial_end,
                 'days_left': hospital.days_left,
                 'is_trial_active': hospital.is_trial_active,

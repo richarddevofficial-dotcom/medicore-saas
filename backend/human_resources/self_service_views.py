@@ -9,6 +9,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from config.timezones import get_hospital_timezone, hospital_localtime
+
 from .models import (
     Attendance,
     Employee,
@@ -72,10 +74,11 @@ class EmployeeSelfServiceMixin:
         return self._self_service_employee
 
 
-def _shift_datetime(work_date, shift_time):
-    return timezone.make_aware(
-        datetime.combine(work_date, shift_time),
-        timezone.get_current_timezone(),
+def _shift_datetime(work_date, shift_time, hospital):
+    return datetime.combine(
+        work_date,
+        shift_time,
+        tzinfo=get_hospital_timezone(hospital),
     )
 
 
@@ -112,7 +115,7 @@ def _get_open_attendance(employee, local_date):
 
 
 def _attendance_windows(employee, now):
-    local_now = timezone.localtime(now)
+    local_now = hospital_localtime(employee.hospital, now)
     today = local_now.date()
     previous_date = today - timedelta(days=1)
     assignments = (
@@ -141,9 +144,17 @@ def _attendance_windows(employee, now):
             if assignment.end_date and assignment.end_date < work_date:
                 continue
 
-            shift_start = _shift_datetime(work_date, shift.start_time)
+            shift_start = _shift_datetime(
+                work_date,
+                shift.start_time,
+                employee.hospital,
+            )
             shift_end_date = work_date + timedelta(days=1) if overnight else work_date
-            shift_end = _shift_datetime(shift_end_date, shift.end_time)
+            shift_end = _shift_datetime(
+                shift_end_date,
+                shift.end_time,
+                employee.hospital,
+            )
             opens_at = shift_start - timedelta(
                 minutes=shift.clock_in_early_minutes,
             )
@@ -172,7 +183,7 @@ def _attendance_windows(employee, now):
 
 
 def _serialize_attendance_status(employee, now):
-    local_now = timezone.localtime(now)
+    local_now = hospital_localtime(employee.hospital, now)
     windows = _attendance_windows(employee, now)
     open_window = next((item for item in windows if item["is_open"]), None)
     open_attendance = _get_open_attendance(employee, local_now.date())
@@ -273,7 +284,7 @@ class MyAttendanceClockInView(EmployeeSelfServiceMixin, APIView):
             )
 
         now = timezone.now()
-        local_date = timezone.localtime(now).date()
+        local_date = hospital_localtime(employee.hospital, now).date()
         if _get_open_attendance(employee, local_date):
             return Response(
                 {"detail": "You are already clocked in."},
@@ -339,7 +350,7 @@ class MyAttendanceClockOutView(EmployeeSelfServiceMixin, APIView):
             )
 
         now = timezone.now()
-        local_date = timezone.localtime(now).date()
+        local_date = hospital_localtime(employee.hospital, now).date()
         attendance = _get_open_attendance(employee, local_date)
         if not attendance:
             return Response(
@@ -386,7 +397,7 @@ class MyAttendanceListView(EmployeeSelfServiceMixin, generics.ListAPIView):
 
         queryset = (
             Attendance.objects
-            .select_related("employee", "shift")
+            .select_related("employee", "employee__hospital", "shift")
             .filter(employee=employee)
         )
         start_date = self.request.query_params.get("start_date")

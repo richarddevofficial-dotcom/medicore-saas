@@ -5,6 +5,7 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from importlib import import_module
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from django.apps import apps
 
@@ -599,16 +600,16 @@ class HRPermissionTests(TestCase):
 			attendance_date="2026-08-07",
 			clock_in=timezone.make_aware(
 				datetime(2026, 8, 7, 8, 0),
-				timezone.get_current_timezone(),
+				ZoneInfo(self.hospital.timezone),
 			),
 			clock_out=timezone.make_aware(
 				datetime(2026, 8, 7, 16, 0),
-				timezone.get_current_timezone(),
+				ZoneInfo(self.hospital.timezone),
 			),
 			status="PRESENT",
 		)
 		self.client.force_authenticate(self.doctor)
-		current_timezone = timezone.get_current_timezone()
+		current_timezone = ZoneInfo(self.hospital.timezone)
 		too_early = timezone.make_aware(
 			datetime(2026, 8, 8, 6, 59),
 			current_timezone,
@@ -726,7 +727,7 @@ class HRPermissionTests(TestCase):
 		self.assertIn("clock_in_close_minutes", invalid.data)
 
 		self.client.force_authenticate(self.doctor)
-		current_timezone = timezone.get_current_timezone()
+		current_timezone = ZoneInfo(self.hospital.timezone)
 		eligibility = []
 		for hour, minute in [(6, 29), (6, 30), (11, 30), (11, 31)]:
 			current_time = timezone.make_aware(
@@ -744,6 +745,57 @@ class HRPermissionTests(TestCase):
 
 		self.assertEqual(eligibility, [False, True, True, False])
 
+	def test_attendance_window_uses_hospital_timezone(self):
+		employee = Employee.objects.create(
+			hospital=self.hospital,
+			user=self.doctor,
+			employee_number="TIMEZONE-001",
+			first_name="Timezone",
+			last_name="Employee",
+		)
+		shift = Shift.objects.create(
+			hospital=self.hospital,
+			code="TIMEZONE-DAY",
+			name="Timezone Day Shift",
+			start_time="08:00",
+			end_time="16:00",
+		)
+		ShiftAssignment.objects.create(
+			employee=employee,
+			shift=shift,
+			start_date="2026-08-01",
+		)
+		current_time = datetime(2026, 8, 8, 4, 30, tzinfo=ZoneInfo("UTC"))
+		self.client.force_authenticate(self.doctor)
+
+		with patch(
+			"human_resources.self_service_views.timezone.now",
+			return_value=current_time,
+		):
+			juba_status = self.client.get(
+				"/api/v1/hr/me/attendance/status/",
+			)
+			self.hospital.timezone = "Africa/Nairobi"
+			self.hospital.save(update_fields=["timezone", "updated_at"])
+			nairobi_status = self.client.get(
+				"/api/v1/hr/me/attendance/status/",
+			)
+
+		self.assertFalse(juba_status.data["can_clock_in"])
+		self.assertTrue(nairobi_status.data["can_clock_in"])
+		self.assertTrue(juba_status.data["server_time"].endswith("+02:00"))
+		self.assertTrue(nairobi_status.data["server_time"].endswith("+03:00"))
+
+		Attendance.objects.create(
+			employee=employee,
+			shift=shift,
+			attendance_date="2026-08-08",
+			clock_in=current_time,
+			status="PRESENT",
+		)
+		history = self.client.get("/api/v1/hr/me/attendance/")
+		self.assertTrue(history.data["results"][0]["clock_in"].endswith("+03:00"))
+
 	def test_staff_can_clock_out_only_their_open_attendance(self):
 		employee = Employee.objects.create(
 			hospital=self.hospital,
@@ -754,7 +806,7 @@ class HRPermissionTests(TestCase):
 		)
 		clock_in = timezone.make_aware(
 			datetime(2026, 8, 8, 8, 0),
-			timezone.get_current_timezone(),
+			ZoneInfo(self.hospital.timezone),
 		)
 		attendance = Attendance.objects.create(
 			employee=employee,
@@ -764,7 +816,7 @@ class HRPermissionTests(TestCase):
 		)
 		clock_out = timezone.make_aware(
 			datetime(2026, 8, 8, 16, 0),
-			timezone.get_current_timezone(),
+			ZoneInfo(self.hospital.timezone),
 		)
 		self.client.force_authenticate(self.doctor)
 
@@ -852,7 +904,7 @@ class HRPermissionTests(TestCase):
 		)
 		clock_in = timezone.make_aware(
 			datetime(2026, 8, 8, 8, 5),
-			timezone.get_current_timezone(),
+			ZoneInfo(self.hospital.timezone),
 		)
 		self.client.force_authenticate(self.doctor)
 
@@ -919,7 +971,7 @@ class HRPermissionTests(TestCase):
 		)
 		now = timezone.make_aware(
 			datetime(2026, 8, 8, 8, 5),
-			timezone.get_current_timezone(),
+			ZoneInfo(self.hospital.timezone),
 		)
 		self.client.force_authenticate(self.doctor)
 
@@ -963,13 +1015,13 @@ class HRPermissionTests(TestCase):
 			attendance_date="2026-08-07",
 			clock_in=timezone.make_aware(
 				datetime(2026, 8, 7, 8, 0),
-				timezone.get_current_timezone(),
+				ZoneInfo(self.hospital.timezone),
 			),
 			status="PRESENT",
 		)
 		now = timezone.make_aware(
 			datetime(2026, 8, 8, 8, 0),
-			timezone.get_current_timezone(),
+			ZoneInfo(self.hospital.timezone),
 		)
 		self.client.force_authenticate(self.doctor)
 
@@ -1018,13 +1070,13 @@ class HRPermissionTests(TestCase):
 			attendance_date="2026-08-07",
 			clock_in=timezone.make_aware(
 				datetime(2026, 8, 7, 22, 0),
-				timezone.get_current_timezone(),
+				ZoneInfo(self.hospital.timezone),
 			),
 			status="PRESENT",
 		)
 		now = timezone.make_aware(
 			datetime(2026, 8, 8, 22, 0),
-			timezone.get_current_timezone(),
+			ZoneInfo(self.hospital.timezone),
 		)
 		self.client.force_authenticate(self.doctor)
 

@@ -10,6 +10,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from config.throttles import RegistrationThrottle
+from config.timezones import timezone_for_country
 
 from hospitals.models import Hospital
 from saas_billing.models import (
@@ -214,7 +215,7 @@ def register_hospital(request):
             trial_end=trial_end,
             max_staff=starter_plan.max_staff or 0,
             max_patients=starter_plan.max_patients or 0,
-            timezone="Africa/Juba",
+            timezone=timezone_for_country(country),
             currency="SSP",
             is_active=True,
             is_verified=True,

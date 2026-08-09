@@ -11,6 +11,16 @@ import toast from "react-hot-toast";
 import apiClient from "@/lib/api-client";
 import { useQueryClient } from "@tanstack/react-query";
 
+const timezoneOptions = [
+  ["Africa/Juba", "South Sudan (UTC+2)"],
+  ["Africa/Nairobi", "Kenya (UTC+3)"],
+  ["Africa/Kampala", "Uganda (UTC+3)"],
+  ["Africa/Addis_Ababa", "Ethiopia (UTC+3)"],
+  ["Africa/Dar_es_Salaam", "Tanzania (UTC+3)"],
+  ["Africa/Kigali", "Rwanda (UTC+2)"],
+  ["Africa/Bujumbura", "Burundi (UTC+2)"],
+];
+
 export default function SettingsPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -45,6 +55,7 @@ export default function SettingsPage() {
     city: "",
     state: "",
     country: "",
+    timezone: "Africa/Juba",
     primary_color: "#F97316",
     secondary_color: "#1E3A5F",
     custom_domain: "",
@@ -68,6 +79,7 @@ export default function SettingsPage() {
             city: data.city || "",
             state: data.state || "",
             country: data.country || "",
+            timezone: data.timezone || "Africa/Juba",
             primary_color: data.primary_color || "#F97316",
             secondary_color: data.secondary_color || "#1E3A5F",
             custom_domain: data.custom_domain || "",
@@ -470,7 +482,7 @@ export default function SettingsPage() {
                 setSettings({ ...settings, address: e.target.value })
               }
             />
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid gap-4 sm:grid-cols-3">
               <Input
                 label="City"
                 value={settings.city}
@@ -492,6 +504,27 @@ export default function SettingsPage() {
                   setSettings({ ...settings, country: e.target.value })
                 }
               />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Timezone
+              </label>
+              <select
+                value={settings.timezone}
+                onChange={(event) =>
+                  setSettings({ ...settings, timezone: event.target.value })
+                }
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200"
+              >
+                {timezoneOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label} - {value}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Attendance and shift windows use this local timezone.
+              </p>
             </div>
           </div>
         </Card>

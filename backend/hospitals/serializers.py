@@ -4,6 +4,10 @@ from django.utils import timezone
 from datetime import timedelta
 import secrets
 import socket
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from config.timezones import timezone_for_country
+
 from .models import Hospital
 from staff.models import StaffProfile
 
@@ -27,6 +31,15 @@ class HospitalSerializer(serializers.ModelSerializer):
         model = Hospital
         fields = '__all__'
         read_only_fields = ['slug', 'created_at', 'updated_at']
+
+    def validate_timezone(self, value):
+        try:
+            ZoneInfo(value)
+        except (ValueError, ZoneInfoNotFoundError) as exc:
+            raise serializers.ValidationError(
+                "Enter a valid IANA timezone, such as Africa/Juba."
+            ) from exc
+        return value
 
 class HospitalRegistrationSerializer(serializers.ModelSerializer):
     admin_email = serializers.EmailField(write_only=True)
@@ -52,6 +65,9 @@ class HospitalRegistrationSerializer(serializers.ModelSerializer):
         validated_data['slug'] = slugify(validated_data['name'])
         validated_data['trial_start'] = timezone.now()
         validated_data['trial_end'] = timezone.now() + timedelta(days=14)
+        validated_data['timezone'] = timezone_for_country(
+            validated_data.get('country')
+        )
         
         hospital = Hospital.objects.create(**validated_data)
         

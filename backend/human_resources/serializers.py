@@ -4,6 +4,8 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 
+from config.timezones import hospital_localtime
+
 from .permissions import get_user_hospital_id
 from .models import (
     Attendance,
@@ -464,6 +466,17 @@ class AttendanceSerializer(serializers.ModelSerializer):
         model = Attendance
         fields = "__all__"
         read_only_fields = ["created_at", "updated_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        for field_name in ("clock_in", "clock_out"):
+            value = getattr(instance, field_name)
+            if value:
+                data[field_name] = hospital_localtime(
+                    instance.employee.hospital,
+                    value,
+                ).isoformat()
+        return data
 
     def validate(self, attrs):
         validate_related_hospitals(self, attrs, "employee", "shift")
