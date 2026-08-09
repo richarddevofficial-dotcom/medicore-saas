@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Pencil } from "lucide-react";
 import { getEmployee } from "@/lib/api/hr";
+import EmployeeSalaryAssignment from "@/components/hr/employee-salary-assignment";
 
 function displayValue(value) {
   if (value === null || value === undefined || value === "") {
@@ -40,9 +41,7 @@ export default function EmployeeDetailsPage() {
         setEmployee(data);
       } catch (err) {
         setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load employee."
+          err instanceof Error ? err.message : "Unable to load employee.",
         );
       } finally {
         setLoading(false);
@@ -72,11 +71,7 @@ export default function EmployeeDetailsPage() {
 
   const fullName =
     employee.full_name ||
-    [
-      employee.first_name,
-      employee.middle_name,
-      employee.last_name,
-    ]
+    [employee.first_name, employee.middle_name, employee.last_name]
       .filter(Boolean)
       .join(" ");
 
@@ -141,6 +136,8 @@ export default function EmployeeDetailsPage() {
           ))}
         </div>
       </div>
+
+      <EmployeeSalaryAssignment employeeId={employee.id} />
     </div>
   );
 }

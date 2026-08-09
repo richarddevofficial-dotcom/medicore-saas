@@ -529,6 +529,38 @@ class PayrollSecurityWorkflowTests(TestCase):
 		self.assertEqual(response.status_code, 400)
 		self.assertFalse(EmployeeSalary.objects.exists())
 
+	def test_hr_manager_can_create_and_update_salary_assignment(self):
+		replacement_structure = SalaryStructure.objects.create(
+			hospital=self.hospital,
+			name="Senior Standard",
+			base_salary="1500.00",
+		)
+		self.client.force_authenticate(self.admin)
+
+		created = self.client.post(
+			"/api/v1/finance/employee-salaries/",
+			{
+				"employee": self.employee.id,
+				"salary_structure_id": self.structure.id,
+				"effective_from": "2026-01-01",
+			},
+			format="json",
+		)
+		updated = self.client.patch(
+			f"/api/v1/finance/employee-salaries/{created.data.get('id')}/",
+			{
+				"salary_structure_id": replacement_structure.id,
+				"effective_from": "2026-08-01",
+			},
+			format="json",
+		)
+
+		self.assertEqual(created.status_code, 201, created.data)
+		self.assertEqual(updated.status_code, 200, updated.data)
+		assignment = EmployeeSalary.objects.get(employee=self.employee)
+		self.assertEqual(assignment.salary_structure, replacement_structure)
+		self.assertEqual(str(assignment.effective_from), "2026-08-01")
+
 	def test_approved_salary_slip_creates_and_protects_payment(self):
 		self.client.force_authenticate(self.admin)
 		created = self.client.post(

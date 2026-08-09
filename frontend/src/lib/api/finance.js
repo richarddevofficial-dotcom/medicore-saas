@@ -318,6 +318,44 @@ export async function deleteSalaryStructure(id) {
   }
 }
 
+export async function getEmployeeSalaryAssignments(params = {}) {
+  try {
+    const response = await apiClient.get("/finance/employee-salaries/", {
+      params,
+    });
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.detail || "Failed to load salary assignment",
+    );
+  }
+}
+
+export async function createEmployeeSalaryAssignment(data) {
+  try {
+    const response = await apiClient.post("/finance/employee-salaries/", data);
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.detail || "Failed to assign salary structure",
+    );
+  }
+}
+
+export async function updateEmployeeSalaryAssignment(id, data) {
+  try {
+    const response = await apiClient.patch(
+      `/finance/employee-salaries/${id}/`,
+      data,
+    );
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.detail || "Failed to update salary assignment",
+    );
+  }
+}
+
 export async function calculateSalary(id) {
   try {
     const response = await apiClient.get(
