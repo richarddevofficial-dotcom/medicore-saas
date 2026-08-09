@@ -660,3 +660,50 @@ class PayrollSecurityWorkflowTests(TestCase):
 		self.assertEqual(structure.allowances.count(), 1)
 		self.assertEqual(structure.deductions.count(), 1)
 		self.assertEqual(cross_hospital.status_code, 400)
+
+	def test_finance_manager_can_manage_payroll_configuration(self):
+		finance_manager = User.objects.create_user(
+			username="payroll-finance-manager",
+			password="Finance@1234",
+			is_staff=True,
+		)
+		StaffProfile.objects.create(
+			user=finance_manager,
+			hospital=self.hospital,
+			role="finance_manager",
+			phone="1234567899",
+		)
+		self.client.force_authenticate(finance_manager)
+
+		allowance = self.client.post(
+			"/api/v1/finance/allowance-types/",
+			{"code": "TRAVEL", "name": "Travel"},
+			format="json",
+		)
+		deduction = self.client.post(
+			"/api/v1/finance/deduction-types/",
+			{"code": "LEVY", "name": "Levy"},
+			format="json",
+		)
+		structure = self.client.post(
+			"/api/v1/finance/salary-structures/",
+			{
+				"name": "Finance Managed",
+				"base_salary": "1500.00",
+				"allowances": [{
+					"allowance_type_id": allowance.data.get("id"),
+					"amount": "100.00",
+					"is_percentage": False,
+				}],
+				"deductions": [{
+					"deduction_type_id": deduction.data.get("id"),
+					"amount": "5.00",
+					"is_percentage": True,
+				}],
+			},
+			format="json",
+		)
+
+		self.assertEqual(allowance.status_code, 201, allowance.data)
+		self.assertEqual(deduction.status_code, 201, deduction.data)
+		self.assertEqual(structure.status_code, 201, structure.data)

@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from human_resources.permissions import IsHRUser, IsHRManager
 from human_resources.views import HospitalScopedViewSet
-from finance.accounting_permissions import IsFinanceUser
+from finance.accounting_permissions import IsFinanceManager, IsFinanceUser
 from django.db.models import Count, Sum
 from finance.models import (
     PayrollYear,
@@ -49,7 +49,7 @@ class AllowanceTypeViewSet(HospitalScopedViewSet):
     """Manage allowance types"""
     queryset = AllowanceType.objects.all()
     serializer_class = AllowanceTypeSerializer
-    permission_classes = [IsAuthenticated, IsHRUser]
+    permission_classes = [IsAuthenticated, IsHRUser | IsFinanceManager]
     filterset_fields = ['code', 'is_active']
     search_fields = ['code', 'name']
 
@@ -58,7 +58,7 @@ class DeductionTypeViewSet(HospitalScopedViewSet):
     """Manage deduction types"""
     queryset = DeductionType.objects.all()
     serializer_class = DeductionTypeSerializer
-    permission_classes = [IsAuthenticated, IsHRUser]
+    permission_classes = [IsAuthenticated, IsHRUser | IsFinanceManager]
     filterset_fields = ['code', 'is_mandatory', 'is_active']
     search_fields = ['code', 'name']
 
@@ -67,7 +67,7 @@ class SalaryStructureViewSet(HospitalScopedViewSet):
     """Manage salary structures"""
     queryset = SalaryStructure.objects.all()
     serializer_class = SalaryStructureSerializer
-    permission_classes = [IsAuthenticated, IsHRManager]
+    permission_classes = [IsAuthenticated, IsHRManager | IsFinanceManager]
     filterset_fields = ['name', 'is_active']
     search_fields = ['name']
     

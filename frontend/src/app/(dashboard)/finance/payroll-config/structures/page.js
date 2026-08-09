@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, Plus, Trash2, Edit, Eye } from "lucide-react";
+import { AlertCircle, ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { getSalaryStructures, deleteSalaryStructure } from "@/lib/api/finance";
 import toast from "react-hot-toast";
 
@@ -153,23 +153,10 @@ export default function SalaryStructuresPage() {
                 </div>
 
                 <div className="flex gap-2 ml-4">
-                  <Link
-                    href={`/finance/payroll-config/structures/${structure.id}`}
-                  >
-                    <button className="p-2 text-gray-600 hover:text-blue-600">
-                      <Eye size={18} />
-                    </button>
-                  </Link>
-                  <Link
-                    href={`/finance/payroll-config/structures/${structure.id}/edit`}
-                  >
-                    <button className="p-2 text-gray-600 hover:text-blue-600">
-                      <Edit size={18} />
-                    </button>
-                  </Link>
                   <button
                     onClick={() => handleDelete(structure.id)}
                     disabled={deleting === structure.id}
+                    title="Delete salary structure"
                     className="p-2 text-gray-600 hover:text-red-600 disabled:opacity-50"
                   >
                     <Trash2 size={18} />
