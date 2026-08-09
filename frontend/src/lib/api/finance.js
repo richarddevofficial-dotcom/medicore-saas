@@ -99,6 +99,17 @@ export async function getExpenseCategories(params = {}) {
   }
 }
 
+export async function createExpenseCategory(data) {
+  try {
+    const response = await apiClient.post("/expenses/categories/", data);
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.detail || "Failed to create expense category",
+    );
+  }
+}
+
 export async function getExpenses(params = {}) {
   try {
     const response = await apiClient.get("/expenses/expenses/", { params });

@@ -4,13 +4,20 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { createExpense, getExpenseCategories } from "@/lib/api/finance";
+import {
+  createExpense,
+  createExpenseCategory,
+  getExpenseCategories,
+} from "@/lib/api/finance";
 import toast from "react-hot-toast";
 
 export default function CreateExpensePage() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [categories, setCategories] = useState([]);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState({ code: "", name: "" });
   const [errors, setErrors] = useState({});
 
   const [formData, setFormData] = useState({
@@ -27,7 +34,9 @@ export default function CreateExpensePage() {
     async function loadCategories() {
       try {
         const data = await getExpenseCategories({ is_active: true });
-        setCategories(Array.isArray(data) ? data : data.results || []);
+        const rows = Array.isArray(data) ? data : data.results || [];
+        setCategories(rows);
+        setShowCategoryForm(rows.length === 0);
       } catch (error) {
         toast.error(
           error instanceof Error ? error.message : "Failed to load categories",
@@ -37,6 +46,43 @@ export default function CreateExpensePage() {
 
     loadCategories();
   }, []);
+
+  async function handleCreateCategory() {
+    const code = newCategory.code.trim().toUpperCase();
+    const name = newCategory.name.trim();
+    if (!code || !name) {
+      toast.error("Category code and name are required");
+      return;
+    }
+
+    try {
+      setCreatingCategory(true);
+      const category = await createExpenseCategory({
+        code,
+        name,
+        is_active: true,
+      });
+      setCategories((previous) => [...previous, category]);
+      setFormData((previous) => ({
+        ...previous,
+        category: String(category.id),
+      }));
+      setErrors((previous) => {
+        const nextErrors = { ...previous };
+        delete nextErrors.category;
+        return nextErrors;
+      });
+      setNewCategory({ code: "", name: "" });
+      setShowCategoryForm(false);
+      toast.success("Expense category created");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create category",
+      );
+    } finally {
+      setCreatingCategory(false);
+    }
+  }
 
   function handleChange(e) {
     const { name, value } = e.target;
@@ -107,12 +153,24 @@ export default function CreateExpensePage() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label
-              htmlFor="category"
-              className="block text-sm font-medium text-gray-700 mb-2"
-            >
-              Category *
-            </label>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <label
+                htmlFor="category"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Category *
+              </label>
+              {!showCategoryForm && (
+                <button
+                  type="button"
+                  onClick={() => setShowCategoryForm(true)}
+                  className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700"
+                >
+                  <Plus size={15} />
+                  New category
+                </button>
+              )}
+            </div>
             <select
               id="category"
               name="category"
@@ -129,6 +187,74 @@ export default function CreateExpensePage() {
             </select>
             {errors.category && (
               <p className="text-red-600 text-sm mt-1">{errors.category}</p>
+            )}
+            {showCategoryForm && (
+              <div className="mt-3 border-l-2 border-blue-500 pl-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor="new_category_code"
+                      className="mb-1 block text-xs font-medium text-gray-600"
+                    >
+                      Category code
+                    </label>
+                    <input
+                      id="new_category_code"
+                      value={newCategory.code}
+                      onChange={(event) =>
+                        setNewCategory((previous) => ({
+                          ...previous,
+                          code: event.target.value,
+                        }))
+                      }
+                      placeholder="e.g., UTILITIES"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="new_category_name"
+                      className="mb-1 block text-xs font-medium text-gray-600"
+                    >
+                      Category name
+                    </label>
+                    <input
+                      id="new_category_name"
+                      value={newCategory.name}
+                      onChange={(event) =>
+                        setNewCategory((previous) => ({
+                          ...previous,
+                          name: event.target.value,
+                        }))
+                      }
+                      placeholder="e.g., Utilities"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCreateCategory}
+                    disabled={creatingCategory}
+                    className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    {creatingCategory && (
+                      <Loader2 size={15} className="animate-spin" />
+                    )}
+                    Create category
+                  </button>
+                  {categories.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCategoryForm(false)}
+                      className="px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 
