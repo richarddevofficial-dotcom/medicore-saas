@@ -505,11 +505,6 @@ const navigationByRole = {
         { name: "Expenses", href: "/finance/expenses", icon: Receipt },
         { name: "Payroll", href: "/finance/payroll", icon: Wallet },
         {
-          name: "Payroll Config",
-          href: "/finance/payroll-config",
-          icon: Sliders,
-        },
-        {
           name: "Chart of Accounts",
           href: "/finance/accounting",
           icon: BookOpen,

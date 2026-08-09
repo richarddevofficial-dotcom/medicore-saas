@@ -126,7 +126,7 @@ export default function PayrollYearsPage() {
               {payrollYears.map((year) => (
                 <tr key={year.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 text-sm font-semibold text-gray-900">
-                    {year.name}
+                    {year.year}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600">
                     {new Date(year.start_date).toLocaleDateString()}

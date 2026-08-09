@@ -40,7 +40,7 @@ class PayrollYearViewSet(HospitalScopedViewSet):
     """Manage payroll years"""
     queryset = PayrollYear.objects.all()
     serializer_class = PayrollYearSerializer
-    permission_classes = [IsAuthenticated, IsHRManager]
+    permission_classes = [IsAuthenticated, IsHRManager | IsFinanceManager]
     filterset_fields = ['year', 'is_active']
     search_fields = ['year']
 

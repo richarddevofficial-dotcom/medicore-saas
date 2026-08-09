@@ -18,11 +18,41 @@ from finance.models import (
 )
 
 
+def validate_hospital_unique(serializer, model, field_name, attrs):
+    request = serializer.context.get('request')
+    user = getattr(request, 'user', None)
+    hospital_id = get_user_hospital_id(user)
+    if user and user.is_superuser:
+        hospital_id = request.data.get('hospital') or hospital_id
+
+    value = attrs.get(
+        field_name,
+        getattr(serializer.instance, field_name, None),
+    )
+    if hospital_id is None or value is None:
+        return
+
+    queryset = model.objects.filter(
+        hospital_id=hospital_id,
+        **{field_name: value},
+    )
+    if serializer.instance is not None:
+        queryset = queryset.exclude(pk=serializer.instance.pk)
+    if queryset.exists():
+        raise serializers.ValidationError({
+            field_name: f'A record with this {field_name} already exists.'
+        })
+
+
 class AllowanceTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = AllowanceType
         fields = ['id', 'code', 'name', 'description', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
+
+    def validate(self, attrs):
+        validate_hospital_unique(self, AllowanceType, 'code', attrs)
+        return attrs
 
 
 class DeductionTypeSerializer(serializers.ModelSerializer):
@@ -30,6 +60,10 @@ class DeductionTypeSerializer(serializers.ModelSerializer):
         model = DeductionType
         fields = ['id', 'code', 'name', 'description', 'is_mandatory', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
+
+    def validate(self, attrs):
+        validate_hospital_unique(self, DeductionType, 'code', attrs)
+        return attrs
 
 
 class SalaryStructureAllowanceSerializer(serializers.ModelSerializer):
@@ -90,6 +124,7 @@ class SalaryStructureSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
 
     def validate(self, attrs):
+        validate_hospital_unique(self, SalaryStructure, 'name', attrs)
         request = self.context.get('request')
         user = getattr(request, 'user', None)
         hospital_id = get_user_hospital_id(user)
@@ -174,6 +209,22 @@ class PayrollYearSerializer(serializers.ModelSerializer):
         model = PayrollYear
         fields = ['id', 'year', 'start_date', 'end_date', 'is_active', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
+
+    def validate(self, attrs):
+        validate_hospital_unique(self, PayrollYear, 'year', attrs)
+        start_date = attrs.get(
+            'start_date',
+            getattr(self.instance, 'start_date', None),
+        )
+        end_date = attrs.get(
+            'end_date',
+            getattr(self.instance, 'end_date', None),
+        )
+        if start_date and end_date and start_date >= end_date:
+            raise serializers.ValidationError({
+                'end_date': 'End date must be after start date.'
+            })
+        return attrs
 
 
 class EmployeeSalarySerializer(serializers.ModelSerializer):

@@ -318,11 +318,10 @@ export async function deleteSalaryStructure(id) {
   }
 }
 
-export async function calculateSalary(id, data) {
+export async function calculateSalary(id) {
   try {
-    const response = await apiClient.post(
+    const response = await apiClient.get(
       `/finance/salary-structures/${id}/calculate_salary/`,
-      data,
     );
     return response.data;
   } catch (error) {

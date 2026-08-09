@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 export default function NewPayrollYearPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
-    name: new Date().getFullYear().toString(),
+    year: new Date().getFullYear().toString(),
     start_date: "",
     end_date: "",
     is_active: true,
@@ -38,7 +38,7 @@ export default function NewPayrollYearPage() {
 
     // Validation
     const newErrors = {};
-    if (!formData.name.trim()) newErrors.name = "Year name is required";
+    if (!formData.year.trim()) newErrors.year = "Year is required";
     if (!formData.start_date) newErrors.start_date = "Start date is required";
     if (!formData.end_date) newErrors.end_date = "End date is required";
 
@@ -81,27 +81,27 @@ export default function NewPayrollYearPage() {
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Year Name */}
+          {/* Year */}
           <div>
             <label
-              htmlFor="name"
+              htmlFor="year"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
-              Year Name *
+              Year *
             </label>
             <input
-              type="text"
-              id="name"
-              name="name"
-              value={formData.name}
+              type="number"
+              id="year"
+              name="year"
+              value={formData.year}
               onChange={handleChange}
-              placeholder="e.g., 2024-2025"
+              placeholder="e.g., 2027"
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.name ? "border-red-500" : "border-gray-300"
+                errors.year ? "border-red-500" : "border-gray-300"
               }`}
             />
-            {errors.name && (
-              <p className="text-red-600 text-sm mt-1">{errors.name}</p>
+            {errors.year && (
+              <p className="text-red-600 text-sm mt-1">{errors.year}</p>
             )}
           </div>
 

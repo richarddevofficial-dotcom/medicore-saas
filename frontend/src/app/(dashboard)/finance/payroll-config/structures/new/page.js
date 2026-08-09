@@ -7,12 +7,17 @@ import {
   createSalaryStructure,
   getAllowanceTypes,
   getDeductionTypes,
+  getSalaryStructure,
+  updateSalaryStructure,
 } from "@/lib/api/finance";
 import toast from "react-hot-toast";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 export default function NewSalaryStructurePage() {
   const router = useRouter();
+  const params = useParams();
+  const structureId = params?.id;
+  const isEditing = Boolean(structureId);
   const [allowances, setAllowances] = useState([]);
   const [deductions, setDeductions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,8 +53,31 @@ export default function NewSalaryStructurePage() {
           ? deductionsData
           : deductionsData.results || [],
       );
+      if (isEditing) {
+        const structure = await getSalaryStructure(structureId);
+        setFormData({
+          name: structure.name || "",
+          description: structure.description || "",
+          base_salary: structure.base_salary || "",
+          is_active: structure.is_active ?? true,
+          allowances: (structure.allowances || []).map((item) => ({
+            allowance_type_id: item.allowance_type.id,
+            amount: item.amount,
+            is_percentage: item.is_percentage,
+          })),
+          deductions: (structure.deductions || []).map((item) => ({
+            deduction_type_id: item.deduction_type.id,
+            amount: item.amount,
+            is_percentage: item.is_percentage,
+          })),
+        });
+      }
     } catch (err) {
-      toast.error("Failed to load allowance and deduction types");
+      toast.error(
+        isEditing
+          ? "Failed to load salary structure"
+          : "Failed to load allowance and deduction types",
+      );
     } finally {
       setLoading(false);
     }
@@ -153,7 +181,7 @@ export default function NewSalaryStructurePage() {
 
     try {
       setSubmitting(true);
-      await createSalaryStructure({
+      const payload = {
         name: formData.name,
         description: formData.description,
         base_salary: parseFloat(formData.base_salary),
@@ -166,8 +194,15 @@ export default function NewSalaryStructurePage() {
           ...item,
           amount: parseFloat(item.amount),
         })),
-      });
-      toast.success("Salary structure created successfully");
+      };
+      if (isEditing) {
+        await updateSalaryStructure(structureId, payload);
+      } else {
+        await createSalaryStructure(payload);
+      }
+      toast.success(
+        `Salary structure ${isEditing ? "updated" : "created"} successfully`,
+      );
       router.push("/finance/payroll-config/structures");
     } catch (err) {
       toast.error(
@@ -200,7 +235,7 @@ export default function NewSalaryStructurePage() {
 
       <div className="rounded-lg border bg-white p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-6">
-          New Salary Structure
+          {isEditing ? "Edit" : "New"} Salary Structure
         </h1>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -534,7 +569,13 @@ export default function NewSalaryStructurePage() {
               disabled={submitting}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
             >
-              {submitting ? "Creating..." : "Create Structure"}
+              {submitting
+                ? isEditing
+                  ? "Updating..."
+                  : "Creating..."
+                : isEditing
+                  ? "Update Structure"
+                  : "Create Structure"}
             </button>
           </div>
         </form>

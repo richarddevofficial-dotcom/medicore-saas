@@ -21,7 +21,7 @@ class TimestampedModel(models.Model):
 class PayrollYear(TimestampedModel):
     """Financial year for payroll"""
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE, related_name='payroll_years')
-    year = models.IntegerField(unique=True)
+    year = models.IntegerField()
     start_date = models.DateField()
     end_date = models.DateField()
     is_active = models.BooleanField(default=True)

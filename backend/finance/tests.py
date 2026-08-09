@@ -15,6 +15,7 @@ from finance.models import (
 	DeductionType,
 	EmployeeSalary,
 	JournalEntry,
+	PayrollYear,
 	SalaryPayment,
 	SalarySlip,
 	SalaryStructure,
@@ -693,6 +694,15 @@ class PayrollSecurityWorkflowTests(TestCase):
 		)
 		self.client.force_authenticate(finance_manager)
 
+		payroll_year = self.client.post(
+			"/api/v1/finance/payroll-years/",
+			{
+				"year": 2027,
+				"start_date": "2027-01-01",
+				"end_date": "2027-12-31",
+			},
+			format="json",
+		)
 		allowance = self.client.post(
 			"/api/v1/finance/allowance-types/",
 			{"code": "TRAVEL", "name": "Travel"},
@@ -722,6 +732,131 @@ class PayrollSecurityWorkflowTests(TestCase):
 			format="json",
 		)
 
+		self.assertEqual(payroll_year.status_code, 201, payroll_year.data)
 		self.assertEqual(allowance.status_code, 201, allowance.data)
 		self.assertEqual(deduction.status_code, 201, deduction.data)
 		self.assertEqual(structure.status_code, 201, structure.data)
+
+	def test_salary_structure_update_replaces_components(self):
+		allowance = AllowanceType.objects.create(
+			hospital=self.hospital,
+			code="MEAL",
+			name="Meal",
+		)
+		deduction = DeductionType.objects.create(
+			hospital=self.hospital,
+			code="PENSION",
+			name="Pension",
+		)
+		self.client.force_authenticate(self.admin)
+
+		response = self.client.put(
+			f"/api/v1/finance/salary-structures/{self.structure.id}/",
+			{
+				"name": "Updated Standard",
+				"description": "Updated through payroll configuration",
+				"base_salary": "1800.00",
+				"is_active": True,
+				"allowances": [{
+					"allowance_type_id": allowance.id,
+					"amount": "10.00",
+					"is_percentage": True,
+				}],
+				"deductions": [{
+					"deduction_type_id": deduction.id,
+					"amount": "25.00",
+					"is_percentage": False,
+				}],
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 200, response.data)
+		self.structure.refresh_from_db()
+		self.assertEqual(self.structure.name, "Updated Standard")
+		self.assertEqual(self.structure.allowances.count(), 1)
+		self.assertEqual(self.structure.deductions.count(), 1)
+
+	def test_payroll_year_is_unique_per_hospital(self):
+		PayrollYear.objects.create(
+			hospital=self.other_hospital,
+			year=2027,
+			start_date="2027-01-01",
+			end_date="2027-12-31",
+		)
+		self.client.force_authenticate(self.admin)
+
+		response = self.client.post(
+			"/api/v1/finance/payroll-years/",
+			{
+				"year": 2027,
+				"start_date": "2027-01-01",
+				"end_date": "2027-12-31",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 201, response.data)
+
+	def test_payroll_year_rejects_reversed_dates(self):
+		self.client.force_authenticate(self.admin)
+
+		response = self.client.post(
+			"/api/v1/finance/payroll-years/",
+			{
+				"year": 2027,
+				"start_date": "2027-12-31",
+				"end_date": "2027-01-01",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 400, response.data)
+		self.assertIn("end_date", response.data)
+
+	def test_payroll_configuration_rejects_hospital_duplicates(self):
+		PayrollYear.objects.create(
+			hospital=self.hospital,
+			year=2027,
+			start_date="2027-01-01",
+			end_date="2027-12-31",
+		)
+		AllowanceType.objects.create(
+			hospital=self.hospital,
+			code="HOUSE",
+			name="Housing",
+		)
+		DeductionType.objects.create(
+			hospital=self.hospital,
+			code="TAX",
+			name="Tax",
+		)
+		self.client.force_authenticate(self.admin)
+
+		requests = (
+			(
+				"/api/v1/finance/payroll-years/",
+				{
+					"year": 2027,
+					"start_date": "2027-01-01",
+					"end_date": "2027-12-31",
+				},
+			),
+			(
+				"/api/v1/finance/allowance-types/",
+				{"code": "HOUSE", "name": "Another Housing"},
+			),
+			(
+				"/api/v1/finance/deduction-types/",
+				{"code": "TAX", "name": "Another Tax"},
+			),
+			(
+				"/api/v1/finance/salary-structures/",
+				{"name": "Standard", "base_salary": "2000.00"},
+			),
+		)
+
+		for endpoint, payload in requests:
+			with self.subTest(endpoint=endpoint):
+				response = self.client.post(endpoint, payload, format="json")
+				self.assertEqual(response.status_code, 400, response.data)

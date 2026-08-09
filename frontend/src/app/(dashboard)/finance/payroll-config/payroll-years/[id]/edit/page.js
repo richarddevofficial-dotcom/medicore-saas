@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { getPayrollYears, updatePayrollYear } from "@/lib/api/finance";
+import { getPayrollYear, updatePayrollYear } from "@/lib/api/finance";
 import toast from "react-hot-toast";
 import { useRouter, useParams } from "next/navigation";
 
@@ -13,7 +13,7 @@ export default function EditPayrollYearPage() {
   const yearId = params.id;
 
   const [formData, setFormData] = useState({
-    name: "",
+    year: "",
     start_date: "",
     end_date: "",
     is_active: true,
@@ -32,14 +32,11 @@ export default function EditPayrollYearPage() {
     try {
       setLoading(true);
       setError("");
-      const data = await getPayrollYears({ id: yearId });
-      const year = Array.isArray(data)
-        ? data.find((y) => y.id === parseInt(yearId))
-        : data.results?.find((y) => y.id === parseInt(yearId));
+      const year = await getPayrollYear(yearId);
 
       if (year) {
         setFormData({
-          name: year.name || "",
+          year: year.year?.toString() || "",
           start_date: year.start_date || "",
           end_date: year.end_date || "",
           is_active: year.is_active ?? true,
@@ -74,7 +71,7 @@ export default function EditPayrollYearPage() {
 
     // Validation
     const newErrors = {};
-    if (!formData.name.trim()) newErrors.name = "Year name is required";
+    if (!formData.year.trim()) newErrors.year = "Year is required";
     if (!formData.start_date) newErrors.start_date = "Start date is required";
     if (!formData.end_date) newErrors.end_date = "End date is required";
 
@@ -131,26 +128,26 @@ export default function EditPayrollYearPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Year Name */}
+          {/* Year */}
           <div>
             <label
-              htmlFor="name"
+              htmlFor="year"
               className="block text-sm font-medium text-gray-700 mb-2"
             >
-              Year Name *
+              Year *
             </label>
             <input
-              type="text"
-              id="name"
-              name="name"
-              value={formData.name}
+              type="number"
+              id="year"
+              name="year"
+              value={formData.year}
               onChange={handleChange}
               className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors.name ? "border-red-500" : "border-gray-300"
+                errors.year ? "border-red-500" : "border-gray-300"
               }`}
             />
-            {errors.name && (
-              <p className="text-red-600 text-sm mt-1">{errors.name}</p>
+            {errors.year && (
+              <p className="text-red-600 text-sm mt-1">{errors.year}</p>
             )}
           </div>
 
