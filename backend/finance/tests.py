@@ -226,6 +226,24 @@ class AccountingPermissionsTests(TestCase):
 				response = self.client.get(endpoint)
 				self.assertEqual(response.status_code, 200)
 
+	def test_finance_roles_can_load_patient_and_billing_dashboard_metrics(self):
+		for index, role in enumerate(("finance", "finance_manager", "cashier")):
+			with self.subTest(role=role):
+				user = User.objects.create_user(username=f"dashboard-{role}")
+				StaffProfile.objects.create(
+					user=user,
+					hospital=self.hospital,
+					role=role,
+					phone=f"123456789{index + 2}",
+				)
+				self.client.force_authenticate(user=user)
+
+				patient_stats = self.client.get("/api/v1/patients/stats/")
+				billing_stats = self.client.get("/api/v1/bills/stats/")
+
+				self.assertEqual(patient_stats.status_code, 200)
+				self.assertEqual(billing_stats.status_code, 200)
+
 	def test_accountant_can_view_payroll_slips(self):
 		self.client.force_authenticate(user=self.accountant)
 

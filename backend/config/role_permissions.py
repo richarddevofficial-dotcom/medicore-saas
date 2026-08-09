@@ -213,6 +213,9 @@ class CanViewBillingStats(BasePermission):
         "lab_technician",
         "pharmacist",
         "accountant",
+        "finance",
+        "finance_manager",
+        "cashier",
     }
 
     def has_permission(self, request, view):
@@ -440,6 +443,9 @@ class CanViewPatientStats(BasePermission):
         "radiographer",
         "pharmacist",
         "accountant",
+        "finance",
+        "finance_manager",
+        "cashier",
     }
 
     def has_permission(self, request, view):
