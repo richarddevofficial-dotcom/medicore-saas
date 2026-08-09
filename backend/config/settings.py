@@ -216,7 +216,7 @@ CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = _env_list(
     'CORS_ALLOWED_ORIGINS',
     # Dev: localhost, Prod: medicorecloud.com domains
-    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002' if DEBUG else 'https://medicore.com,https://www.medicore.com,https://app.medicore.com'
+    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://127.0.0.1:3002' if DEBUG else 'https://medicore.com,https://www.medicore.com,https://app.medicore.com'
 )
 
 CORS_ALLOW_CREDENTIALS = True
@@ -225,7 +225,7 @@ CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = _env_list(
     'CSRF_TRUSTED_ORIGINS',
     # Dev: localhost, Prod: medicorecloud.com domains
-    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3002,http://127.0.0.1:3002' if DEBUG else 'https://medicore.com,https://www.medicore.com,https://app.medicore.com'
+    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://127.0.0.1:3002' if DEBUG else 'https://medicore.com,https://www.medicore.com,https://app.medicore.com'
 )
 
 # ✅ CSRF Configuration (Enhanced Security)
