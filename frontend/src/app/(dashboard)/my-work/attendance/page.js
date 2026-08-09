@@ -91,6 +91,15 @@ export default function MyAttendancePage() {
 
   if (loading) return <StateMessage message="Loading attendance history..." />;
 
+  const clockInUnavailableReason = attendanceStatus?.can_clock_in
+    ? ""
+    : attendanceStatus?.message || "Clock-in is currently unavailable.";
+  const clockOutUnavailableReason = attendanceStatus?.can_clock_out
+    ? ""
+    : attendanceStatus?.attendance?.clock_out
+      ? "Attendance is already completed for this shift."
+      : "Clock out becomes available after you clock in.";
+
   return (
     <div className="space-y-5">
       {error && <StateMessage message={error} error />}
@@ -127,33 +136,49 @@ export default function MyAttendancePage() {
             )}
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              disabled={!attendanceStatus?.can_clock_in || updatingAction}
-              onClick={() => handleAttendanceAction(clockIn, "clock-in")}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {updatingAction === "clock-in" ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <LogIn size={18} />
-              )}
-              Clock In
-            </button>
-            <button
-              type="button"
-              disabled={!attendanceStatus?.can_clock_out || updatingAction}
-              onClick={() => handleAttendanceAction(clockOut, "clock-out")}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {updatingAction === "clock-out" ? (
-                <Loader2 size={18} className="animate-spin" />
-              ) : (
-                <LogOut size={18} />
-              )}
-              Clock Out
-            </button>
+          <div className="max-w-sm space-y-2 sm:text-right">
+            <div className="flex flex-wrap gap-3 sm:justify-end">
+              <button
+                type="button"
+                disabled={!attendanceStatus?.can_clock_in || updatingAction}
+                onClick={() => handleAttendanceAction(clockIn, "clock-in")}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {updatingAction === "clock-in" ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <LogIn size={18} />
+                )}
+                Clock In
+              </button>
+              <button
+                type="button"
+                disabled={!attendanceStatus?.can_clock_out || updatingAction}
+                onClick={() => handleAttendanceAction(clockOut, "clock-out")}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-gray-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {updatingAction === "clock-out" ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <LogOut size={18} />
+                )}
+                Clock Out
+              </button>
+            </div>
+            {(clockInUnavailableReason || clockOutUnavailableReason) && (
+              <p className="text-xs leading-5 text-gray-500">
+                {clockInUnavailableReason && (
+                  <span className="block">
+                    Clock In: {clockInUnavailableReason}
+                  </span>
+                )}
+                {clockOutUnavailableReason && (
+                  <span className="block">
+                    Clock Out: {clockOutUnavailableReason}
+                  </span>
+                )}
+              </p>
+            )}
           </div>
         </div>
       </section>
