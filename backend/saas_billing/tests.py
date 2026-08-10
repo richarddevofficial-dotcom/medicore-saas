@@ -7,11 +7,12 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from auditlog.models import AuditLog
 from billing.models import SubscriptionPayment
 from hospitals.models import Hospital
 from staff.models import StaffProfile
 
-from .models import HospitalSubscription, SubscriptionPlan
+from .models import HospitalSubscription, Invoice, Payment, SubscriptionPlan
 from .plan_change_services import create_plan_change_invoice
 
 
@@ -298,3 +299,142 @@ class HospitalBillingAuthorizationTests(TestCase):
 		self.assertEqual(invoice.service_fee_amount, Decimal("0.00"))
 		self.assertEqual(invoice.subscription_amount, Decimal("40.00"))
 		self.assertEqual(invoice.total_amount, Decimal("40.00"))
+
+
+class SuperAdminBillingCenterTests(TestCase):
+	def setUp(self):
+		self.client = APIClient()
+		self.super_admin = User.objects.create_superuser(
+			username="billing-center@example.com",
+			email="billing-center@example.com",
+			password="Admin@1234",
+		)
+		self.regular_user = User.objects.create_user(
+			username="billing-viewer@example.com",
+			email="billing-viewer@example.com",
+			password="Admin@1234",
+		)
+		self.hospital = Hospital.objects.create(
+			name="Billing Center Hospital",
+			slug="billing-center-hospital",
+			hospital_type="general",
+			registration_number="BILLING-CENTER-001",
+			email="billing-center-hospital@example.com",
+			phone="1234567890",
+			address="123 Main Street",
+			city="Juba",
+			state="Central",
+			country="South Sudan",
+		)
+		self.basic_plan = SubscriptionPlan.objects.create(
+			code="center-basic",
+			name="Center Basic",
+			monthly_price="49.90",
+			service_fee="300.00",
+		)
+		self.pro_plan = SubscriptionPlan.objects.create(
+			code="center-pro",
+			name="Center Professional",
+			monthly_price="89.90",
+			service_fee="500.00",
+		)
+		self.subscription = HospitalSubscription.objects.create(
+			hospital=self.hospital,
+			plan=self.basic_plan,
+			status=HospitalSubscription.STATUS_ACTIVE,
+			current_monthly_price="49.90",
+			current_service_fee="300.00",
+		)
+
+	def test_non_super_admin_cannot_access_payment_center(self):
+		self.client.force_authenticate(user=self.regular_user)
+
+		response = self.client.get("/api/v1/billing-center/payments/")
+
+		self.assertEqual(response.status_code, 403)
+
+	def test_mark_plan_change_invoice_paid_creates_valid_payment_and_applies_plan(self):
+		invoice, _created = create_plan_change_invoice(
+			subscription=self.subscription,
+			target_plan=self.pro_plan,
+		)
+		self.client.force_authenticate(user=self.super_admin)
+
+		response = self.client.post(
+			f"/api/v1/billing-center/invoices/{invoice.id}/mark-paid/",
+			{"reference": "BANK-PLAN-001"},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 201)
+		invoice.refresh_from_db()
+		self.subscription.refresh_from_db()
+		payment = Payment.objects.get(invoice=invoice)
+		self.assertEqual(invoice.status, Invoice.STATUS_PAID)
+		self.assertEqual(payment.payment_type, Payment.TYPE_COMBINED)
+		self.assertEqual(payment.gateway, Payment.GATEWAY_MANUAL)
+		self.assertEqual(self.subscription.plan, self.pro_plan)
+		self.assertTrue(
+			AuditLog.objects.filter(
+				action="mark_subscription_invoice_paid",
+				target=f"invoice:{invoice.id}",
+				hospital=self.hospital,
+			).exists()
+		)
+
+	def test_mark_void_invoice_paid_is_rejected_without_creating_payment(self):
+		invoice, _created = create_plan_change_invoice(
+			subscription=self.subscription,
+			target_plan=self.pro_plan,
+		)
+		invoice.status = Invoice.STATUS_VOID
+		invoice.save(update_fields=["status"])
+		self.client.force_authenticate(user=self.super_admin)
+
+		response = self.client.post(
+			f"/api/v1/billing-center/invoices/{invoice.id}/mark-paid/",
+			{"reference": "BANK-VOID-001"},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertFalse(Payment.objects.filter(invoice=invoice).exists())
+
+	def test_approve_plan_change_payment_marks_invoice_paid_and_applies_plan(self):
+		invoice, _created = create_plan_change_invoice(
+			subscription=self.subscription,
+			target_plan=self.pro_plan,
+		)
+		payment = Payment.objects.create(
+			payment_reference=Payment.generate_reference(),
+			invoice=invoice,
+			hospital=self.hospital,
+			subscription=self.subscription,
+			payment_type=Payment.TYPE_COMBINED,
+			amount=invoice.balance_due,
+			currency=invoice.currency,
+			gateway=Payment.GATEWAY_BANK,
+			status=Payment.STATUS_PENDING,
+		)
+		self.client.force_authenticate(user=self.super_admin)
+
+		response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/approve/",
+			{},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 200)
+		invoice.refresh_from_db()
+		payment.refresh_from_db()
+		self.subscription.refresh_from_db()
+		self.assertEqual(payment.status, Payment.STATUS_SUCCESS)
+		self.assertEqual(invoice.status, Invoice.STATUS_PAID)
+		self.assertEqual(self.subscription.plan, self.pro_plan)
+		self.assertTrue(
+			AuditLog.objects.filter(
+				action="approve_subscription_payment",
+				target=f"payment:{payment.id}",
+				hospital=self.hospital,
+			).exists()
+		)

@@ -12,6 +12,7 @@ from rest_framework.decorators import (
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from auditlog.models import AuditLog
 from hospitals.models import Hospital
 
 from .models import (
@@ -133,6 +134,37 @@ def serialize_recent_payment(payment):
             else None
         ),
     }
+
+
+def payment_type_for_invoice(invoice):
+    if (
+        invoice.service_fee_amount > Decimal("0.00")
+        and invoice.subscription_amount > Decimal("0.00")
+    ):
+        return Payment.TYPE_COMBINED
+    if invoice.service_fee_amount > Decimal("0.00"):
+        return Payment.TYPE_SERVICE_FEE
+    return Payment.TYPE_SUBSCRIPTION
+
+
+def record_billing_center_audit(
+    request,
+    action,
+    target,
+    hospital,
+    changes,
+):
+    AuditLog.objects.create(
+        hospital=hospital,
+        user=request.user.email or request.user.username,
+        role="super_admin",
+        action=action,
+        target=target,
+        action_type="billing",
+        changes=changes,
+        ip_address=request.META.get("REMOTE_ADDR") or None,
+        user_agent=request.META.get("HTTP_USER_AGENT", ""),
+    )
 
 
 @api_view(["GET"])
@@ -1454,6 +1486,7 @@ from django.db import transaction
 from .models import SubscriptionPlan
 from .plan_change_services import (
     PlanChangeError,
+    activate_plan_change,
     validate_target_plan,
 )
 
@@ -3321,6 +3354,20 @@ def billing_center_approve_payment(
         )
     )
 
+    record_billing_center_audit(
+        request=request,
+        action="approve_subscription_payment",
+        target=f"payment:{payment.id}",
+        hospital=payment.hospital,
+        changes={
+            "payment_reference": payment.payment_reference,
+            "invoice_number": invoice.invoice_number,
+            "amount": decimal_value(payment.amount),
+            "currency": payment.currency,
+            "status": payment.status,
+        },
+    )
+
     # Send payment receipt email
     send_payment_receipt_email(payment)
 
@@ -3410,6 +3457,18 @@ def billing_center_reject_payment(
             "gateway_response",
             "updated_at",
         ]
+    )
+
+    record_billing_center_audit(
+        request=request,
+        action="reject_subscription_payment",
+        target=f"payment:{payment.id}",
+        hospital=payment.hospital,
+        changes={
+            "payment_reference": payment.payment_reference,
+            "status": payment.status,
+            "reason": reason,
+        },
     )
 
     return Response(
@@ -3619,12 +3678,31 @@ def billing_center_mark_invoice_paid(
             status=409,
         )
 
+    if invoice.status not in {
+        Invoice.STATUS_PENDING,
+        Invoice.STATUS_OVERDUE,
+    }:
+        return Response(
+            {
+                "error": (
+                    "Only pending or overdue invoices can be marked paid."
+                )
+            },
+            status=400,
+        )
+
     reference = str(
         request.data.get(
             "reference",
             f"MANUAL-{invoice.invoice_number}",
         )
     ).strip()
+
+    if not reference:
+        return Response(
+            {"error": "reference is required."},
+            status=400,
+        )
 
     notes = str(
         request.data.get(
@@ -3636,18 +3714,22 @@ def billing_center_mark_invoice_paid(
     now = timezone.now()
     balance_due = invoice.balance_due
 
+    if balance_due <= Decimal("0.00"):
+        return Response(
+            {"error": "Invoice has no outstanding balance."},
+            status=400,
+        )
+
     payment = Payment.objects.create(
         hospital=invoice.hospital,
         subscription=invoice.subscription,
         invoice=invoice,
-        payment_reference=(
-            f"PAY-MANUAL-{timezone.now().strftime('%Y%m%d%H%M%S')}"
-        ),
+        payment_reference=Payment.generate_reference(),
         transaction_id=reference,
-        payment_type=invoice.invoice_type,
+        payment_type=payment_type_for_invoice(invoice),
         amount=balance_due,
         currency=invoice.currency,
-        gateway="manual_admin",
+        gateway=Payment.GATEWAY_MANUAL,
         payment_method="manual",
         status=Payment.STATUS_SUCCESS,
         paid_at=now,
@@ -3677,6 +3759,15 @@ def billing_center_mark_invoice_paid(
 
     if subscription:
         if (
+            invoice.invoice_type == Invoice.TYPE_ADJUSTMENT
+            and (invoice.metadata or {}).get("target_plan_id")
+        ):
+            subscription = activate_plan_change(
+                subscription=subscription,
+                invoice=invoice,
+            )
+
+        if (
             invoice.service_fee_amount
             > Decimal("0.00")
         ):
@@ -3703,6 +3794,22 @@ def billing_center_mark_invoice_paid(
             )
         )
 
+    record_billing_center_audit(
+        request=request,
+        action="mark_subscription_invoice_paid",
+        target=f"invoice:{invoice.id}",
+        hospital=invoice.hospital,
+        changes={
+            "invoice_number": invoice.invoice_number,
+            "payment_reference": payment.payment_reference,
+            "transaction_reference": reference,
+            "amount": decimal_value(payment.amount),
+            "currency": payment.currency,
+        },
+    )
+
+    send_payment_receipt_email(payment)
+
     return Response(
         {
             "success": True,
@@ -3713,6 +3820,9 @@ def billing_center_mark_invoice_paid(
             "payment": serialize_billing_payment(
                 payment
             ),
+            "subscription_status": subscription.status,
+            "receipt_email_sent": payment.receipt_delivery_status == 'sent',
+            "receipt_email_error": payment.receipt_last_error or None,
         },
         status=201,
     )
