@@ -345,6 +345,12 @@ class SuperAdminBillingCenterTests(TestCase):
 			current_monthly_price="49.90",
 			current_service_fee="300.00",
 		)
+		StaffProfile.objects.create(
+			user=self.regular_user,
+			hospital=self.hospital,
+			role="admin",
+			phone="700003",
+		)
 
 	def test_non_super_admin_cannot_access_payment_center(self):
 		self.client.force_authenticate(user=self.regular_user)
@@ -430,6 +436,68 @@ class SuperAdminBillingCenterTests(TestCase):
 		self.subscription.refresh_from_db()
 		self.assertEqual(payment.status, Payment.STATUS_SUCCESS)
 		self.assertEqual(invoice.status, Invoice.STATUS_PAID)
+		self.assertEqual(self.subscription.plan, self.pro_plan)
+		self.assertTrue(
+			AuditLog.objects.filter(
+				action="approve_subscription_payment",
+				target=f"payment:{payment.id}",
+				hospital=self.hospital,
+			).exists()
+		)
+
+	def test_hospital_admin_submits_payment_then_super_admin_approves_it(self):
+		invoice, _created = create_plan_change_invoice(
+			subscription=self.subscription,
+			target_plan=self.pro_plan,
+		)
+		self.client.force_authenticate(user=self.regular_user)
+
+		submit_response = self.client.post(
+			"/api/v1/saas-billing/payments/manual/",
+			{
+				"invoice_id": invoice.id,
+				"amount": str(invoice.balance_due),
+				"transaction_id": "BANK-E2E-001",
+				"payment_method": "bank_transfer",
+				"notes": "Verified test transfer",
+			},
+			format="json",
+		)
+
+		self.assertEqual(submit_response.status_code, 201)
+		payment = Payment.objects.get(
+			id=submit_response.data["payment"]["id"],
+		)
+		self.assertEqual(payment.status, Payment.STATUS_PENDING)
+		self.assertEqual(payment.hospital, self.hospital)
+		self.assertEqual(payment.invoice, invoice)
+
+		payments_response = self.client.get(
+			"/api/v1/saas-billing/payments/",
+		)
+		self.assertEqual(payments_response.status_code, 200)
+		self.assertEqual(payments_response.data["count"], 1)
+		self.assertEqual(
+			payments_response.data["payments"][0]["id"],
+			payment.id,
+		)
+
+		self.client.force_authenticate(user=self.super_admin)
+		approve_response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/approve/",
+			{},
+			format="json",
+		)
+
+		self.assertEqual(approve_response.status_code, 200)
+		payment.refresh_from_db()
+		invoice.refresh_from_db()
+		self.subscription.refresh_from_db()
+		self.assertEqual(payment.status, Payment.STATUS_SUCCESS)
+		self.assertIsNotNone(payment.paid_at)
+		self.assertEqual(payment.receipt_delivery_status, "sent")
+		self.assertEqual(invoice.status, Invoice.STATUS_PAID)
+		self.assertEqual(invoice.amount_paid, invoice.total_amount)
 		self.assertEqual(self.subscription.plan, self.pro_plan)
 		self.assertTrue(
 			AuditLog.objects.filter(

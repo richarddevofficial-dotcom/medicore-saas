@@ -401,6 +401,16 @@ def hospital_payments(request):
         .order_by("-created_at")
     )
 
+    return Response(
+        {
+            "count": payments.count(),
+            "payments": [
+                serialize_payment(payment)
+                for payment in payments
+            ],
+        }
+    )
+
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -478,16 +488,6 @@ def request_plan_change(request):
             "invoice": serialize_invoice(invoice),
         },
         status=201 if created else 200,
-    )
-
-    return Response(
-        {
-            "count": payments.count(),
-            "payments": [
-                serialize_payment(payment)
-                for payment in payments
-            ],
-        }
     )
 
 
