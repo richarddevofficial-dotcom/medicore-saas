@@ -194,8 +194,12 @@ export default function PaymentCenterPage() {
       setRejectionReason("");
       await loadPayments(page);
     } catch (requestError) {
+      const responseData = requestError.response?.data;
       const message =
-        requestError.response?.data?.error || "Unable to reject payment.";
+        responseData?.error ||
+        responseData?.detail ||
+        responseData?.message ||
+        "Unable to reject payment.";
 
       setError(message);
       toast.error(message);

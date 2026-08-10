@@ -1041,6 +1041,11 @@ class SuperAdminBillingCenterTests(TestCase):
 			{"reason": ""},
 			format="json",
 		)
+		oversized_reason_response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/reject/",
+			{"reason": "x" * 501},
+			format="json",
+		)
 		response = self.client.post(
 			f"/api/v1/billing-center/payments/{payment.id}/reject/",
 			{"reason": "Reference could not be verified."},
@@ -1048,7 +1053,9 @@ class SuperAdminBillingCenterTests(TestCase):
 		)
 
 		self.assertEqual(missing_reason_response.status_code, 400)
+		self.assertEqual(oversized_reason_response.status_code, 400)
 		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data["payment"]["status_label"], "Rejected")
 		payment.refresh_from_db()
 		self.subscription.refresh_from_db()
 		self.assertEqual(payment.status, Payment.STATUS_FAILED)
@@ -1056,7 +1063,22 @@ class SuperAdminBillingCenterTests(TestCase):
 			payment.rejection_reason,
 			"Reference could not be verified.",
 		)
+		self.assertEqual(payment.rejected_by, self.super_admin)
+		self.assertIsNotNone(payment.rejected_at)
 		self.assertEqual(self.subscription.end_date, original_end_date)
+		self.assertTrue(
+			AuditLog.objects.filter(
+				action="PAYMENT_REJECTED",
+				target=f"payment:{payment.id}",
+				hospital=self.hospital,
+			).exists()
+		)
+		duplicate_response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/reject/",
+			{"reason": "Second decision"},
+			format="json",
+		)
+		self.assertEqual(duplicate_response.status_code, 400)
 
 	def test_hospital_admin_submits_payment_then_super_admin_approves_it(self):
 		invoice, _created = create_plan_change_invoice(

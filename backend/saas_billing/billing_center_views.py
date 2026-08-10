@@ -990,6 +990,7 @@ def serialize_billing_payment(payment):
         "billing_cycle": payment.billing_cycle,
         "payment_date": payment.payment_date.isoformat(),
         "status": payment.status,
+        "status_label": payment.get_status_display(),
         "paid_at": (
             payment.paid_at.isoformat()
             if payment.paid_at
@@ -3668,6 +3669,12 @@ def billing_center_reject_payment(
     if not reason:
         return Response(
             {"error": "reason is required."},
+            status=400,
+        )
+
+    if len(reason) > 500:
+        return Response(
+            {"error": "reason must be 500 characters or fewer."},
             status=400,
         )
 
