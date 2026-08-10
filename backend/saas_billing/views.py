@@ -415,85 +415,6 @@ def hospital_payments(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 @transaction.atomic
-def request_plan_change(request):
-    hospital = get_user_hospital(request.user)
-    staff_profile = getattr(request.user, "staff_profile", None)
-
-    if not hospital:
-        return Response({"error": "Hospital account not found."}, status=404)
-
-    if not staff_profile or staff_profile.role != "admin":
-        return Response(
-            {
-                "error": (
-                    "Only the hospital administrator can request "
-                    "a plan change."
-                )
-            },
-            status=403,
-        )
-
-    target_plan_code = str(request.data.get("target_plan_code", "")).strip().lower()
-    billing_cycle_months = int(request.data.get("billing_cycle_months") or 1)
-
-    if not target_plan_code:
-        return Response({"error": "target_plan_code is required."}, status=400)
-
-    try:
-        subscription = (
-            HospitalSubscription.objects
-            .select_related("hospital", "plan")
-            .get(hospital=hospital)
-        )
-    except HospitalSubscription.DoesNotExist:
-        return Response({"error": "Hospital subscription not configured."}, status=404)
-
-    try:
-        target_plan = SubscriptionPlan.objects.get(code=target_plan_code, is_active=True)
-    except SubscriptionPlan.DoesNotExist:
-        return Response({"error": "Target plan not found or inactive."}, status=404)
-
-    if subscription.plan_id == target_plan.id:
-        return Response(
-            {"error": "Target plan must be different from current plan."},
-            status=400,
-        )
-
-    try:
-        invoice, created = create_plan_change_invoice(
-            subscription=subscription,
-            target_plan=target_plan,
-            billing_cycle_months=billing_cycle_months,
-        )
-    except ValueError as exc:
-        return Response({"error": str(exc)}, status=400)
-
-    return Response(
-        {
-            "success": True,
-            "created": created,
-            "message": (
-                "Plan change invoice created and awaiting payment approval."
-                if created
-                else "An unpaid plan change invoice already exists."
-            ),
-            "current_plan": {
-                "code": subscription.plan.code,
-                "name": subscription.plan.name,
-            },
-            "target_plan": {
-                "code": target_plan.code,
-                "name": target_plan.name,
-            },
-            "invoice": serialize_invoice(invoice),
-        },
-        status=201 if created else 200,
-    )
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-@transaction.atomic
 def submit_manual_payment(request):
     hospital = get_user_hospital(request.user)
     staff_profile = getattr(
@@ -1051,6 +972,19 @@ def billing_dashboard(request):
                 "next_billing_date": (
                     subscription.next_billing_date.isoformat()
                     if subscription.next_billing_date
+                    else None
+                ),
+                "pending_plan": (
+                    {
+                        "code": subscription.pending_plan.code,
+                        "name": subscription.pending_plan.name,
+                    }
+                    if subscription.pending_plan
+                    else None
+                ),
+                "pending_plan_effective_date": (
+                    subscription.pending_plan_effective_date.isoformat()
+                    if subscription.pending_plan_effective_date
                     else None
                 ),
                 "full_access": access["full_access"],

@@ -245,6 +245,51 @@ class HospitalBillingAuthorizationTests(TestCase):
 			"89.90",
 		)
 
+	def test_billing_dashboard_returns_scheduled_plan_change(self):
+		subscription = HospitalSubscription.objects.get(
+			hospital=self.hospital,
+		)
+		effective_date = timezone.localdate() + timedelta(days=30)
+		subscription.pending_plan = self.pro_plan
+		subscription.pending_plan_effective_date = effective_date
+		subscription.pending_plan_requested_at = timezone.now()
+		subscription.save(
+			update_fields=[
+				"pending_plan",
+				"pending_plan_effective_date",
+				"pending_plan_requested_at",
+			]
+		)
+		self.client.force_authenticate(user=self.admin_user)
+
+		response = self.client.get("/api/v1/saas-billing/dashboard/")
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(
+			response.data["subscription"]["pending_plan"]["code"],
+			self.pro_plan.code,
+		)
+		self.assertEqual(
+			response.data["subscription"]["pending_plan_effective_date"],
+			effective_date.isoformat(),
+		)
+
+	def test_hospital_admin_plan_change_accepts_sidebar_page_payload(self):
+		self.client.force_authenticate(user=self.admin_user)
+
+		response = self.client.post(
+			"/api/v1/saas-billing/plan-changes/request/",
+			{"plan_code": self.pro_plan.code},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 201)
+		self.assertTrue(response.data["success"])
+		self.assertEqual(
+			response.data["target_plan"]["code"],
+			self.pro_plan.code,
+		)
+
 	def test_starter_trial_upgrade_charges_basic_service_fee_once(self):
 		self.starter_plan.monthly_price = "0.00"
 		self.starter_plan.service_fee = "0.00"
