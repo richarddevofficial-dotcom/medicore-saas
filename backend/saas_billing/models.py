@@ -2,11 +2,35 @@ from django.conf import settings
 import uuid
 from decimal import Decimal
 
-from django.core.validators import MinValueValidator
+from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
 
 from hospitals.models import Hospital
+
+
+def validate_payment_proof_size(upload):
+    if upload.size > 5 * 1024 * 1024:
+        raise ValidationError("Payment proof must not exceed 5 MB.")
+
+    header = upload.read(8)
+    upload.seek(0)
+    valid_signature = (
+        header.startswith(b"%PDF-")
+        or header.startswith(b"\x89PNG\r\n\x1a\n")
+        or header.startswith(b"\xff\xd8\xff")
+    )
+    if not valid_signature:
+        raise ValidationError("Payment proof content is not a valid PDF or image.")
+
+
+def payment_proof_upload_path(instance, filename):
+    extension = filename.rsplit(".", 1)[-1].lower()
+    return (
+        f"saas-payment-proofs/{instance.hospital_id}/"
+        f"{uuid.uuid4().hex}.{extension}"
+    )
 
 
 class SubscriptionPlan(models.Model):
@@ -39,6 +63,22 @@ class SubscriptionPlan(models.Model):
     monthly_price = models.DecimalField(
         max_digits=12,
         decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+
+    six_month_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+
+    annual_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
         validators=[MinValueValidator(Decimal("0.00"))],
     )
 
@@ -98,8 +138,19 @@ class SubscriptionPlan(models.Model):
 
 
 class HospitalSubscription(models.Model):
+    CYCLE_MONTHLY = "monthly"
+    CYCLE_SIX_MONTHS = "six_months"
+    CYCLE_ANNUAL = "annual"
+
+    BILLING_CYCLE_CHOICES = [
+        (CYCLE_MONTHLY, "Monthly"),
+        (CYCLE_SIX_MONTHS, "Six Months"),
+        (CYCLE_ANNUAL, "Annual"),
+    ]
+
     STATUS_TRIAL = "trial"
     STATUS_ACTIVE = "active"
+    STATUS_EXPIRING_SOON = "expiring_soon"
     STATUS_GRACE = "grace"
     STATUS_EXPIRED = "expired"
     STATUS_SUSPENDED = "suspended"
@@ -108,6 +159,7 @@ class HospitalSubscription(models.Model):
     STATUS_CHOICES = [
         (STATUS_TRIAL, "Trial"),
         (STATUS_ACTIVE, "Active"),
+        (STATUS_EXPIRING_SOON, "Expiring Soon"),
         (STATUS_GRACE, "Grace Period"),
         (STATUS_EXPIRED, "Expired"),
         (STATUS_SUSPENDED, "Suspended"),
@@ -150,6 +202,23 @@ class HospitalSubscription(models.Model):
     activated_at = models.DateTimeField(
         null=True,
         blank=True,
+    )
+
+    billing_cycle = models.CharField(
+        max_length=20,
+        choices=BILLING_CYCLE_CHOICES,
+        default=CYCLE_MONTHLY,
+    )
+
+    start_date = models.DateField(
+        null=True,
+        blank=True,
+    )
+
+    end_date = models.DateField(
+        null=True,
+        blank=True,
+        db_index=True,
     )
 
     next_billing_date = models.DateField(
@@ -195,6 +264,11 @@ class HospitalSubscription(models.Model):
 
     auto_renew = models.BooleanField(
         default=False,
+    )
+
+    last_payment_date = models.DateField(
+        null=True,
+        blank=True,
     )
 
     notes = models.TextField(
@@ -422,13 +496,15 @@ class Payment(models.Model):
     STATUS_PENDING = "pending"
     STATUS_SUCCESS = "success"
     STATUS_FAILED = "failed"
+    STATUS_CONFIRMED = STATUS_SUCCESS
+    STATUS_REJECTED = STATUS_FAILED
     STATUS_CANCELLED = "cancelled"
     STATUS_REFUNDED = "refunded"
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
-        (STATUS_SUCCESS, "Successful"),
-        (STATUS_FAILED, "Failed"),
+        (STATUS_SUCCESS, "Confirmed"),
+        (STATUS_FAILED, "Rejected"),
         (STATUS_CANCELLED, "Cancelled"),
         (STATUS_REFUNDED, "Refunded"),
     ]
@@ -473,6 +549,20 @@ class Payment(models.Model):
         related_name="payments",
     )
 
+    plan = models.ForeignKey(
+        SubscriptionPlan,
+        on_delete=models.PROTECT,
+        related_name="payments",
+        null=True,
+        blank=True,
+    )
+
+    billing_cycle = models.CharField(
+        max_length=20,
+        choices=HospitalSubscription.BILLING_CYCLE_CHOICES,
+        default=HospitalSubscription.CYCLE_MONTHLY,
+    )
+
     payment_type = models.CharField(
         max_length=30,
         choices=TYPE_CHOICES,
@@ -506,6 +596,22 @@ class Payment(models.Model):
         db_index=True,
     )
 
+    payment_date = models.DateField(
+        default=timezone.localdate,
+    )
+
+    proof_of_payment = models.FileField(
+        upload_to=payment_proof_upload_path,
+        null=True,
+        blank=True,
+        validators=[
+            FileExtensionValidator(
+                allowed_extensions=["pdf", "png", "jpg", "jpeg"],
+            ),
+            validate_payment_proof_size,
+        ],
+    )
+
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
@@ -514,6 +620,44 @@ class Payment(models.Model):
     )
 
     paid_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="submitted_saas_payments",
+        null=True,
+        blank=True,
+    )
+
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="confirmed_saas_payments",
+        null=True,
+        blank=True,
+    )
+
+    confirmed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    rejection_reason = models.TextField(
+        blank=True,
+    )
+
+    rejected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="rejected_saas_payments",
+        null=True,
+        blank=True,
+    )
+
+    rejected_at = models.DateTimeField(
         null=True,
         blank=True,
     )

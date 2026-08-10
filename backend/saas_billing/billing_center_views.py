@@ -1,5 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
+import logging
+
 from django.db import transaction
 
 from django.db.models import Count, Q, Sum
@@ -22,6 +24,14 @@ from .models import (
     Payment,
 )
 from .receipt_services import send_payment_receipt_email
+from .subscription_services import (
+    calculate_subscription_end_date,
+    extend_subscription,
+    renew_subscription,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 def is_platform_super_admin(user):
@@ -114,6 +124,7 @@ def serialize_pending_payment(payment):
         "payment_method": payment.payment_method,
         "gateway": payment.gateway,
         "status": payment.status,
+        "status_label": payment.get_status_display().lower(),
         "created_at": payment.created_at.isoformat(),
     }
 
@@ -344,9 +355,13 @@ def billing_center_dashboard(request):
                 "total_hospitals": Hospital.objects.count(),
                 "configured_subscriptions": subscriptions.count(),
                 "active_subscriptions": subscriptions.filter(
-                    status=(
-                        HospitalSubscription.STATUS_ACTIVE
-                    )
+                    status__in=[
+                        HospitalSubscription.STATUS_ACTIVE,
+                        HospitalSubscription.STATUS_EXPIRING_SOON,
+                    ]
+                ).count(),
+                "expiring_soon_subscriptions": subscriptions.filter(
+                    status=HospitalSubscription.STATUS_EXPIRING_SOON
                 ).count(),
                 "trial_subscriptions": subscriptions.filter(
                     status=(
@@ -858,7 +873,13 @@ def billing_center_hospitals(request):
         "total_hospitals": Hospital.objects.count(),
         "matching_hospitals": paginator.count,
         "active": all_subscriptions.filter(
-            status=HospitalSubscription.STATUS_ACTIVE
+            status__in=[
+                HospitalSubscription.STATUS_ACTIVE,
+                HospitalSubscription.STATUS_EXPIRING_SOON,
+            ]
+        ).count(),
+        "expiring_soon": all_subscriptions.filter(
+            status=HospitalSubscription.STATUS_EXPIRING_SOON
         ).count(),
         "trial": all_subscriptions.filter(
             status=HospitalSubscription.STATUS_TRIAL
@@ -966,6 +987,8 @@ def serialize_billing_payment(payment):
         "currency": payment.currency,
         "gateway": payment.gateway,
         "payment_method": payment.payment_method,
+        "billing_cycle": payment.billing_cycle,
+        "payment_date": payment.payment_date.isoformat(),
         "status": payment.status,
         "paid_at": (
             payment.paid_at.isoformat()
@@ -973,6 +996,27 @@ def serialize_billing_payment(payment):
             else None
         ),
         "notes": payment.notes,
+        "has_proof_of_payment": bool(payment.proof_of_payment),
+        "proof_of_payment_url": (
+            f"/saas-billing/payments/{payment.id}/proof/"
+            if payment.proof_of_payment
+            else None
+        ),
+        "current_subscription_expiry": (
+            payment.subscription.end_date.isoformat()
+            if payment.subscription.end_date
+            else (
+                payment.subscription.next_billing_date.isoformat()
+                if payment.subscription.next_billing_date
+                else None
+            )
+        ),
+        "confirmed_at": (
+            payment.confirmed_at.isoformat()
+            if payment.confirmed_at
+            else None
+        ),
+        "rejection_reason": payment.rejection_reason,
         "created_at": payment.created_at.isoformat(),
         "gateway_response": payment.gateway_response or {},
     }
@@ -1370,6 +1414,26 @@ def billing_center_hospital_detail(
                 .next_billing_date
                 .isoformat()
                 if subscription.next_billing_date
+                else None
+            ),
+            "billing_cycle": subscription.billing_cycle,
+            "start_date": (
+                subscription.start_date.isoformat()
+                if subscription.start_date
+                else None
+            ),
+            "end_date": (
+                subscription.end_date.isoformat()
+                if subscription.end_date
+                else None
+            ),
+            "days_remaining": max(
+                0,
+                (subscription.end_date - timezone.localdate()).days,
+            ) if subscription.end_date else None,
+            "last_payment_date": (
+                subscription.last_payment_date.isoformat()
+                if subscription.last_payment_date
                 else None
             ),
             "grace_period_ends_at": (
@@ -1781,6 +1845,14 @@ def billing_center_suspend_subscription(
         ]
     )
 
+    record_billing_center_audit(
+        request=request,
+        action="SUBSCRIPTION_SUSPENDED",
+        target=f"hospital_subscription:{subscription.id}",
+        hospital=hospital,
+        changes={"status": subscription.status},
+    )
+
     return Response(
         {
             "success": True,
@@ -1842,17 +1914,24 @@ def billing_center_reactivate_subscription(
     if not subscription.activated_at:
         subscription.activated_at = now
 
-    if not subscription.next_billing_date:
-        subscription.next_billing_date = (
-            timezone.localdate()
-            + timedelta(days=30)
+    current_end_date = subscription.end_date or subscription.next_billing_date
+    if not current_end_date or current_end_date < timezone.localdate():
+        subscription.start_date = timezone.localdate()
+        subscription.end_date = calculate_subscription_end_date(
+            subscription.start_date,
+            HospitalSubscription.CYCLE_MONTHLY,
         )
+        subscription.next_billing_date = subscription.end_date
+        subscription.billing_cycle = HospitalSubscription.CYCLE_MONTHLY
 
     subscription.save(
         update_fields=[
             "status",
             "grace_period_ends_at",
             "activated_at",
+            "billing_cycle",
+            "start_date",
+            "end_date",
             "next_billing_date",
             "updated_at",
         ]
@@ -1869,6 +1948,21 @@ def billing_center_reactivate_subscription(
         ]
     )
 
+    record_billing_center_audit(
+        request=request,
+        action="SUBSCRIPTION_REACTIVATED",
+        target=f"hospital_subscription:{subscription.id}",
+        hospital=hospital,
+        changes={
+            "status": subscription.status,
+            "end_date": (
+                subscription.end_date.isoformat()
+                if subscription.end_date
+                else None
+            ),
+        },
+    )
+
     return Response(
         {
             "success": True,
@@ -1880,6 +1974,82 @@ def billing_center_reactivate_subscription(
                 if subscription.next_billing_date
                 else None
             ),
+        }
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@transaction.atomic
+def billing_center_extend_subscription(request, hospital_id):
+    if not is_platform_super_admin(request.user):
+        return Response(
+            {"error": "Only a platform super administrator can extend subscriptions."},
+            status=403,
+        )
+
+    reason = str(request.data.get("reason", "")).strip()
+    try:
+        duration_months = int(request.data.get("duration_months"))
+    except (TypeError, ValueError):
+        duration_months = 0
+
+    cycle_by_months = {
+        1: HospitalSubscription.CYCLE_MONTHLY,
+        6: HospitalSubscription.CYCLE_SIX_MONTHS,
+        12: HospitalSubscription.CYCLE_ANNUAL,
+    }
+    billing_cycle = cycle_by_months.get(duration_months)
+
+    if not billing_cycle:
+        return Response(
+            {"error": "duration_months must be 1, 6 or 12."},
+            status=400,
+        )
+    if not reason:
+        return Response({"error": "reason is required."}, status=400)
+
+    subscription = (
+        HospitalSubscription.objects
+        .select_for_update()
+        .select_related("hospital", "plan")
+        .filter(hospital_id=hospital_id)
+        .first()
+    )
+    if not subscription:
+        return Response({"error": "Hospital subscription not found."}, status=404)
+
+    old_end_date = subscription.end_date or subscription.next_billing_date
+    subscription = extend_subscription(
+        subscription=subscription,
+        billing_cycle=billing_cycle,
+        reason=reason,
+    )
+
+    record_billing_center_audit(
+        request=request,
+        action="SUBSCRIPTION_MANUALLY_EXTENDED",
+        target=f"hospital_subscription:{subscription.id}",
+        hospital=subscription.hospital,
+        changes={
+            "duration_months": duration_months,
+            "reason": reason,
+            "old_end_date": old_end_date.isoformat() if old_end_date else None,
+            "new_end_date": subscription.end_date.isoformat(),
+        },
+    )
+
+    return Response(
+        {
+            "success": True,
+            "message": "Subscription extended successfully.",
+            "subscription": {
+                "id": subscription.id,
+                "billing_cycle": subscription.billing_cycle,
+                "start_date": subscription.start_date.isoformat(),
+                "end_date": subscription.end_date.isoformat(),
+                "status": subscription.status,
+            },
         }
     )
 
@@ -2978,6 +3148,10 @@ def billing_center_payments(request):
         request.query_params.get("gateway", "")
     ).strip().lower()
 
+    billing_cycle_filter = str(
+        request.query_params.get("billing_cycle", "")
+    ).strip().lower()
+
     hospital_filter = str(
         request.query_params.get(
             "hospital",
@@ -3016,6 +3190,11 @@ def billing_center_payments(request):
     if gateway_filter:
         queryset = queryset.filter(
             gateway=gateway_filter
+        )
+
+    if billing_cycle_filter:
+        queryset = queryset.filter(
+            billing_cycle=billing_cycle_filter
         )
 
     if hospital_filter:
@@ -3112,6 +3291,7 @@ def billing_center_payments(request):
                     payment_type_filter or None
                 ),
                 "gateway": gateway_filter or None,
+                "billing_cycle": billing_cycle_filter or None,
                 "hospital": hospital_filter or None,
                 "date_from": (
                     date_from.isoformat()
@@ -3282,6 +3462,8 @@ def billing_center_approve_payment(
 
     payment.status = Payment.STATUS_SUCCESS
     payment.paid_at = now
+    payment.confirmed_by = request.user
+    payment.confirmed_at = now
     payment.gateway_response = {
         **(payment.gateway_response or {}),
         "approved_by_user_id": request.user.id,
@@ -3294,6 +3476,8 @@ def billing_center_approve_payment(
         update_fields=[
             "status",
             "paid_at",
+            "confirmed_by",
+            "confirmed_at",
             "gateway_response",
             "updated_at",
         ]
@@ -3334,29 +3518,34 @@ def billing_center_approve_payment(
         subscription.service_fee_paid = True
         subscription.service_fee_paid_at = now
 
-    subscription.next_billing_date = (
-        timezone.localdate()
-        + timedelta(days=30)
+    billing_cycle = payment.billing_cycle
+    legacy_cycle_months = (invoice.metadata or {}).get(
+        "billing_cycle_months"
     )
+    if legacy_cycle_months == 6:
+        billing_cycle = HospitalSubscription.CYCLE_SIX_MONTHS
+    elif legacy_cycle_months == 12:
+        billing_cycle = HospitalSubscription.CYCLE_ANNUAL
 
     subscription.save(
         update_fields=[
             "service_fee_paid",
             "service_fee_paid_at",
-            "next_billing_date",
             "updated_at",
         ]
     )
 
-    subscription, _reactivated = (
-        reactivate_subscription_after_payment(
-            subscription
-        )
+    previous_status = subscription.status
+    previous_end_date = subscription.end_date or subscription.next_billing_date
+    subscription = renew_subscription(
+        subscription=subscription,
+        billing_cycle=billing_cycle,
+        payment_date=payment.payment_date,
     )
 
     record_billing_center_audit(
         request=request,
-        action="approve_subscription_payment",
+        action="PAYMENT_CONFIRMED",
         target=f"payment:{payment.id}",
         hospital=payment.hospital,
         changes={
@@ -3368,8 +3557,50 @@ def billing_center_approve_payment(
         },
     )
 
-    # Send payment receipt email
-    send_payment_receipt_email(payment)
+    record_billing_center_audit(
+        request=request,
+        action=(
+            "SUBSCRIPTION_RENEWED"
+            if previous_end_date
+            else "SUBSCRIPTION_ACTIVATED"
+        ),
+        target=f"hospital_subscription:{subscription.id}",
+        hospital=payment.hospital,
+        changes={
+            "old_status": previous_status,
+            "new_status": subscription.status,
+            "old_end_date": (
+                previous_end_date.isoformat()
+                if previous_end_date
+                else None
+            ),
+            "new_end_date": subscription.end_date.isoformat(),
+            "billing_cycle": subscription.billing_cycle,
+            "payment_reference": payment.payment_reference,
+        },
+    )
+
+    payment_id_for_receipt = payment.id
+
+    def send_receipt_after_commit():
+        try:
+            committed_payment = (
+                Payment.objects
+                .select_related(
+                    "hospital",
+                    "invoice",
+                    "subscription__plan",
+                )
+                .get(id=payment_id_for_receipt)
+            )
+            send_payment_receipt_email(committed_payment)
+        except Exception:
+            logger.exception(
+                "Payment %s was approved, but receipt delivery failed.",
+                payment_id_for_receipt,
+            )
+
+    transaction.on_commit(send_receipt_after_commit)
 
     return Response(
         {
@@ -3384,8 +3615,7 @@ def billing_center_approve_payment(
             "subscription_status": (
                 subscription.status
             ),
-            "receipt_email_sent": payment.receipt_delivery_status == 'sent',
-            "receipt_email_error": payment.receipt_last_error or None,
+            "receipt_email_queued": True,
         }
     )
 
@@ -3442,6 +3672,9 @@ def billing_center_reject_payment(
         )
 
     payment.status = Payment.STATUS_FAILED
+    payment.rejection_reason = reason
+    payment.rejected_by = request.user
+    payment.rejected_at = timezone.now()
     payment.gateway_response = {
         **(payment.gateway_response or {}),
         "rejected_by_user_id": request.user.id,
@@ -3454,6 +3687,9 @@ def billing_center_reject_payment(
     payment.save(
         update_fields=[
             "status",
+            "rejection_reason",
+            "rejected_by",
+            "rejected_at",
             "gateway_response",
             "updated_at",
         ]
@@ -3461,7 +3697,7 @@ def billing_center_reject_payment(
 
     record_billing_center_audit(
         request=request,
-        action="reject_subscription_payment",
+        action="PAYMENT_REJECTED",
         target=f"payment:{payment.id}",
         hospital=payment.hospital,
         changes={
@@ -3723,6 +3959,7 @@ def billing_center_mark_invoice_paid(
     payment = Payment.objects.create(
         hospital=invoice.hospital,
         subscription=invoice.subscription,
+        plan=invoice.subscription.plan,
         invoice=invoice,
         payment_reference=Payment.generate_reference(),
         transaction_id=reference,
@@ -3731,8 +3968,15 @@ def billing_center_mark_invoice_paid(
         currency=invoice.currency,
         gateway=Payment.GATEWAY_MANUAL,
         payment_method="manual",
+        billing_cycle=(invoice.metadata or {}).get(
+            "billing_cycle",
+            HospitalSubscription.CYCLE_MONTHLY,
+        ),
+        payment_date=timezone.localdate(),
         status=Payment.STATUS_SUCCESS,
         paid_at=now,
+        confirmed_by=request.user,
+        confirmed_at=now,
         notes=notes,
         gateway_response={
             "created_by_user_id": request.user.id,
@@ -3774,24 +4018,18 @@ def billing_center_mark_invoice_paid(
             subscription.service_fee_paid = True
             subscription.service_fee_paid_at = now
 
-        subscription.next_billing_date = (
-            timezone.localdate()
-            + timedelta(days=30)
-        )
-
         subscription.save(
             update_fields=[
                 "service_fee_paid",
                 "service_fee_paid_at",
-                "next_billing_date",
                 "updated_at",
             ]
         )
 
-        subscription, _reactivated = (
-            reactivate_subscription_after_payment(
-                subscription
-            )
+        subscription = renew_subscription(
+            subscription=subscription,
+            billing_cycle=payment.billing_cycle,
+            payment_date=payment.payment_date,
         )
 
     record_billing_center_audit(
@@ -3805,6 +4043,23 @@ def billing_center_mark_invoice_paid(
             "transaction_reference": reference,
             "amount": decimal_value(payment.amount),
             "currency": payment.currency,
+        },
+    )
+
+    record_billing_center_audit(
+        request=request,
+        action="PAYMENT_CONFIRMED",
+        target=f"payment:{payment.id}",
+        hospital=invoice.hospital,
+        changes={
+            "invoice_number": invoice.invoice_number,
+            "payment_reference": payment.payment_reference,
+            "billing_cycle": payment.billing_cycle,
+            "new_end_date": (
+                subscription.end_date.isoformat()
+                if subscription
+                else None
+            ),
         },
     )
 

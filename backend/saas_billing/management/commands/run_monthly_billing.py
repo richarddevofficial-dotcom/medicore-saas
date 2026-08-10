@@ -9,6 +9,7 @@ from django.utils import timezone
 from hospitals.models import Hospital
 from saas_billing.invoice_services import generate_unique_invoice_number
 from saas_billing.models import HospitalSubscription, Invoice
+from saas_billing.subscription_services import calculate_subscription_end_date
 from saas_billing.services import refresh_subscription_status
 
 
@@ -90,12 +91,15 @@ class Command(BaseCommand):
                     due_date=due_date,
                     description=f"Monthly subscription invoice for {subscription.plan.name}.",
                     metadata={
-                        "billing_period": "monthly",
+                        "billing_cycle": "monthly",
                         "generated_by": "run_monthly_billing",
                     },
                 )
 
-                subscription.next_billing_date = today + timedelta(days=30)
+                subscription.next_billing_date = calculate_subscription_end_date(
+                    today,
+                    HospitalSubscription.CYCLE_MONTHLY,
+                )
                 subscription.save(update_fields=["next_billing_date", "updated_at"])
 
             count += 1

@@ -13,6 +13,8 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
             "description",
             "currency",
             "monthly_price",
+            "six_month_price",
+            "annual_price",
             "service_fee",
             "max_staff",
             "max_patients",

@@ -6,6 +6,7 @@ from .views import (
     billing_dashboard,
     download_invoice_pdf,
     download_payment_receipt_pdf,
+    download_payment_proof,
     generate_initial_invoice,
     hospital_entitlements,
     hospital_invoices,
@@ -81,5 +82,10 @@ urlpatterns = [
         "payments/<int:payment_id>/receipt-pdf/",
         download_payment_receipt_pdf,
         name="download-payment-receipt-pdf",
+    ),
+    path(
+        "payments/<int:payment_id>/proof/",
+        download_payment_proof,
+        name="download-payment-proof",
     ),
 ]

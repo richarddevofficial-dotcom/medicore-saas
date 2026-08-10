@@ -5,6 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import HospitalSubscription, Invoice, SubscriptionPlan
+from .subscription_services import get_plan_cycle_price
 
 
 INITIAL_INVOICE_DUE_DAYS = 7
@@ -22,7 +23,10 @@ def generate_unique_invoice_number():
 
 
 @transaction.atomic
-def create_initial_invoice(subscription):
+def create_initial_invoice(
+    subscription,
+    billing_cycle=HospitalSubscription.CYCLE_MONTHLY,
+):
     """
     Create the hospital's initial commercial invoice.
 
@@ -69,7 +73,10 @@ def create_initial_invoice(subscription):
         invoice_type = Invoice.TYPE_COMBINED
         service_fee_amount = subscription.current_service_fee
 
-    subscription_amount = subscription.current_monthly_price
+    subscription_amount = get_plan_cycle_price(
+        subscription.plan,
+        billing_cycle,
+    )
 
     subtotal = (
         service_fee_amount
@@ -103,7 +110,7 @@ def create_initial_invoice(subscription):
         description=(
             f"Initial MediCore invoice for "
             f"{subscription.hospital.name} — "
-            f"{subscription.plan.name} plan."
+            f"{subscription.plan.name} plan ({billing_cycle})."
         ),
         metadata={
             "plan_code": subscription.plan.code,
@@ -117,7 +124,7 @@ def create_initial_invoice(subscription):
             "service_fee_included": (
                 not subscription.service_fee_paid
             ),
-            "billing_period": "first_month",
+            "billing_cycle": billing_cycle,
         },
     )
 

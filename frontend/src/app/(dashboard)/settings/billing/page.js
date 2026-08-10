@@ -45,6 +45,7 @@ export default function BillingPage() {
   const [creatingInvoice, setCreatingInvoice] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [submittingPayment, setSubmittingPayment] = useState(false);
+  const [renewalCycle, setRenewalCycle] = useState("monthly");
 
   async function loadBilling() {
     try {
@@ -80,6 +81,7 @@ export default function BillingPage() {
 
       const response = await apiClient.post(
         "/saas-billing/invoices/generate-initial/",
+        { billing_cycle: renewalCycle },
       );
 
       setSuccessMessage(response.data.message);
@@ -99,13 +101,20 @@ export default function BillingPage() {
       setError("");
       setSuccessMessage("");
 
-      const response = await apiClient.post("/saas-billing/payments/manual/", {
-        invoice_id: selectedInvoice.id,
-        transaction_id: form.transaction_id,
-        payment_method: form.payment_method,
-        amount: selectedInvoice.balance_due,
-        notes: form.notes,
-      });
+      const payload = new FormData();
+      payload.append("invoice_id", selectedInvoice.id);
+      payload.append("transaction_id", form.transaction_id);
+      payload.append("payment_method", form.payment_method);
+      payload.append("payment_date", form.payment_date);
+      payload.append("notes", form.notes);
+      if (form.proof_of_payment) {
+        payload.append("proof_of_payment", form.proof_of_payment);
+      }
+
+      const response = await apiClient.post(
+        "/saas-billing/payments/manual/",
+        payload,
+      );
 
       setSuccessMessage(response.data.message);
       setSelectedInvoice(null);
@@ -224,6 +233,26 @@ export default function BillingPage() {
   const payableInvoice = data?.invoices?.find((invoice) =>
     ["pending", "overdue"].includes(invoice.status),
   );
+  const pendingPayment = data?.payments?.find(
+    (payment) => payment.status === "pending",
+  );
+  const cycleOptions = [
+    {
+      value: "monthly",
+      label: "1 Month",
+      price: subscription.monthly_price,
+    },
+    {
+      value: "six_months",
+      label: "6 Months",
+      price: subscription.six_month_price,
+    },
+    {
+      value: "annual",
+      label: "12 Months",
+      price: subscription.annual_price,
+    },
+  ];
 
   return (
     <div className="space-y-8 p-4 sm:p-6 lg:p-8">
@@ -247,6 +276,32 @@ export default function BillingPage() {
         <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-green-700">
           {successMessage}
         </div>
+      )}
+
+      {["expired", "suspended"].includes(subscription.status) && (
+        <section className="rounded-2xl border border-red-200 bg-red-50 p-6">
+          <h2 className="text-xl font-bold text-red-950">
+            Subscription{" "}
+            {subscription.status === "suspended" ? "Suspended" : "Expired"}
+          </h2>
+          <p className="mt-2 text-red-800">
+            Your MediCoreCloud subscription ended on{" "}
+            {dateValue(subscription.end_date)}. Your hospital data remains
+            securely stored. Renew to restore full access.
+          </p>
+        </section>
+      )}
+
+      {pendingPayment && (
+        <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+          <h2 className="font-bold text-blue-950">
+            Payment Awaiting Verification
+          </h2>
+          <p className="mt-1 text-sm text-blue-800">
+            Payment {pendingPayment.payment_reference} is awaiting confirmation
+            by MediCoreCloud Administration.
+          </p>
+        </section>
       )}
 
       {subscription.pending_plan && (
@@ -414,8 +469,10 @@ export default function BillingPage() {
           />
 
           <Detail
-            label="Next billing date"
-            value={dateValue(subscription.next_billing_date)}
+            label="Subscription expiry"
+            value={dateValue(
+              subscription.end_date || subscription.next_billing_date,
+            )}
           />
 
           <Detail
@@ -423,6 +480,35 @@ export default function BillingPage() {
             value={subscription.service_fee_paid ? "Paid" : "Not paid"}
           />
         </div>
+
+        {!payableInvoice && !pendingPayment && (
+          <div className="mt-6 border-t border-slate-200 pt-6">
+            <p className="text-sm font-semibold text-slate-800">
+              Renewal period
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              {cycleOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setRenewalCycle(option.value)}
+                  className={`border p-4 text-left transition ${
+                    renewalCycle === option.value
+                      ? "border-orange-500 bg-orange-50"
+                      : "border-slate-200 bg-white hover:border-orange-300"
+                  }`}
+                >
+                  <span className="block font-semibold text-slate-900">
+                    {option.label}
+                  </span>
+                  <span className="mt-1 block text-sm text-slate-600">
+                    {money(option.price, currency)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -546,7 +632,12 @@ export default function BillingPage() {
                     </TableCell>
 
                     <TableCell>
-                      <Status value={payment.status} />
+                      <Status value={payment.status_label || payment.status} />
+                      {payment.rejection_reason && (
+                        <p className="mt-1 max-w-xs text-xs text-red-600">
+                          {payment.rejection_reason}
+                        </p>
+                      )}
                     </TableCell>
 
                     <TableCell>
@@ -593,6 +684,7 @@ export default function BillingPage() {
       {selectedInvoice && (
         <PaymentModal
           invoice={selectedInvoice}
+          bankDetails={data?.bank_details}
           submitting={submittingPayment}
           onClose={() => setSelectedInvoice(null)}
           onSubmit={submitPayment}
@@ -602,19 +694,21 @@ export default function BillingPage() {
   );
 }
 
-function PaymentModal({ invoice, submitting, onClose, onSubmit }) {
+function PaymentModal({ invoice, bankDetails, submitting, onClose, onSubmit }) {
   const [form, setForm] = useState({
     transaction_id: "",
     payment_method: "bank_transfer",
+    payment_date: new Date().toISOString().slice(0, 10),
+    proof_of_payment: null,
     notes: "",
   });
 
   function handleChange(event) {
-    const { name, value } = event.target;
+    const { files, name, value } = event.target;
 
     setForm((current) => ({
       ...current,
-      [name]: value,
+      [name]: files ? files[0] || null : value,
     }));
   }
 
@@ -669,10 +763,21 @@ function PaymentModal({ invoice, submitting, onClose, onSubmit }) {
               <option value="bank_transfer">Bank transfer</option>
 
               <option value="cash">Cash</option>
-
-              <option value="mobile_money">Mobile money</option>
             </select>
           </label>
+
+          {form.payment_method === "bank_transfer" &&
+            bankDetails?.configured && (
+              <div className="border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">
+                <p className="font-semibold">Bank transfer details</p>
+                <p className="mt-2">{bankDetails.bank_name}</p>
+                <p>{bankDetails.account_name}</p>
+                <p className="font-mono">{bankDetails.account_number}</p>
+                {bankDetails.swift_code && (
+                  <p>SWIFT: {bankDetails.swift_code}</p>
+                )}
+              </div>
+            )}
 
           <label className="block">
             <span className="mb-2 block text-sm font-semibold text-slate-700">
@@ -688,6 +793,36 @@ function PaymentModal({ invoice, submitting, onClose, onSubmit }) {
               className="w-full rounded-xl border border-slate-300 px-4 py-3"
               placeholder="Example: BANK-2026-001"
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold text-slate-700">
+              Payment date
+            </span>
+            <input
+              type="date"
+              name="payment_date"
+              value={form.payment_date}
+              onChange={handleChange}
+              required
+              className="w-full rounded-xl border border-slate-300 px-4 py-3"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold text-slate-700">
+              Proof of payment (optional)
+            </span>
+            <input
+              type="file"
+              name="proof_of_payment"
+              onChange={handleChange}
+              accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              PDF, PNG or JPEG, up to 5 MB.
+            </span>
           </label>
 
           <label className="block">
@@ -748,12 +883,17 @@ function Detail({ label, value }) {
 }
 
 function Status({ value }) {
-  const success = ["paid", "success", "active"].includes(value);
+  const success = ["paid", "success", "confirmed", "active"].includes(value);
+  const rejected = ["failed", "rejected", "cancelled", "void"].includes(value);
 
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-        success ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+        success
+          ? "bg-green-100 text-green-700"
+          : rejected
+            ? "bg-red-100 text-red-700"
+            : "bg-amber-100 text-amber-700"
       }`}
     >
       {success && <CheckCircle2 size={14} />}

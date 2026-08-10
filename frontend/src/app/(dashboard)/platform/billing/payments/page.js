@@ -48,7 +48,10 @@ export default function PaymentCenterPage() {
   const [status, setStatus] = useState("");
   const [paymentType, setPaymentType] = useState("");
   const [gateway, setGateway] = useState("");
+  const [billingCycle, setBillingCycle] = useState("");
   const [hospital, setHospital] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [ordering, setOrdering] = useState("-created_at");
 
   const [page, setPage] = useState(1);
@@ -82,7 +85,10 @@ export default function PaymentCenterPage() {
           status: status || undefined,
           payment_type: paymentType || undefined,
           gateway: gateway || undefined,
+          billing_cycle: billingCycle || undefined,
           hospital: hospital || undefined,
+          date_from: dateFrom || undefined,
+          date_to: dateTo || undefined,
           ordering,
         },
       });
@@ -107,7 +113,17 @@ export default function PaymentCenterPage() {
     }, 350);
 
     return () => window.clearTimeout(timer);
-  }, [search, status, paymentType, gateway, hospital, ordering]);
+  }, [
+    search,
+    status,
+    paymentType,
+    gateway,
+    billingCycle,
+    hospital,
+    dateFrom,
+    dateTo,
+    ordering,
+  ]);
 
   async function approvePayment(payment) {
     try {
@@ -128,8 +144,12 @@ export default function PaymentCenterPage() {
       setPaymentToApprove(null);
       await loadPayments(page);
     } catch (requestError) {
+      const responseData = requestError.response?.data;
       const message =
-        requestError.response?.data?.error || "Unable to approve payment.";
+        responseData?.error ||
+        responseData?.detail ||
+        responseData?.message ||
+        "Unable to approve payment. Check that backend migrations are applied.";
 
       setError(message);
       toast.error(message);
@@ -230,6 +250,37 @@ export default function PaymentCenterPage() {
     }
   }
 
+  async function downloadProof(payment) {
+    try {
+      setActionLoading(`proof-${payment.id}`);
+      setError("");
+
+      const response = await apiClient.get(payment.proof_of_payment_url, {
+        responseType: "blob",
+      });
+      const disposition = response.headers["content-disposition"] || "";
+      const filenameMatch = disposition.match(/filename="?([^";]+)"?/);
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+
+      link.href = blobUrl;
+      link.download =
+        filenameMatch?.[1] || `proof-${payment.payment_reference}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (requestError) {
+      const message =
+        requestError.response?.data?.error ||
+        "Unable to download payment proof.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   if (loading && !data) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
@@ -319,7 +370,7 @@ export default function PaymentCenterPage() {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <div className="relative xl:col-span-2">
             <Search
               size={18}
@@ -358,6 +409,17 @@ export default function PaymentCenterPage() {
           </select>
 
           <select
+            value={billingCycle}
+            onChange={(event) => setBillingCycle(event.target.value)}
+            className="rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+          >
+            <option value="">All billing cycles</option>
+            <option value="monthly">Monthly</option>
+            <option value="six_months">Six months</option>
+            <option value="annual">Annual</option>
+          </select>
+
+          <select
             value={gateway}
             onChange={(event) => setGateway(event.target.value)}
             className="rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
@@ -370,7 +432,7 @@ export default function PaymentCenterPage() {
           </select>
         </div>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <input
             value={hospital}
             onChange={(event) => setHospital(event.target.value)}
@@ -389,6 +451,26 @@ export default function PaymentCenterPage() {
             <option value="amount">Lowest amount</option>
             <option value="-paid_at">Recently paid</option>
           </select>
+
+          <label className="text-xs font-semibold text-slate-600">
+            Submitted from
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+              className="mt-1 block w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-normal text-slate-900 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+            />
+          </label>
+
+          <label className="text-xs font-semibold text-slate-600">
+            Submitted to
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+              className="mt-1 block w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-normal text-slate-900 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+            />
+          </label>
         </div>
       </section>
 
@@ -445,6 +527,12 @@ export default function PaymentCenterPage() {
                     <span className="capitalize">
                       {String(payment.payment_type || "").replaceAll("_", " ")}
                     </span>
+                    <p className="mt-1 text-xs capitalize text-slate-500">
+                      {String(payment.billing_cycle || "monthly").replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    </p>
                   </TableCell>
 
                   <TableCell>
@@ -469,11 +557,13 @@ export default function PaymentCenterPage() {
                   </TableCell>
 
                   <TableCell>
-                    <StatusBadge value={payment.status} />
+                    <StatusBadge
+                      value={payment.status_label || payment.status}
+                    />
                   </TableCell>
 
                   <TableCell>
-                    {dateValue(payment.paid_at || payment.created_at)}
+                    {dateValue(payment.payment_date || payment.created_at)}
                   </TableCell>
 
                   <TableCell>
@@ -526,6 +616,22 @@ export default function PaymentCenterPage() {
                             <Download size={14} />
                           )}
                           Receipt
+                        </button>
+                      )}
+
+                      {payment.has_proof_of_payment && (
+                        <button
+                          type="button"
+                          onClick={() => downloadProof(payment)}
+                          disabled={actionLoading !== null}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          {actionLoading === `proof-${payment.id}` ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Download size={14} />
+                          )}
+                          Proof
                         </button>
                       )}
                     </div>
@@ -660,7 +766,29 @@ export default function PaymentCenterPage() {
                     "Not provided",
                 ).replaceAll("_", " ")}
               />
+              <PaymentDetail
+                label="Billing cycle"
+                value={String(
+                  paymentToApprove.billing_cycle || "monthly",
+                ).replaceAll("_", " ")}
+              />
+              <PaymentDetail
+                label="Current expiry"
+                value={dateValue(paymentToApprove.current_subscription_expiry)}
+              />
             </dl>
+
+            {paymentToApprove.has_proof_of_payment && (
+              <button
+                type="button"
+                onClick={() => downloadProof(paymentToApprove)}
+                disabled={actionLoading !== null}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                <Download size={17} />
+                Download Payment Proof
+              </button>
+            )}
           </div>
         )}
       </Modal>
@@ -813,8 +941,10 @@ function StatusBadge({ value }) {
 
   const classes = {
     success: "bg-green-100 text-green-700",
+    confirmed: "bg-green-100 text-green-700",
     pending: "bg-blue-100 text-blue-700",
     failed: "bg-red-100 text-red-700",
+    rejected: "bg-red-100 text-red-700",
   };
 
   return (

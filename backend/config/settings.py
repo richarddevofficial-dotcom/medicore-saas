@@ -199,6 +199,26 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+SUBSCRIPTION_EXPIRING_SOON_DAYS = int(
+    os.getenv('SUBSCRIPTION_EXPIRING_SOON_DAYS', '14')
+)
+SUBSCRIPTION_GRACE_PERIOD_DAYS = int(
+    os.getenv('SUBSCRIPTION_GRACE_PERIOD_DAYS', '7')
+)
+MEDICORE_BANK_NAME = os.getenv('MEDICORE_BANK_NAME', '').strip()
+MEDICORE_BANK_ACCOUNT_NAME = os.getenv(
+    'MEDICORE_BANK_ACCOUNT_NAME',
+    '',
+).strip()
+MEDICORE_BANK_ACCOUNT_NUMBER = os.getenv(
+    'MEDICORE_BANK_ACCOUNT_NUMBER',
+    '',
+).strip()
+MEDICORE_BANK_SWIFT_CODE = os.getenv(
+    'MEDICORE_BANK_SWIFT_CODE',
+    '',
+).strip()
+
 ATTENDANCE_CLOCK_IN_EARLY_MINUTES = int(
     os.getenv('ATTENDANCE_CLOCK_IN_EARLY_MINUTES', '60')
 )

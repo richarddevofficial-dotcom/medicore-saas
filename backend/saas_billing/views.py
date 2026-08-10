@@ -4,8 +4,12 @@ from rest_framework.decorators import (
 )
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
+from django.http import FileResponse
 
+from config.audit_logger import AuditLogger
 from .invoice_services import create_initial_invoice, create_plan_change_invoice
 from .models import (
     HospitalSubscription,
@@ -16,6 +20,7 @@ from .serializers import SubscriptionPlanSerializer
 from .services import get_subscription_access
 from .plan_change_services import activate_plan_change
 from .receipt_services import send_payment_receipt_email
+from .subscription_services import renew_subscription
 
 
 def get_user_hospital(user):
@@ -69,6 +74,10 @@ def serialize_invoice(invoice):
             else None
         ),
         "description": invoice.description,
+        "billing_cycle": (invoice.metadata or {}).get(
+            "billing_cycle",
+            HospitalSubscription.CYCLE_MONTHLY,
+        ),
     }
 
 
@@ -152,6 +161,16 @@ def subscription_status(request):
                 "currency": subscription.currency,
                 "monthly_price": str(
                     subscription.current_monthly_price
+                ),
+                "six_month_price": str(
+                    subscription.plan.six_month_price
+                    if subscription.plan.six_month_price is not None
+                    else subscription.plan.monthly_price * Decimal("6")
+                ),
+                "annual_price": str(
+                    subscription.plan.annual_price
+                    if subscription.plan.annual_price is not None
+                    else subscription.plan.monthly_price * Decimal("12")
                 ),
                 "service_fee": str(
                     subscription.current_service_fee
@@ -267,8 +286,25 @@ def generate_initial_invoice(request):
             status=404,
         )
 
+    billing_cycle = str(
+        request.data.get(
+            "billing_cycle",
+            HospitalSubscription.CYCLE_MONTHLY,
+        )
+    ).strip()
+    valid_cycles = {
+        choice[0]
+        for choice in HospitalSubscription.BILLING_CYCLE_CHOICES
+    }
+    if billing_cycle not in valid_cycles:
+        return Response(
+            {"error": "Unsupported billing cycle."},
+            status=400,
+        )
+
     invoice, created = create_initial_invoice(
-        subscription
+        subscription,
+        billing_cycle=billing_cycle,
     )
 
     return Response(
@@ -343,7 +379,7 @@ def hospital_invoices(request):
 # Manual payment workflow
 # ============================================================
 
-from datetime import timedelta
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
@@ -368,13 +404,28 @@ def serialize_payment(payment):
         "gateway": payment.gateway,
         "payment_method": payment.payment_method,
         "transaction_id": payment.transaction_id,
+        "billing_cycle": payment.billing_cycle,
+        "payment_date": payment.payment_date.isoformat(),
         "status": payment.status,
+        "status_label": payment.get_status_display().lower(),
         "paid_at": (
             payment.paid_at.isoformat()
             if payment.paid_at
             else None
         ),
         "notes": payment.notes,
+        "rejection_reason": payment.rejection_reason,
+        "confirmed_at": (
+            payment.confirmed_at.isoformat()
+            if payment.confirmed_at
+            else None
+        ),
+        "has_proof_of_payment": bool(payment.proof_of_payment),
+        "proof_of_payment_url": (
+            f"/saas-billing/payments/{payment.id}/proof/"
+            if payment.proof_of_payment
+            else None
+        ),
         "created_at": payment.created_at.isoformat(),
     }
 
@@ -453,9 +504,31 @@ def submit_manual_payment(request):
         )
     ).strip()
 
+    if payment_method not in {
+        Payment.GATEWAY_BANK,
+        Payment.GATEWAY_CASH,
+    }:
+        return Response(
+            {"error": "Payment method must be cash or bank transfer."},
+            status=400,
+        )
+
     notes = str(
         request.data.get("notes", "")
     ).strip()
+
+    payment_date_value = request.data.get("payment_date")
+    try:
+        payment_date = (
+            date.fromisoformat(str(payment_date_value))
+            if payment_date_value
+            else timezone.localdate()
+        )
+    except ValueError:
+        return Response(
+            {"error": "payment_date must be a valid date."},
+            status=400,
+        )
 
     if not invoice_id:
         return Response(
@@ -571,13 +644,19 @@ def submit_manual_payment(request):
             status=409,
         )
 
-    payment = Payment.objects.create(
+    billing_cycle = (invoice.metadata or {}).get(
+        "billing_cycle",
+        HospitalSubscription.CYCLE_MONTHLY,
+    )
+    payment = Payment(
         payment_reference=(
             Payment.generate_reference()
         ),
         invoice=invoice,
         hospital=hospital,
         subscription=invoice.subscription,
+        plan=invoice.subscription.plan,
+        billing_cycle=billing_cycle,
         payment_type=(
             Payment.TYPE_COMBINED
             if invoice.invoice_type
@@ -586,10 +665,13 @@ def submit_manual_payment(request):
         ),
         amount=amount,
         currency=invoice.currency,
-        gateway=Payment.GATEWAY_BANK,
+        gateway=payment_method,
         payment_method=payment_method,
         transaction_id=bank_reference,
+        payment_date=payment_date,
+        proof_of_payment=request.FILES.get("proof_of_payment"),
         status=Payment.STATUS_PENDING,
+        submitted_by=request.user,
         notes=notes,
         gateway_response={
             "submitted_by_user_id": (
@@ -599,6 +681,33 @@ def submit_manual_payment(request):
                 request.user.email
             ),
         },
+    )
+
+    try:
+        payment.full_clean()
+    except ValidationError as exc:
+        return Response(
+            {"error": "; ".join(exc.messages)},
+            status=400,
+        )
+
+    payment.save()
+
+    AuditLogger.log_audit(
+        user=request.user,
+        action="PAYMENT_SUBMITTED",
+        target=f"subscription_payment:{payment.id}",
+        hospital=hospital,
+        new_values={
+            "payment_reference": payment.payment_reference,
+            "billing_cycle": payment.billing_cycle,
+            "amount": str(payment.amount),
+            "currency": payment.currency,
+            "payment_method": payment.payment_method,
+            "transaction_reference": payment.transaction_id,
+            "status": payment.status,
+        },
+        request=request,
     )
 
     return Response(
@@ -708,6 +817,8 @@ def approve_manual_payment(request, payment_id):
 
     payment.status = Payment.STATUS_SUCCESS
     payment.paid_at = now
+    payment.confirmed_by = request.user
+    payment.confirmed_at = now
 
     payment.gateway_response = {
         **(payment.gateway_response or {}),
@@ -720,6 +831,8 @@ def approve_manual_payment(request, payment_id):
         update_fields=[
             "status",
             "paid_at",
+            "confirmed_by",
+            "confirmed_at",
             "gateway_response",
             "updated_at",
         ]
@@ -766,28 +879,18 @@ def approve_manual_payment(request, payment_id):
         subscription.current_monthly_price = target_plan.monthly_price
         subscription.current_service_fee = target_plan.service_fee
 
-    subscription.status = (
-        HospitalSubscription.STATUS_ACTIVE
-    )
-    subscription.activated_at = (
-        subscription.activated_at or now
-    )
-    subscription.next_billing_date = (
-        timezone.localdate()
-        + timedelta(days=30)
-    )
-    subscription.grace_period_ends_at = None
-
     subscription.save(
         update_fields=[
-            "status",
-            "activated_at",
-            "next_billing_date",
             "service_fee_paid",
             "service_fee_paid_at",
-            "grace_period_ends_at",
             "updated_at",
         ]
+    )
+
+    subscription = renew_subscription(
+        subscription=subscription,
+        billing_cycle=payment.billing_cycle,
+        payment_date=payment.payment_date,
     )
 
     hospital = subscription.hospital
@@ -859,6 +962,38 @@ def approve_manual_payment(request, payment_id):
             "receipt_email_sent": payment.receipt_delivery_status == 'sent',
             "receipt_email_error": payment.receipt_last_error or None,
         }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def download_payment_proof(request, payment_id):
+    payment = (
+        Payment.objects
+        .select_related("hospital")
+        .filter(id=payment_id)
+        .first()
+    )
+
+    if not payment:
+        return Response({"error": "Payment not found."}, status=404)
+
+    user_hospital = get_user_hospital(request.user)
+    if not request.user.is_superuser and payment.hospital_id != getattr(
+        user_hospital,
+        "id",
+        None,
+    ):
+        return Response({"error": "Payment not found."}, status=404)
+
+    if not payment.proof_of_payment:
+        return Response({"error": "Payment proof not found."}, status=404)
+
+    payment.proof_of_payment.open("rb")
+    return FileResponse(
+        payment.proof_of_payment,
+        as_attachment=True,
+        filename=payment.proof_of_payment.name.rsplit("/", 1)[-1],
     )
 
 
@@ -987,6 +1122,26 @@ def billing_dashboard(request):
                     if subscription.pending_plan_effective_date
                     else None
                 ),
+                "billing_cycle": subscription.billing_cycle,
+                "start_date": (
+                    subscription.start_date.isoformat()
+                    if subscription.start_date
+                    else None
+                ),
+                "end_date": (
+                    subscription.end_date.isoformat()
+                    if subscription.end_date
+                    else None
+                ),
+                "last_payment_date": (
+                    subscription.last_payment_date.isoformat()
+                    if subscription.last_payment_date
+                    else None
+                ),
+                "days_remaining": max(
+                    0,
+                    (subscription.end_date - timezone.localdate()).days,
+                ) if subscription.end_date else None,
                 "full_access": access["full_access"],
                 "billing_only": access["billing_only"],
             },
@@ -1016,6 +1171,16 @@ def billing_dashboard(request):
                 serialize_payment(payment)
                 for payment in payments[:20]
             ],
+            "bank_details": {
+                "bank_name": settings.MEDICORE_BANK_NAME,
+                "account_name": settings.MEDICORE_BANK_ACCOUNT_NAME,
+                "account_number": settings.MEDICORE_BANK_ACCOUNT_NUMBER,
+                "swift_code": settings.MEDICORE_BANK_SWIFT_CODE,
+                "configured": bool(
+                    settings.MEDICORE_BANK_NAME
+                    and settings.MEDICORE_BANK_ACCOUNT_NUMBER
+                ),
+            },
         }
     )
 

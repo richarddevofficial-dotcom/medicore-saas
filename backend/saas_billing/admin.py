@@ -217,32 +217,20 @@ def approve_selected_payments(
                     subscription.service_fee_paid = True
                     subscription.service_fee_paid_at = now
 
-                subscription.status = (
-                    HospitalSubscription.STATUS_ACTIVE
-                )
-
-                subscription.activated_at = (
-                    subscription.activated_at
-                    or now
-                )
-
-                subscription.next_billing_date = (
-                    timezone.localdate()
-                    + timedelta(days=30)
-                )
-
-                subscription.grace_period_ends_at = None
-
                 subscription.save(
                     update_fields=[
-                        "status",
-                        "activated_at",
-                        "next_billing_date",
                         "service_fee_paid",
                         "service_fee_paid_at",
-                        "grace_period_ends_at",
                         "updated_at",
                     ]
+                )
+
+                from .subscription_services import renew_subscription
+
+                subscription = renew_subscription(
+                    subscription=subscription,
+                    billing_cycle=payment.billing_cycle,
+                    payment_date=payment.payment_date,
                 )
 
                 hospital = subscription.hospital

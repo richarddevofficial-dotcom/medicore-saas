@@ -1,11 +1,31 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
+from django.conf import settings
 from django.utils import timezone
 
 from .models import HospitalSubscription
 
 
-GRACE_PERIOD_DAYS = 7
+GRACE_PERIOD_DAYS = settings.SUBSCRIPTION_GRACE_PERIOD_DAYS
+EXPIRING_SOON_DAYS = settings.SUBSCRIPTION_EXPIRING_SOON_DAYS
+
+
+def _save_status_transition(subscription, old_status, update_fields):
+    subscription.save(update_fields=[*update_fields, "updated_at"])
+
+    if old_status == subscription.status:
+        return
+
+    from config.audit_logger import AuditLogger
+
+    AuditLogger.log_audit(
+        user=None,
+        action=f"SUBSCRIPTION_{subscription.status.upper()}",
+        target=f"hospital_subscription:{subscription.id}",
+        hospital=subscription.hospital,
+        old_values={"status": old_status},
+        new_values={"status": subscription.status},
+    )
 
 
 def refresh_subscription_status(subscription):
@@ -13,6 +33,7 @@ def refresh_subscription_status(subscription):
     Update a subscription according to its trial, grace and active dates.
     """
     now = timezone.now()
+    old_status = subscription.status
 
     if subscription.status == HospitalSubscription.STATUS_TRIAL:
         if subscription.trial_ends_at and now > subscription.trial_ends_at:
@@ -22,13 +43,15 @@ def refresh_subscription_status(subscription):
                 + timedelta(days=GRACE_PERIOD_DAYS)
             )
 
-            subscription.save(
-                update_fields=[
+            _save_status_transition(
+                subscription,
+                old_status,
+                [
                     "status",
                     "grace_period_ends_at",
-                    "updated_at",
-                ]
+                ],
             )
+            old_status = subscription.status
 
     if subscription.status == HospitalSubscription.STATUS_GRACE:
         if (
@@ -37,12 +60,58 @@ def refresh_subscription_status(subscription):
         ):
             subscription.status = HospitalSubscription.STATUS_EXPIRED
 
-            subscription.save(
-                update_fields=[
-                    "status",
-                    "updated_at",
-                ]
+            _save_status_transition(
+                subscription,
+                old_status,
+                ["status"],
             )
+            old_status = subscription.status
+
+    if subscription.status in {
+        HospitalSubscription.STATUS_ACTIVE,
+        HospitalSubscription.STATUS_EXPIRING_SOON,
+    }:
+        today = timezone.localdate()
+        end_date = subscription.end_date or subscription.next_billing_date
+
+        if end_date and today <= end_date:
+            days_remaining = (end_date - today).days
+            expected_status = (
+                HospitalSubscription.STATUS_EXPIRING_SOON
+                if days_remaining <= EXPIRING_SOON_DAYS
+                else HospitalSubscription.STATUS_ACTIVE
+            )
+            if subscription.status != expected_status:
+                subscription.status = expected_status
+                _save_status_transition(
+                    subscription,
+                    old_status,
+                    ["status"],
+                )
+                old_status = subscription.status
+        elif end_date:
+            grace_end_date = end_date + timedelta(days=GRACE_PERIOD_DAYS)
+            if today <= grace_end_date:
+                subscription.status = HospitalSubscription.STATUS_GRACE
+                subscription.grace_period_ends_at = timezone.make_aware(
+                    datetime.combine(grace_end_date, time.max)
+                )
+                _save_status_transition(
+                    subscription,
+                    old_status,
+                    [
+                        "status",
+                        "grace_period_ends_at",
+                    ],
+                )
+                old_status = subscription.status
+            else:
+                subscription.status = HospitalSubscription.STATUS_EXPIRED
+                _save_status_transition(
+                    subscription,
+                    old_status,
+                    ["status"],
+                )
 
     return subscription
 
@@ -75,6 +144,7 @@ def get_subscription_access(subscription):
     full_access = subscription.status in {
         HospitalSubscription.STATUS_TRIAL,
         HospitalSubscription.STATUS_ACTIVE,
+        HospitalSubscription.STATUS_EXPIRING_SOON,
         HospitalSubscription.STATUS_GRACE,
     }
 

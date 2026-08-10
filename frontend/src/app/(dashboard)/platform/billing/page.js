@@ -278,6 +278,12 @@ export default function BillingCenterDashboardPage() {
         />
 
         <MetricCard
+          icon={AlertTriangle}
+          label="Expiring soon"
+          value={summary.expiring_soon_subscriptions || 0}
+        />
+
+        <MetricCard
           icon={Clock3}
           label="Trial subscriptions"
           value={summary.trial_subscriptions || 0}

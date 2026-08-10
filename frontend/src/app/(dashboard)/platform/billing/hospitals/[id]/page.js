@@ -23,14 +23,12 @@ import {
 
 import apiClient from "@/lib/api-client";
 
-
 function money(value, currency = "USD") {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
   }).format(Number(value || 0));
 }
-
 
 function dateValue(value, includeTime = false) {
   if (!value) {
@@ -48,12 +46,8 @@ function dateValue(value, includeTime = false) {
     options.minute = "2-digit";
   }
 
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    options,
-  ).format(new Date(value));
+  return new Intl.DateTimeFormat("en-GB", options).format(new Date(value));
 }
-
 
 export default function HospitalBillingDetailPage() {
   const params = useParams();
@@ -159,11 +153,7 @@ export default function HospitalBillingDetailPage() {
 
   const refreshAll = useCallback(
     async (isRefresh = false) => {
-      await Promise.all([
-        loadHospital(isRefresh),
-        loadNotes(),
-        loadCredits(),
-      ]);
+      await Promise.all([loadHospital(isRefresh), loadNotes(), loadCredits()]);
     },
     [loadHospital, loadNotes, loadCredits],
   );
@@ -172,16 +162,8 @@ export default function HospitalBillingDetailPage() {
     refreshAll();
   }, [refreshAll]);
 
-  async function runAction(
-    actionName,
-    path,
-    payload = {},
-    confirmation = "",
-  ) {
-    if (
-      confirmation &&
-      !window.confirm(confirmation)
-    ) {
+  async function runAction(actionName, path, payload = {}, confirmation = "") {
+    if (confirmation && !window.confirm(confirmation)) {
       return;
     }
 
@@ -190,15 +172,9 @@ export default function HospitalBillingDetailPage() {
       setError("");
       setSuccess("");
 
-      const response = await apiClient.post(
-        path,
-        payload,
-      );
+      const response = await apiClient.post(path, payload);
 
-      setSuccess(
-        response.data?.message ||
-          "Action completed successfully.",
-      );
+      setSuccess(response.data?.message || "Action completed successfully.");
 
       await refreshAll();
     } catch (requestError) {
@@ -222,6 +198,17 @@ export default function HospitalBillingDetailPage() {
         danger: false,
         fields: {
           days: "7",
+        },
+      },
+      extend_subscription: {
+        title: "Extend Subscription",
+        description:
+          "Add a calendar billing period without removing any remaining paid days.",
+        confirmLabel: "Extend Subscription",
+        danger: false,
+        fields: {
+          duration_months: "1",
+          reason: "",
         },
       },
       end_trial: {
@@ -252,8 +239,7 @@ export default function HospitalBillingDetailPage() {
       },
       change_plan: {
         title: "Change Subscription Plan",
-        description:
-          "Select the new subscription plan for this hospital.",
+        description: "Select the new subscription plan for this hospital.",
         confirmLabel: "Change Plan",
         danger: false,
         fields: {
@@ -262,8 +248,7 @@ export default function HospitalBillingDetailPage() {
       },
       waive_service_fee: {
         title: "Waive Service Fee",
-        description:
-          "The service fee will be marked as waived or paid.",
+        description: "The service fee will be marked as waived or paid.",
         confirmLabel: "Waive Service Fee",
         danger: false,
         fields: {
@@ -334,28 +319,41 @@ export default function HospitalBillingDetailPage() {
       const days = Number(fields.days);
 
       if (!Number.isInteger(days) || days < 1 || days > 365) {
-        setError(
-          "Trial extension must be between 1 and 365 days.",
-        );
+        setError("Trial extension must be between 1 and 365 days.");
         return;
       }
 
       actionName = "extend-trial";
-      path =
-        `/billing-center/hospitals/${hospitalId}/extend-trial/`;
+      path = `/billing-center/hospitals/${hospitalId}/extend-trial/`;
       payload = { days };
+    }
+
+    if (type === "extend_subscription") {
+      const durationMonths = Number(fields.duration_months);
+      const reason = String(fields.reason || "").trim();
+
+      if (![1, 6, 12].includes(durationMonths)) {
+        setError("Subscription extension must be 1, 6 or 12 months.");
+        return;
+      }
+      if (!reason) {
+        setError("A reason is required for manual extension.");
+        return;
+      }
+
+      actionName = "extend-subscription";
+      path = `/billing-center/hospitals/${hospitalId}/extend-subscription/`;
+      payload = { duration_months: durationMonths, reason };
     }
 
     if (type === "end_trial") {
       actionName = "end-trial";
-      path =
-        `/billing-center/hospitals/${hospitalId}/end-trial/`;
+      path = `/billing-center/hospitals/${hospitalId}/end-trial/`;
     }
 
     if (type === "suspend") {
       actionName = "suspend";
-      path =
-        `/billing-center/hospitals/${hospitalId}/suspend/`;
+      path = `/billing-center/hospitals/${hospitalId}/suspend/`;
       payload = {
         reason: String(fields.reason || "").trim(),
       };
@@ -363,14 +361,11 @@ export default function HospitalBillingDetailPage() {
 
     if (type === "reactivate") {
       actionName = "reactivate";
-      path =
-        `/billing-center/hospitals/${hospitalId}/reactivate/`;
+      path = `/billing-center/hospitals/${hospitalId}/reactivate/`;
     }
 
     if (type === "change_plan") {
-      const planCode = String(
-        fields.plan_code || "",
-      )
+      const planCode = String(fields.plan_code || "")
         .trim()
         .toLowerCase();
 
@@ -380,8 +375,7 @@ export default function HospitalBillingDetailPage() {
       }
 
       actionName = "change-plan";
-      path =
-        `/billing-center/hospitals/${hospitalId}/change-plan/`;
+      path = `/billing-center/hospitals/${hospitalId}/change-plan/`;
       payload = {
         plan_code: planCode,
       };
@@ -389,8 +383,7 @@ export default function HospitalBillingDetailPage() {
 
     if (type === "waive_service_fee") {
       actionName = "waive-service-fee";
-      path =
-        `/billing-center/hospitals/${hospitalId}/waive-service-fee/`;
+      path = `/billing-center/hospitals/${hospitalId}/waive-service-fee/`;
       payload = {
         reason: String(fields.reason || "").trim(),
       };
@@ -398,11 +391,9 @@ export default function HospitalBillingDetailPage() {
 
     if (type === "generate_invoice") {
       actionName = "generate-invoice";
-      path =
-        `/billing-center/hospitals/${hospitalId}/generate-invoice/`;
+      path = `/billing-center/hospitals/${hospitalId}/generate-invoice/`;
       payload = {
-        invoice_type:
-          fields.invoice_type || "monthly",
+        invoice_type: fields.invoice_type || "monthly",
       };
     }
 
@@ -416,15 +407,9 @@ export default function HospitalBillingDetailPage() {
       setError("");
       setSuccess("");
 
-      const response = await apiClient.post(
-        path,
-        payload,
-      );
+      const response = await apiClient.post(path, payload);
 
-      setSuccess(
-        response.data?.message ||
-          "Action completed successfully.",
-      );
+      setSuccess(response.data?.message || "Action completed successfully.");
 
       closeActionModal();
       await refreshAll();
@@ -471,10 +456,7 @@ export default function HospitalBillingDetailPage() {
         },
       );
 
-      setSuccess(
-        response.data?.message ||
-          "Billing note added.",
-      );
+      setSuccess(response.data?.message || "Billing note added.");
 
       setNoteTitle("");
       setNoteText("");
@@ -482,8 +464,7 @@ export default function HospitalBillingDetailPage() {
       await loadNotes();
     } catch (requestError) {
       setError(
-        requestError.response?.data?.error ||
-          "Unable to add billing note.",
+        requestError.response?.data?.error || "Unable to add billing note.",
       );
     } finally {
       setActionLoading("");
@@ -493,13 +474,8 @@ export default function HospitalBillingDetailPage() {
   async function addCredit(event) {
     event.preventDefault();
 
-    if (
-      !creditAmount ||
-      Number(creditAmount) <= 0
-    ) {
-      setError(
-        "Credit or debit amount must be greater than zero.",
-      );
+    if (!creditAmount || Number(creditAmount) <= 0) {
+      setError("Credit or debit amount must be greater than zero.");
       return;
     }
 
@@ -523,10 +499,7 @@ export default function HospitalBillingDetailPage() {
         },
       );
 
-      setSuccess(
-        response.data?.message ||
-          "Credit entry recorded.",
-      );
+      setSuccess(response.data?.message || "Credit entry recorded.");
 
       setCreditAmount("");
       setCreditReason("");
@@ -535,8 +508,7 @@ export default function HospitalBillingDetailPage() {
       await loadCredits();
     } catch (requestError) {
       setError(
-        requestError.response?.data?.error ||
-          "Unable to record credit entry.",
+        requestError.response?.data?.error || "Unable to record credit entry.",
       );
     } finally {
       setActionLoading("");
@@ -547,10 +519,7 @@ export default function HospitalBillingDetailPage() {
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
         <div className="text-center">
-          <Loader2
-            size={42}
-            className="mx-auto animate-spin text-orange-500"
-          />
+          <Loader2 size={42} className="mx-auto animate-spin text-orange-500" />
 
           <p className="mt-4 text-sm text-slate-500">
             Loading hospital billing details...
@@ -575,10 +544,7 @@ export default function HospitalBillingDetailPage() {
   const usage = data.usage || {};
   const summary = data.summary || {};
 
-  const currency =
-    subscription?.currency ||
-    hospital.currency ||
-    "USD";
+  const currency = subscription?.currency || hospital.currency || "USD";
 
   return (
     <div className="space-y-7 p-4 sm:p-6 lg:p-8">
@@ -602,9 +568,7 @@ export default function HospitalBillingDetailPage() {
 
           <p className="mt-2 text-slate-600">
             {hospital.slug}
-            {hospital.country
-              ? ` • ${hospital.country}`
-              : ""}
+            {hospital.country ? ` • ${hospital.country}` : ""}
           </p>
         </div>
 
@@ -614,12 +578,7 @@ export default function HospitalBillingDetailPage() {
           disabled={refreshing}
           className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
         >
-          <RefreshCw
-            size={18}
-            className={
-              refreshing ? "animate-spin" : ""
-            }
-          />
+          <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
           Refresh
         </button>
       </header>
@@ -640,19 +599,13 @@ export default function HospitalBillingDetailPage() {
         <MetricCard
           icon={Wallet}
           label="Outstanding balance"
-          value={money(
-            summary.outstanding_balance,
-            currency,
-          )}
+          value={money(summary.outstanding_balance, currency)}
         />
 
         <MetricCard
           icon={CheckCircle2}
           label="Total paid"
-          value={money(
-            summary.total_paid,
-            currency,
-          )}
+          value={money(summary.total_paid, currency)}
         />
 
         <MetricCard
@@ -678,83 +631,82 @@ export default function HospitalBillingDetailPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">
-                Subscription
-              </h2>
+              <h2 className="text-xl font-bold text-slate-900">Subscription</h2>
 
               <p className="mt-1 text-sm text-slate-500">
                 Current plan and billing status.
               </p>
             </div>
 
-            <StatusBadge
-              value={
-                subscription?.status ||
-                "not_configured"
-              }
-            />
+            <StatusBadge value={subscription?.status || "not_configured"} />
           </div>
 
           {subscription ? (
             <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <DetailItem
-                label="Plan"
-                value={subscription.plan?.name}
-              />
+              <DetailItem label="Plan" value={subscription.plan?.name} />
 
               <DetailItem
                 label="Monthly price"
-                value={money(
-                  subscription.monthly_price,
-                  currency,
-                )}
+                value={money(subscription.monthly_price, currency)}
               />
 
               <DetailItem
                 label="Service fee"
-                value={money(
-                  subscription.service_fee,
-                  currency,
-                )}
+                value={money(subscription.service_fee, currency)}
               />
 
               <DetailItem
                 label="Service fee paid"
-                value={
-                  subscription.service_fee_paid
-                    ? "Yes"
-                    : "No"
-                }
+                value={subscription.service_fee_paid ? "Yes" : "No"}
               />
 
               <DetailItem
                 label="Trial ends"
+                value={dateValue(subscription.trial_ends_at)}
+              />
+
+              <DetailItem
+                label="Billing cycle"
+                value={String(
+                  subscription.billing_cycle || "monthly",
+                ).replaceAll("_", " ")}
+              />
+
+              <DetailItem
+                label="Subscription starts"
+                value={dateValue(subscription.start_date)}
+              />
+
+              <DetailItem
+                label="Subscription expires"
                 value={dateValue(
-                  subscription.trial_ends_at,
+                  subscription.end_date || subscription.next_billing_date,
                 )}
               />
 
               <DetailItem
-                label="Next billing"
-                value={dateValue(
-                  subscription.next_billing_date,
-                )}
+                label="Days remaining"
+                value={
+                  subscription.days_remaining === null ||
+                  subscription.days_remaining === undefined
+                    ? "Not available"
+                    : String(subscription.days_remaining)
+                }
+              />
+
+              <DetailItem
+                label="Last payment"
+                value={dateValue(subscription.last_payment_date)}
               />
 
               <DetailItem
                 label="Grace ends"
-                value={dateValue(
-                  subscription.grace_period_ends_at,
-                )}
+                value={dateValue(subscription.grace_period_ends_at)}
               />
 
               <DetailItem
                 label="Auto renew"
-                value={
-                  subscription.auto_renew
-                    ? "Enabled"
-                    : "Disabled"
-                }
+                value={subscription.auto_renew ? "Enabled" : "Disabled"}
               />
             </div>
           ) : (
@@ -765,9 +717,7 @@ export default function HospitalBillingDetailPage() {
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-bold text-slate-900">
-            Usage
-          </h2>
+          <h2 className="text-xl font-bold text-slate-900">Usage</h2>
 
           <div className="mt-6 space-y-5">
             <UsageBar
@@ -800,64 +750,52 @@ export default function HospitalBillingDetailPage() {
           <ActionButton
             label="Extend Trial"
             loading={actionLoading === "extend-trial"}
-            onClick={() =>
-              openActionModal("extend_trial")
-            }
+            onClick={() => openActionModal("extend_trial")}
+          />
+
+          <ActionButton
+            label="Extend Subscription"
+            loading={actionLoading === "extend-subscription"}
+            onClick={() => openActionModal("extend_subscription")}
           />
 
           <ActionButton
             label="End Trial"
             danger
             loading={actionLoading === "end-trial"}
-            onClick={() =>
-              openActionModal("end_trial")
-            }
+            onClick={() => openActionModal("end_trial")}
           />
 
           <ActionButton
             label="Suspend"
             danger
             loading={actionLoading === "suspend"}
-            onClick={() =>
-              openActionModal("suspend")
-            }
+            onClick={() => openActionModal("suspend")}
           />
 
           <ActionButton
             label="Reactivate"
             success
             loading={actionLoading === "reactivate"}
-            onClick={() =>
-              openActionModal("reactivate")
-            }
+            onClick={() => openActionModal("reactivate")}
           />
 
           <ActionButton
             label="Change Plan"
             loading={actionLoading === "change-plan"}
-            onClick={() =>
-              openActionModal("change_plan")
-            }
+            onClick={() => openActionModal("change_plan")}
           />
 
           <ActionButton
             label="Waive Service Fee"
-            loading={
-              actionLoading === "waive-service-fee"
-            }
-            onClick={() =>
-              openActionModal("waive_service_fee")
-            }
+            loading={actionLoading === "waive-service-fee"}
+            onClick={() => openActionModal("waive_service_fee")}
           />
 
           <ActionButton
             label="Generate Invoice"
-            loading={
-              actionLoading === "generate-invoice"
-            }
-            onClick={() =>
-              openActionModal("generate_invoice")
-            }
+            loading={actionLoading === "generate-invoice"}
+            onClick={() => openActionModal("generate_invoice")}
           />
         </div>
       </section>
@@ -892,42 +830,28 @@ export default function HospitalBillingDetailPage() {
                   </TableCell>
 
                   <TableCell>
-                    {String(
-                      invoice.invoice_type || "",
-                    ).replaceAll("_", " ")}
+                    {String(invoice.invoice_type || "").replaceAll("_", " ")}
                   </TableCell>
 
                   <TableCell>
-                    {money(
-                      invoice.total_amount,
-                      invoice.currency,
-                    )}
+                    {money(invoice.total_amount, invoice.currency)}
                   </TableCell>
 
                   <TableCell>
-                    {money(
-                      invoice.balance_due,
-                      invoice.currency,
-                    )}
+                    {money(invoice.balance_due, invoice.currency)}
                   </TableCell>
 
                   <TableCell>
-                    <StatusBadge
-                      value={invoice.status}
-                    />
+                    <StatusBadge value={invoice.status} />
                   </TableCell>
 
-                  <TableCell>
-                    {dateValue(invoice.due_date)}
-                  </TableCell>
+                  <TableCell>{dateValue(invoice.due_date)}</TableCell>
 
                   <TableCell>
                     {invoice.status !== "paid" && (
                       <button
                         type="button"
-                        onClick={() =>
-                          resendReminder(invoice)
-                        }
+                        onClick={() => resendReminder(invoice)}
                         className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                       >
                         Resend reminder
@@ -938,10 +862,7 @@ export default function HospitalBillingDetailPage() {
               ))}
 
               {!data.invoices?.length && (
-                <EmptyTableRow
-                  colSpan={7}
-                  message="No invoices available."
-                />
+                <EmptyTableRow colSpan={7} message="No invoices available." />
               )}
             </tbody>
           </table>
@@ -976,44 +897,28 @@ export default function HospitalBillingDetailPage() {
                     </span>
                   </TableCell>
 
+                  <TableCell>{payment.invoice_number}</TableCell>
+
                   <TableCell>
-                    {payment.invoice_number}
+                    {money(payment.amount, payment.currency)}
                   </TableCell>
 
                   <TableCell>
-                    {money(
-                      payment.amount,
-                      payment.currency,
-                    )}
+                    {String(payment.payment_method || "").replaceAll("_", " ")}
                   </TableCell>
 
                   <TableCell>
-                    {String(
-                      payment.payment_method || "",
-                    ).replaceAll("_", " ")}
+                    <StatusBadge value={payment.status} />
                   </TableCell>
 
                   <TableCell>
-                    <StatusBadge
-                      value={payment.status}
-                    />
-                  </TableCell>
-
-                  <TableCell>
-                    {dateValue(
-                      payment.paid_at ||
-                        payment.created_at,
-                      true,
-                    )}
+                    {dateValue(payment.paid_at || payment.created_at, true)}
                   </TableCell>
                 </tr>
               ))}
 
               {!data.payments?.length && (
-                <EmptyTableRow
-                  colSpan={6}
-                  message="No payments available."
-                />
+                <EmptyTableRow colSpan={6} message="No payments available." />
               )}
             </tbody>
           </table>
@@ -1025,29 +930,20 @@ export default function HospitalBillingDetailPage() {
           <div className="flex items-center gap-3">
             <MessageSquareText className="text-orange-500" />
 
-            <h2 className="text-xl font-bold text-slate-900">
-              Billing Notes
-            </h2>
+            <h2 className="text-xl font-bold text-slate-900">Billing Notes</h2>
           </div>
 
-          <form
-            onSubmit={addNote}
-            className="mt-5 space-y-3"
-          >
+          <form onSubmit={addNote} className="mt-5 space-y-3">
             <input
               value={noteTitle}
-              onChange={(event) =>
-                setNoteTitle(event.target.value)
-              }
+              onChange={(event) => setNoteTitle(event.target.value)}
               placeholder="Note title"
               className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             />
 
             <textarea
               value={noteText}
-              onChange={(event) =>
-                setNoteText(event.target.value)
-              }
+              onChange={(event) => setNoteText(event.target.value)}
               placeholder="Write an internal billing note..."
               rows={4}
               className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
@@ -1055,16 +951,11 @@ export default function HospitalBillingDetailPage() {
 
             <button
               type="submit"
-              disabled={
-                actionLoading === "add-note"
-              }
+              disabled={actionLoading === "add-note"}
               className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
             >
               {actionLoading === "add-note" ? (
-                <Loader2
-                  size={17}
-                  className="animate-spin"
-                />
+                <Loader2 size={17} className="animate-spin" />
               ) : (
                 <Plus size={17} />
               )}
@@ -1074,30 +965,22 @@ export default function HospitalBillingDetailPage() {
 
           <div className="mt-6 space-y-3">
             {notes.map((note) => (
-              <div
-                key={note.id}
-                className="rounded-xl bg-slate-50 p-4"
-              >
+              <div key={note.id} className="rounded-xl bg-slate-50 p-4">
                 <p className="font-semibold text-slate-900">
                   {note.title || "Billing note"}
                 </p>
 
-                <p className="mt-2 text-sm text-slate-700">
-                  {note.note}
-                </p>
+                <p className="mt-2 text-sm text-slate-700">{note.note}</p>
 
                 <p className="mt-3 text-xs text-slate-500">
-                  {note.author?.email ||
-                    "Unknown author"}{" "}
-                  • {dateValue(note.created_at, true)}
+                  {note.author?.email || "Unknown author"} •{" "}
+                  {dateValue(note.created_at, true)}
                 </p>
               </div>
             ))}
 
             {!notes.length && (
-              <p className="text-sm text-slate-500">
-                No billing notes.
-              </p>
+              <p className="text-sm text-slate-500">No billing notes.</p>
             )}
           </div>
         </div>
@@ -1117,25 +1000,16 @@ export default function HospitalBillingDetailPage() {
             </span>
           </div>
 
-          <form
-            onSubmit={addCredit}
-            className="mt-5 space-y-3"
-          >
+          <form onSubmit={addCredit} className="mt-5 space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <select
                 value={creditType}
-                onChange={(event) =>
-                  setCreditType(event.target.value)
-                }
+                onChange={(event) => setCreditType(event.target.value)}
                 className="rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
               >
-                <option value="credit">
-                  Credit
-                </option>
+                <option value="credit">Credit</option>
 
-                <option value="debit">
-                  Debit
-                </option>
+                <option value="debit">Debit</option>
               </select>
 
               <input
@@ -1143,9 +1017,7 @@ export default function HospitalBillingDetailPage() {
                 min="0.01"
                 step="0.01"
                 value={creditAmount}
-                onChange={(event) =>
-                  setCreditAmount(event.target.value)
-                }
+                onChange={(event) => setCreditAmount(event.target.value)}
                 placeholder="Amount"
                 className="rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
               />
@@ -1153,36 +1025,25 @@ export default function HospitalBillingDetailPage() {
 
             <input
               value={creditReason}
-              onChange={(event) =>
-                setCreditReason(event.target.value)
-              }
+              onChange={(event) => setCreditReason(event.target.value)}
               placeholder="Reason"
               className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             />
 
             <input
               value={creditReference}
-              onChange={(event) =>
-                setCreditReference(
-                  event.target.value,
-                )
-              }
+              onChange={(event) => setCreditReference(event.target.value)}
               placeholder="Reference, optional"
               className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
             />
 
             <button
               type="submit"
-              disabled={
-                actionLoading === "add-credit"
-              }
+              disabled={actionLoading === "add-credit"}
               className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
             >
               {actionLoading === "add-credit" ? (
-                <Loader2
-                  size={17}
-                  className="animate-spin"
-                />
+                <Loader2 size={17} className="animate-spin" />
               ) : (
                 <Plus size={17} />
               )}
@@ -1201,9 +1062,7 @@ export default function HospitalBillingDetailPage() {
                     {entry.entry_type}
                   </p>
 
-                  <p className="mt-1 text-sm text-slate-600">
-                    {entry.reason}
-                  </p>
+                  <p className="mt-1 text-sm text-slate-600">{entry.reason}</p>
 
                   <p className="mt-2 text-xs text-slate-500">
                     {dateValue(entry.created_at, true)}
@@ -1217,21 +1076,14 @@ export default function HospitalBillingDetailPage() {
                       : "font-bold text-red-600"
                   }
                 >
-                  {entry.entry_type === "credit"
-                    ? "+"
-                    : "-"}
-                  {money(
-                    entry.amount,
-                    entry.currency,
-                  )}
+                  {entry.entry_type === "credit" ? "+" : "-"}
+                  {money(entry.amount, entry.currency)}
                 </p>
               </div>
             ))}
 
             {!credits.length && (
-              <p className="text-sm text-slate-500">
-                No credit entries.
-              </p>
+              <p className="text-sm text-slate-500">No credit entries.</p>
             )}
           </div>
         </div>
@@ -1241,9 +1093,7 @@ export default function HospitalBillingDetailPage() {
         <div className="flex items-center gap-3">
           <Clock3 className="text-orange-500" />
 
-          <h2 className="text-xl font-bold text-slate-900">
-            Billing Timeline
-          </h2>
+          <h2 className="text-xl font-bold text-slate-900">Billing Timeline</h2>
         </div>
 
         <div className="mt-6 space-y-4">
@@ -1257,9 +1107,7 @@ export default function HospitalBillingDetailPage() {
               </div>
 
               <div className="flex-1 rounded-xl bg-slate-50 p-4">
-                <p className="font-semibold text-slate-900">
-                  {event.title}
-                </p>
+                <p className="font-semibold text-slate-900">{event.title}</p>
 
                 <p className="mt-1 text-sm text-slate-600">
                   {event.description}
@@ -1285,15 +1133,11 @@ export default function HospitalBillingDetailPage() {
         onClose={closeActionModal}
         onSubmit={submitActionModal}
         onFieldChange={updateActionModalField}
-        currentPlanCode={
-          subscription?.plan?.code || ""
-        }
+        currentPlanCode={subscription?.plan?.code || ""}
       />
-
     </div>
   );
 }
-
 
 function ActionModal({
   modal,
@@ -1319,9 +1163,7 @@ function ActionModal({
       <div className="w-full max-w-lg rounded-3xl bg-white shadow-2xl">
         <div className="flex items-start justify-between border-b border-slate-200 p-6">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">
-              {modal.title}
-            </h2>
+            <h2 className="text-xl font-bold text-slate-900">{modal.title}</h2>
 
             <p className="mt-2 text-sm leading-6 text-slate-600">
               {modal.description}
@@ -1353,15 +1195,48 @@ function ActionModal({
                   max="365"
                   value={modal.fields.days || ""}
                   onChange={(event) =>
-                    onFieldChange(
-                      "days",
-                      event.target.value,
-                    )
+                    onFieldChange("days", event.target.value)
                   }
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                   required
                 />
               </div>
+            )}
+
+            {modal.type === "extend_subscription" && (
+              <>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Extension duration
+                  </label>
+                  <select
+                    value={modal.fields.duration_months || "1"}
+                    onChange={(event) =>
+                      onFieldChange("duration_months", event.target.value)
+                    }
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                  >
+                    <option value="1">1 calendar month</option>
+                    <option value="6">6 calendar months</option>
+                    <option value="12">12 calendar months</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Reason
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={modal.fields.reason || ""}
+                    onChange={(event) =>
+                      onFieldChange("reason", event.target.value)
+                    }
+                    placeholder="Explain why this extension is authorized"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                    required
+                  />
+                </div>
+              </>
             )}
 
             {modal.type === "change_plan" && (
@@ -1371,46 +1246,29 @@ function ActionModal({
                 </label>
 
                 <select
-                  value={
-                    modal.fields.plan_code || ""
-                  }
+                  value={modal.fields.plan_code || ""}
                   onChange={(event) =>
-                    onFieldChange(
-                      "plan_code",
-                      event.target.value,
-                    )
+                    onFieldChange("plan_code", event.target.value)
                   }
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                   required
                 >
-                  <option value="">
-                    Select plan
-                  </option>
+                  <option value="">Select plan</option>
 
                   <option
                     value="starter"
-                    disabled={
-                      currentPlanCode === "starter"
-                    }
+                    disabled={currentPlanCode === "starter"}
                   >
                     Starter
                   </option>
 
-                  <option
-                    value="pro"
-                    disabled={
-                      currentPlanCode === "pro"
-                    }
-                  >
+                  <option value="pro" disabled={currentPlanCode === "pro"}>
                     Professional
                   </option>
 
                   <option
                     value="enterprise"
-                    disabled={
-                      currentPlanCode ===
-                      "enterprise"
-                    }
+                    disabled={currentPlanCode === "enterprise"}
                   >
                     Enterprise
                   </option>
@@ -1425,32 +1283,20 @@ function ActionModal({
                 </label>
 
                 <select
-                  value={
-                    modal.fields.invoice_type ||
-                    "monthly"
-                  }
+                  value={modal.fields.invoice_type || "monthly"}
                   onChange={(event) =>
-                    onFieldChange(
-                      "invoice_type",
-                      event.target.value,
-                    )
+                    onFieldChange("invoice_type", event.target.value)
                   }
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
                 >
-                  <option value="monthly">
-                    Monthly renewal invoice
-                  </option>
+                  <option value="monthly">Monthly renewal invoice</option>
 
-                  <option value="initial">
-                    Initial subscription invoice
-                  </option>
+                  <option value="initial">Initial subscription invoice</option>
                 </select>
               </div>
             )}
 
-            {["suspend", "waive_service_fee"].includes(
-              modal.type,
-            ) && (
+            {["suspend", "waive_service_fee"].includes(modal.type) && (
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
                   Reason or internal note
@@ -1460,10 +1306,7 @@ function ActionModal({
                   rows={4}
                   value={modal.fields.reason || ""}
                   onChange={(event) =>
-                    onFieldChange(
-                      "reason",
-                      event.target.value,
-                    )
+                    onFieldChange("reason", event.target.value)
                   }
                   placeholder="Enter the reason for this action..."
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
@@ -1471,9 +1314,7 @@ function ActionModal({
               </div>
             )}
 
-            {["end_trial", "reactivate"].includes(
-              modal.type,
-            ) && (
+            {["end_trial", "reactivate"].includes(modal.type) && (
               <div
                 className={`rounded-xl border p-4 text-sm ${
                   modal.danger
@@ -1505,16 +1346,9 @@ function ActionModal({
                   : "bg-orange-500 hover:bg-orange-600"
               }`}
             >
-              {loading && (
-                <Loader2
-                  size={17}
-                  className="animate-spin"
-                />
-              )}
+              {loading && <Loader2 size={17} className="animate-spin" />}
 
-              {loading
-                ? "Processing..."
-                : modal.confirmLabel}
+              {loading ? "Processing..." : modal.confirmLabel}
             </button>
           </div>
         </form>
@@ -1523,29 +1357,19 @@ function ActionModal({
   );
 }
 
-
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
-}) {
+function MetricCard({ icon: Icon, label, value }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
         <Icon size={22} />
       </div>
 
-      <p className="mt-4 text-sm text-slate-500">
-        {label}
-      </p>
+      <p className="mt-4 text-sm text-slate-500">{label}</p>
 
-      <p className="mt-1 text-2xl font-bold text-slate-900">
-        {value}
-      </p>
+      <p className="mt-1 text-2xl font-bold text-slate-900">{value}</p>
     </div>
   );
 }
-
 
 function DetailItem({ label, value }) {
   return (
@@ -1561,24 +1385,13 @@ function DetailItem({ label, value }) {
   );
 }
 
-
-function UsageBar({
-  icon: Icon,
-  label,
-  used,
-  limit,
-}) {
+function UsageBar({ icon: Icon, label, used, limit }) {
   const unlimited =
-    limit === null ||
-    limit === undefined ||
-    Number(limit) === 0;
+    limit === null || limit === undefined || Number(limit) === 0;
 
   const percentage = unlimited
     ? 0
-    : Math.min(
-        100,
-        (Number(used || 0) / Number(limit)) * 100,
-      );
+    : Math.min(100, (Number(used || 0) / Number(limit)) * 100);
 
   return (
     <div>
@@ -1586,9 +1399,7 @@ function UsageBar({
         <div className="flex items-center gap-2">
           <Icon size={18} className="text-orange-500" />
 
-          <span className="font-semibold text-slate-800">
-            {label}
-          </span>
+          <span className="font-semibold text-slate-800">{label}</span>
         </div>
 
         <span className="text-sm text-slate-600">
@@ -1610,7 +1421,6 @@ function UsageBar({
   );
 }
 
-
 function ActionButton({
   label,
   onClick,
@@ -1622,13 +1432,11 @@ function ActionButton({
     "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50";
 
   if (danger) {
-    classes =
-      "bg-red-600 text-white hover:bg-red-700";
+    classes = "bg-red-600 text-white hover:bg-red-700";
   }
 
   if (success) {
-    classes =
-      "bg-green-600 text-white hover:bg-green-700";
+    classes = "bg-green-600 text-white hover:bg-green-700";
   }
 
   return (
@@ -1638,36 +1446,22 @@ function ActionButton({
       disabled={loading}
       className={`inline-flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60 ${classes}`}
     >
-      {loading && (
-        <Loader2
-          size={16}
-          className="animate-spin"
-        />
-      )}
+      {loading && <Loader2 size={16} className="animate-spin" />}
 
       {label}
     </button>
   );
 }
 
-
-function SectionHeader({
-  title,
-  subtitle,
-}) {
+function SectionHeader({ title, subtitle }) {
   return (
     <div className="border-b border-slate-200 p-6">
-      <h2 className="text-xl font-bold text-slate-900">
-        {title}
-      </h2>
+      <h2 className="text-xl font-bold text-slate-900">{title}</h2>
 
-      <p className="mt-1 text-sm text-slate-500">
-        {subtitle}
-      </p>
+      <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
     </div>
   );
 }
-
 
 function TableHeader({ children }) {
   return (
@@ -1677,20 +1471,11 @@ function TableHeader({ children }) {
   );
 }
 
-
 function TableCell({ children }) {
-  return (
-    <td className="px-5 py-4 text-sm text-slate-700">
-      {children}
-    </td>
-  );
+  return <td className="px-5 py-4 text-sm text-slate-700">{children}</td>;
 }
 
-
-function EmptyTableRow({
-  colSpan,
-  message,
-}) {
+function EmptyTableRow({ colSpan, message }) {
   return (
     <tr>
       <td
@@ -1703,44 +1488,28 @@ function EmptyTableRow({
   );
 }
 
-
 function StatusBadge({ value }) {
-  const normalized = String(
-    value || "not_configured",
-  ).toLowerCase();
+  const normalized = String(value || "not_configured").toLowerCase();
 
   const classes = {
-    active:
-      "bg-green-100 text-green-700",
-    success:
-      "bg-green-100 text-green-700",
-    paid:
-      "bg-green-100 text-green-700",
-    trial:
-      "bg-blue-100 text-blue-700",
-    pending:
-      "bg-blue-100 text-blue-700",
-    grace:
-      "bg-amber-100 text-amber-700",
-    overdue:
-      "bg-amber-100 text-amber-700",
-    suspended:
-      "bg-red-100 text-red-700",
-    failed:
-      "bg-red-100 text-red-700",
-    expired:
-      "bg-slate-200 text-slate-700",
-    void:
-      "bg-slate-200 text-slate-700",
-    not_configured:
-      "bg-slate-100 text-slate-600",
+    active: "bg-green-100 text-green-700",
+    success: "bg-green-100 text-green-700",
+    paid: "bg-green-100 text-green-700",
+    trial: "bg-blue-100 text-blue-700",
+    pending: "bg-blue-100 text-blue-700",
+    grace: "bg-amber-100 text-amber-700",
+    overdue: "bg-amber-100 text-amber-700",
+    suspended: "bg-red-100 text-red-700",
+    failed: "bg-red-100 text-red-700",
+    expired: "bg-slate-200 text-slate-700",
+    void: "bg-slate-200 text-slate-700",
+    not_configured: "bg-slate-100 text-slate-600",
   };
 
   return (
     <span
       className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-        classes[normalized] ||
-        classes.not_configured
+        classes[normalized] || classes.not_configured
       }`}
     >
       {normalized.replaceAll("_", " ")}

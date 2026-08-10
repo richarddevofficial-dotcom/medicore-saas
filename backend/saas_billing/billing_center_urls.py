@@ -10,6 +10,7 @@ from .billing_center_views import (
     billing_center_download_receipt_pdf,
     billing_center_end_trial,
     billing_center_extend_trial,
+    billing_center_extend_subscription,
     billing_center_generate_invoice,
     billing_center_hospital_credits,
     billing_center_hospital_detail,
@@ -115,6 +116,11 @@ urlpatterns = [
         "hospitals/<int:hospital_id>/extend-trial/",
         billing_center_extend_trial,
         name="billing-center-extend-trial",
+    ),
+    path(
+        "hospitals/<int:hospital_id>/extend-subscription/",
+        billing_center_extend_subscription,
+        name="billing-center-extend-subscription",
     ),
     path(
         "hospitals/<int:hospital_id>/end-trial/",

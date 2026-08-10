@@ -1,9 +1,12 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.core.management import call_command
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.http import HttpResponse
+from django.test import RequestFactory, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -13,7 +16,183 @@ from hospitals.models import Hospital
 from staff.models import StaffProfile
 
 from .models import HospitalSubscription, Invoice, Payment, SubscriptionPlan
+from .middleware import SubscriptionAccessMiddleware
 from .plan_change_services import create_plan_change_invoice
+from .services import refresh_subscription_status
+from .subscription_services import (
+	calculate_subscription_end_date,
+	get_renewal_period,
+)
+
+
+class SubscriptionCycleCalculationTests(TestCase):
+	def test_supported_cycles_add_calendar_months(self):
+		start_date = date(2026, 8, 10)
+
+		self.assertEqual(
+			calculate_subscription_end_date(start_date, "monthly"),
+			date(2026, 9, 10),
+		)
+		self.assertEqual(
+			calculate_subscription_end_date(start_date, "six_months"),
+			date(2027, 2, 10),
+		)
+		self.assertEqual(
+			calculate_subscription_end_date(start_date, "annual"),
+			date(2027, 8, 10),
+		)
+
+	def test_month_end_uses_calendar_arithmetic(self):
+		self.assertEqual(
+			calculate_subscription_end_date(
+				date(2027, 1, 31),
+				"monthly",
+			),
+			date(2027, 2, 28),
+		)
+
+	def test_early_renewal_extends_from_current_end_date(self):
+		start_date, end_date = get_renewal_period(
+			current_end_date=date(2026, 9, 30),
+			billing_cycle="six_months",
+			today=date(2026, 9, 10),
+		)
+
+		self.assertEqual(start_date, date(2026, 9, 30))
+		self.assertEqual(end_date, date(2027, 3, 30))
+
+	def test_expired_renewal_starts_from_today(self):
+		start_date, end_date = get_renewal_period(
+			current_end_date=date(2026, 7, 31),
+			billing_cycle="annual",
+			today=date(2026, 8, 10),
+		)
+
+		self.assertEqual(start_date, date(2026, 8, 10))
+		self.assertEqual(end_date, date(2027, 8, 10))
+
+
+class SubscriptionStatusAndAccessTests(TestCase):
+	def setUp(self):
+		self.hospital = Hospital.objects.create(
+			name="Status Hospital",
+			slug="status-hospital",
+			hospital_type="general",
+			registration_number="STATUS-001",
+			email="status@example.com",
+			phone="1234567890",
+			address="123 Main Street",
+			city="Juba",
+			state="Central",
+			country="South Sudan",
+		)
+		self.plan = SubscriptionPlan.objects.create(
+			code="status-plan",
+			name="Status Plan",
+			monthly_price="49.90",
+			service_fee="300.00",
+		)
+		self.subscription = HospitalSubscription.objects.create(
+			hospital=self.hospital,
+			plan=self.plan,
+			status=HospitalSubscription.STATUS_ACTIVE,
+			current_monthly_price="49.90",
+			current_service_fee="300.00",
+		)
+		self.user = User.objects.create_user(
+			username="status-admin@example.com",
+			email="status-admin@example.com",
+			password="Admin@1234",
+		)
+		StaffProfile.objects.create(
+			user=self.user,
+			hospital=self.hospital,
+			role="admin",
+			phone="700010",
+		)
+
+	def test_statuses_progress_and_command_is_idempotent(self):
+		self.subscription.end_date = timezone.localdate() + timedelta(days=10)
+		self.subscription.save(update_fields=["end_date"])
+		refresh_subscription_status(self.subscription)
+		self.assertEqual(
+			self.subscription.status,
+			HospitalSubscription.STATUS_EXPIRING_SOON,
+		)
+
+		self.subscription.end_date = timezone.localdate() - timedelta(days=1)
+		self.subscription.save(update_fields=["end_date"])
+		refresh_subscription_status(self.subscription)
+		self.assertEqual(
+			self.subscription.status,
+			HospitalSubscription.STATUS_GRACE,
+		)
+
+		self.subscription.grace_period_ends_at = timezone.now() - timedelta(days=1)
+		self.subscription.save(update_fields=["grace_period_ends_at"])
+		call_command("update_subscription_statuses")
+		call_command("update_subscription_statuses")
+		self.subscription.refresh_from_db()
+		self.assertEqual(
+			self.subscription.status,
+			HospitalSubscription.STATUS_EXPIRED,
+		)
+		self.assertTrue(Hospital.objects.filter(id=self.hospital.id).exists())
+
+	def test_suspended_subscription_is_not_automatically_reactivated(self):
+		self.subscription.status = HospitalSubscription.STATUS_SUSPENDED
+		self.subscription.end_date = timezone.localdate() + timedelta(days=90)
+		self.subscription.save(update_fields=["status", "end_date"])
+
+		refresh_subscription_status(self.subscription)
+
+		self.assertEqual(
+			self.subscription.status,
+			HospitalSubscription.STATUS_SUSPENDED,
+		)
+
+	def test_expired_access_blocks_operations_but_allows_billing(self):
+		self.subscription.status = HospitalSubscription.STATUS_EXPIRED
+		self.subscription.end_date = timezone.localdate() - timedelta(days=10)
+		self.subscription.save(update_fields=["status", "end_date"])
+		middleware = SubscriptionAccessMiddleware(lambda request: HttpResponse("ok"))
+		factory = RequestFactory()
+
+		operational_request = factory.get("/api/v1/patients/")
+		operational_request.user = self.user
+		operational_response = middleware(operational_request)
+		billing_request = factory.get("/api/v1/saas-billing/dashboard/")
+		billing_request.user = self.user
+		billing_response = middleware(billing_request)
+
+		self.assertEqual(operational_response.status_code, 403)
+		self.assertJSONEqual(
+			operational_response.content,
+			{
+				"code": "SUBSCRIPTION_EXPIRED",
+				"message": "Your MediCoreCloud subscription has expired.",
+				"status": "expired",
+				"subscription_end_date": self.subscription.end_date.isoformat(),
+				"renewal_required": True,
+				"billing_only": True,
+				"billing_url": "/settings/billing",
+			},
+		)
+		self.assertEqual(billing_response.status_code, 200)
+
+	def test_platform_super_admin_bypasses_subscription_guard(self):
+		super_admin = User.objects.create_superuser(
+			username="status-super@example.com",
+			email="status-super@example.com",
+			password="Admin@1234",
+		)
+		request = RequestFactory().get("/api/v1/patients/")
+		request.user = super_admin
+		response = SubscriptionAccessMiddleware(
+			lambda current_request: HttpResponse("ok")
+		)(request)
+
+		self.assertEqual(response.status_code, 200)
 
 
 class SubscriptionCatalogTests(TestCase):
@@ -187,6 +366,61 @@ class HospitalBillingAuthorizationTests(TestCase):
 		self.assertEqual(dashboard_response.status_code, 403)
 		self.assertEqual(plan_changes_response.status_code, 403)
 
+	def test_hospital_payment_history_and_proof_are_tenant_isolated(self):
+		other_hospital = Hospital.objects.create(
+			name="Other Billing Hospital",
+			slug="other-billing-hospital",
+			hospital_type="general",
+			registration_number="BILLING-OTHER-001",
+			email="other-billing@example.com",
+			phone="1234567891",
+			address="456 Main Street",
+			city="Juba",
+			state="Central",
+			country="South Sudan",
+		)
+		other_subscription = HospitalSubscription.objects.create(
+			hospital=other_hospital,
+			plan=self.starter_plan,
+			status=HospitalSubscription.STATUS_ACTIVE,
+			current_monthly_price="49.90",
+			current_service_fee="300.00",
+		)
+		other_invoice = Invoice.objects.create(
+			invoice_number=Invoice.generate_invoice_number(),
+			hospital=other_hospital,
+			subscription=other_subscription,
+			invoice_type=Invoice.TYPE_SUBSCRIPTION,
+			status=Invoice.STATUS_PENDING,
+			subscription_amount=Decimal("49.90"),
+			subtotal=Decimal("49.90"),
+			total_amount=Decimal("49.90"),
+			currency="USD",
+			due_date=timezone.localdate() + timedelta(days=7),
+		)
+		other_payment = Payment.objects.create(
+			payment_reference=Payment.generate_reference(),
+			invoice=other_invoice,
+			hospital=other_hospital,
+			subscription=other_subscription,
+			plan=self.starter_plan,
+			payment_type=Payment.TYPE_SUBSCRIPTION,
+			amount=Decimal("49.90"),
+			currency="USD",
+			gateway=Payment.GATEWAY_BANK,
+			status=Payment.STATUS_PENDING,
+		)
+		self.client.force_authenticate(user=self.admin_user)
+
+		history_response = self.client.get("/api/v1/saas-billing/payments/")
+		proof_response = self.client.get(
+			f"/api/v1/saas-billing/payments/{other_payment.id}/proof/",
+		)
+
+		self.assertEqual(history_response.status_code, 200)
+		self.assertEqual(history_response.data["count"], 0)
+		self.assertEqual(proof_response.status_code, 404)
+
 	def test_scheduled_plan_change_updates_subscription_and_hospital(self):
 		subscription = HospitalSubscription.objects.get(
 			hospital=self.hospital,
@@ -289,6 +523,90 @@ class HospitalBillingAuthorizationTests(TestCase):
 			response.data["target_plan"]["code"],
 			self.pro_plan.code,
 		)
+
+	def test_six_month_invoice_uses_cycle_price(self):
+		self.starter_plan.six_month_price = Decimal("269.40")
+		self.starter_plan.save(update_fields=["six_month_price"])
+		self.client.force_authenticate(user=self.admin_user)
+
+		response = self.client.post(
+			"/api/v1/saas-billing/invoices/generate-initial/",
+			{"billing_cycle": "six_months"},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 201)
+		self.assertEqual(response.data["invoice"]["billing_cycle"], "six_months")
+		self.assertEqual(response.data["invoice"]["subscription_amount"], "269.40")
+
+	def test_cash_payment_submission_is_pending_and_audited(self):
+		self.client.force_authenticate(user=self.admin_user)
+		invoice_response = self.client.post(
+			"/api/v1/saas-billing/invoices/generate-initial/",
+			{"billing_cycle": "monthly"},
+			format="json",
+		)
+
+		response = self.client.post(
+			"/api/v1/saas-billing/payments/manual/",
+			{
+				"invoice_id": invoice_response.data["invoice"]["id"],
+				"payment_method": "cash",
+				"transaction_id": "CASH-RECEIPT-001",
+				"payment_date": timezone.localdate().isoformat(),
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 201)
+		payment = Payment.objects.get(id=response.data["payment"]["id"])
+		self.assertEqual(payment.status, Payment.STATUS_PENDING)
+		self.assertEqual(payment.gateway, Payment.GATEWAY_CASH)
+		self.assertEqual(payment.submitted_by, self.admin_user)
+		self.assertEqual(payment.hospital, self.hospital)
+		self.assertTrue(
+			AuditLog.objects.filter(
+				action__startswith="PAYMENT_SUBMITTED",
+				hospital=self.hospital,
+			).exists()
+		)
+
+	def test_payment_submission_rejects_unsupported_method_and_proof(self):
+		self.client.force_authenticate(user=self.admin_user)
+		invoice_response = self.client.post(
+			"/api/v1/saas-billing/invoices/generate-initial/",
+			{"billing_cycle": "monthly"},
+			format="json",
+		)
+		invoice_id = invoice_response.data["invoice"]["id"]
+
+		method_response = self.client.post(
+			"/api/v1/saas-billing/payments/manual/",
+			{
+				"invoice_id": invoice_id,
+				"payment_method": "mobile_money",
+				"transaction_id": "MOBILE-001",
+			},
+			format="json",
+		)
+		proof_response = self.client.post(
+			"/api/v1/saas-billing/payments/manual/",
+			{
+				"invoice_id": invoice_id,
+				"payment_method": "bank_transfer",
+				"transaction_id": "BANK-PROOF-001",
+				"proof_of_payment": SimpleUploadedFile(
+					"receipt.txt",
+					b"not an allowed payment proof",
+					content_type="text/plain",
+				),
+			},
+			format="multipart",
+		)
+
+		self.assertEqual(method_response.status_code, 400)
+		self.assertEqual(proof_response.status_code, 400)
+		self.assertFalse(Payment.objects.filter(invoice_id=invoice_id).exists())
 
 	def test_starter_trial_upgrade_charges_basic_service_fee_once(self):
 		self.starter_plan.monthly_price = "0.00"
@@ -404,6 +722,38 @@ class SuperAdminBillingCenterTests(TestCase):
 
 		self.assertEqual(response.status_code, 403)
 
+	def test_super_admin_can_manually_extend_subscription_with_reason(self):
+		current_end_date = timezone.localdate() + timedelta(days=20)
+		self.subscription.end_date = current_end_date
+		self.subscription.next_billing_date = current_end_date
+		self.subscription.save(update_fields=["end_date", "next_billing_date"])
+		self.client.force_authenticate(user=self.super_admin)
+
+		missing_reason_response = self.client.post(
+			f"/api/v1/billing-center/hospitals/{self.hospital.id}/extend-subscription/",
+			{"duration_months": 6, "reason": ""},
+			format="json",
+		)
+		response = self.client.post(
+			f"/api/v1/billing-center/hospitals/{self.hospital.id}/extend-subscription/",
+			{"duration_months": 6, "reason": "Approved service credit."},
+			format="json",
+		)
+
+		self.assertEqual(missing_reason_response.status_code, 400)
+		self.assertEqual(response.status_code, 200)
+		self.subscription.refresh_from_db()
+		self.assertEqual(
+			self.subscription.end_date,
+			calculate_subscription_end_date(current_end_date, "six_months"),
+		)
+		self.assertTrue(
+			AuditLog.objects.filter(
+				action="SUBSCRIPTION_MANUALLY_EXTENDED",
+				hospital=self.hospital,
+			).exists()
+		)
+
 	def test_mark_plan_change_invoice_paid_creates_valid_payment_and_applies_plan(self):
 		invoice, _created = create_plan_change_invoice(
 			subscription=self.subscription,
@@ -484,11 +834,225 @@ class SuperAdminBillingCenterTests(TestCase):
 		self.assertEqual(self.subscription.plan, self.pro_plan)
 		self.assertTrue(
 			AuditLog.objects.filter(
-				action="approve_subscription_payment",
+				action="PAYMENT_CONFIRMED",
 				target=f"payment:{payment.id}",
 				hospital=self.hospital,
 			).exists()
 		)
+
+	def test_approval_extends_early_six_month_renewal_from_current_expiry(self):
+		current_end_date = timezone.localdate() + timedelta(days=30)
+		self.subscription.end_date = current_end_date
+		self.subscription.next_billing_date = current_end_date
+		self.subscription.save(update_fields=["end_date", "next_billing_date"])
+		invoice = Invoice.objects.create(
+			invoice_number=Invoice.generate_invoice_number(),
+			hospital=self.hospital,
+			subscription=self.subscription,
+			invoice_type=Invoice.TYPE_SUBSCRIPTION,
+			status=Invoice.STATUS_PENDING,
+			subscription_amount=Decimal("539.40"),
+			subtotal=Decimal("539.40"),
+			total_amount=Decimal("539.40"),
+			currency="USD",
+			due_date=timezone.localdate() + timedelta(days=7),
+			metadata={"billing_cycle": "six_months"},
+		)
+		payment = Payment.objects.create(
+			payment_reference=Payment.generate_reference(),
+			invoice=invoice,
+			hospital=self.hospital,
+			subscription=self.subscription,
+			plan=self.pro_plan,
+			billing_cycle=HospitalSubscription.CYCLE_SIX_MONTHS,
+			payment_type=Payment.TYPE_SUBSCRIPTION,
+			amount=invoice.balance_due,
+			currency=invoice.currency,
+			gateway=Payment.GATEWAY_BANK,
+			status=Payment.STATUS_PENDING,
+		)
+		self.client.force_authenticate(user=self.super_admin)
+
+		response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/approve/",
+			{},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.subscription.refresh_from_db()
+		payment.refresh_from_db()
+		self.assertEqual(
+			self.subscription.end_date,
+			calculate_subscription_end_date(
+				current_end_date,
+				HospitalSubscription.CYCLE_SIX_MONTHS,
+			),
+		)
+		self.assertEqual(
+			self.subscription.billing_cycle,
+			HospitalSubscription.CYCLE_SIX_MONTHS,
+		)
+		self.assertEqual(payment.confirmed_by, self.super_admin)
+		self.assertIsNotNone(payment.confirmed_at)
+
+		duplicate_response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/approve/",
+			{},
+			format="json",
+		)
+		self.assertEqual(duplicate_response.status_code, 409)
+
+	def test_approval_of_expired_annual_subscription_starts_today(self):
+		self.subscription.status = HospitalSubscription.STATUS_EXPIRED
+		self.subscription.end_date = timezone.localdate() - timedelta(days=10)
+		self.subscription.save(update_fields=["status", "end_date"])
+		invoice = Invoice.objects.create(
+			invoice_number=Invoice.generate_invoice_number(),
+			hospital=self.hospital,
+			subscription=self.subscription,
+			invoice_type=Invoice.TYPE_SUBSCRIPTION,
+			status=Invoice.STATUS_PENDING,
+			subscription_amount=Decimal("1078.80"),
+			subtotal=Decimal("1078.80"),
+			total_amount=Decimal("1078.80"),
+			currency="USD",
+			due_date=timezone.localdate() + timedelta(days=7),
+			metadata={"billing_cycle": "annual"},
+		)
+		payment = Payment.objects.create(
+			payment_reference=Payment.generate_reference(),
+			invoice=invoice,
+			hospital=self.hospital,
+			subscription=self.subscription,
+			plan=self.pro_plan,
+			billing_cycle=HospitalSubscription.CYCLE_ANNUAL,
+			payment_type=Payment.TYPE_SUBSCRIPTION,
+			amount=invoice.balance_due,
+			currency=invoice.currency,
+			gateway=Payment.GATEWAY_CASH,
+			status=Payment.STATUS_PENDING,
+		)
+		self.client.force_authenticate(user=self.super_admin)
+
+		response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/approve/",
+			{},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.subscription.refresh_from_db()
+		self.assertEqual(self.subscription.start_date, timezone.localdate())
+		self.assertEqual(
+			self.subscription.end_date,
+			calculate_subscription_end_date(
+				timezone.localdate(),
+				HospitalSubscription.CYCLE_ANNUAL,
+			),
+		)
+
+	@patch(
+		"saas_billing.billing_center_views.send_payment_receipt_email",
+		side_effect=RuntimeError("Receipt provider unavailable"),
+	)
+	def test_receipt_failure_does_not_roll_back_approval(self, _send_receipt):
+		invoice = Invoice.objects.create(
+			invoice_number=Invoice.generate_invoice_number(),
+			hospital=self.hospital,
+			subscription=self.subscription,
+			invoice_type=Invoice.TYPE_SUBSCRIPTION,
+			status=Invoice.STATUS_PENDING,
+			subscription_amount=Decimal("89.90"),
+			subtotal=Decimal("89.90"),
+			total_amount=Decimal("89.90"),
+			currency="USD",
+			due_date=timezone.localdate() + timedelta(days=7),
+		)
+		payment = Payment.objects.create(
+			payment_reference=Payment.generate_reference(),
+			invoice=invoice,
+			hospital=self.hospital,
+			subscription=self.subscription,
+			plan=self.subscription.plan,
+			billing_cycle=HospitalSubscription.CYCLE_MONTHLY,
+			payment_type=Payment.TYPE_SUBSCRIPTION,
+			amount=invoice.total_amount,
+			currency=invoice.currency,
+			gateway=Payment.GATEWAY_BANK,
+			status=Payment.STATUS_PENDING,
+		)
+		self.client.force_authenticate(user=self.super_admin)
+
+		with self.captureOnCommitCallbacks(execute=True):
+			response = self.client.post(
+				f"/api/v1/billing-center/payments/{payment.id}/approve/",
+				{},
+				format="json",
+			)
+
+		self.assertEqual(response.status_code, 200)
+		payment.refresh_from_db()
+		invoice.refresh_from_db()
+		self.subscription.refresh_from_db()
+		self.assertEqual(payment.status, Payment.STATUS_SUCCESS)
+		self.assertEqual(invoice.status, Invoice.STATUS_PAID)
+		self.assertEqual(
+			self.subscription.status,
+			HospitalSubscription.STATUS_ACTIVE,
+		)
+
+	def test_rejected_payment_records_reason_without_renewing_subscription(self):
+		original_end_date = timezone.localdate() + timedelta(days=10)
+		self.subscription.end_date = original_end_date
+		self.subscription.save(update_fields=["end_date"])
+		invoice = Invoice.objects.create(
+			invoice_number=Invoice.generate_invoice_number(),
+			hospital=self.hospital,
+			subscription=self.subscription,
+			invoice_type=Invoice.TYPE_SUBSCRIPTION,
+			status=Invoice.STATUS_PENDING,
+			subscription_amount=Decimal("49.90"),
+			subtotal=Decimal("49.90"),
+			total_amount=Decimal("49.90"),
+			currency="USD",
+			due_date=timezone.localdate() + timedelta(days=7),
+		)
+		payment = Payment.objects.create(
+			payment_reference=Payment.generate_reference(),
+			invoice=invoice,
+			hospital=self.hospital,
+			subscription=self.subscription,
+			plan=self.basic_plan,
+			payment_type=Payment.TYPE_SUBSCRIPTION,
+			amount=invoice.balance_due,
+			currency=invoice.currency,
+			gateway=Payment.GATEWAY_BANK,
+			status=Payment.STATUS_PENDING,
+		)
+		self.client.force_authenticate(user=self.super_admin)
+
+		missing_reason_response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/reject/",
+			{"reason": ""},
+			format="json",
+		)
+		response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/reject/",
+			{"reason": "Reference could not be verified."},
+			format="json",
+		)
+
+		self.assertEqual(missing_reason_response.status_code, 400)
+		self.assertEqual(response.status_code, 200)
+		payment.refresh_from_db()
+		self.subscription.refresh_from_db()
+		self.assertEqual(payment.status, Payment.STATUS_FAILED)
+		self.assertEqual(
+			payment.rejection_reason,
+			"Reference could not be verified.",
+		)
+		self.assertEqual(self.subscription.end_date, original_end_date)
 
 	def test_hospital_admin_submits_payment_then_super_admin_approves_it(self):
 		invoice, _created = create_plan_change_invoice(
@@ -528,11 +1092,12 @@ class SuperAdminBillingCenterTests(TestCase):
 		)
 
 		self.client.force_authenticate(user=self.super_admin)
-		approve_response = self.client.post(
-			f"/api/v1/billing-center/payments/{payment.id}/approve/",
-			{},
-			format="json",
-		)
+		with self.captureOnCommitCallbacks(execute=True):
+			approve_response = self.client.post(
+				f"/api/v1/billing-center/payments/{payment.id}/approve/",
+				{},
+				format="json",
+			)
 
 		self.assertEqual(approve_response.status_code, 200)
 		payment.refresh_from_db()
@@ -546,7 +1111,7 @@ class SuperAdminBillingCenterTests(TestCase):
 		self.assertEqual(self.subscription.plan, self.pro_plan)
 		self.assertTrue(
 			AuditLog.objects.filter(
-				action="approve_subscription_payment",
+				action="PAYMENT_CONFIRMED",
 				target=f"payment:{payment.id}",
 				hospital=self.hospital,
 			).exists()

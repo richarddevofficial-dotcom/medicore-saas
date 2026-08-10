@@ -50,11 +50,12 @@ class SubscriptionAccessMiddleware:
         except HospitalSubscription.DoesNotExist:
             return JsonResponse(
                 {
-                    "error": "Hospital subscription not configured.",
-                    "code": "subscription_missing",
+                    "code": "SUBSCRIPTION_MISSING",
+                    "message": "Hospital subscription not configured.",
+                    "renewal_required": True,
                     "billing_only": True,
                 },
-                status=402,
+                status=403,
             )
 
         access = get_subscription_access(subscription)
@@ -62,13 +63,19 @@ class SubscriptionAccessMiddleware:
         if access["billing_only"]:
             return JsonResponse(
                 {
-                    "error": "Subscription payment is required.",
-                    "code": "subscription_expired",
+                    "code": "SUBSCRIPTION_EXPIRED",
+                    "message": "Your MediCoreCloud subscription has expired.",
                     "status": subscription.status,
+                    "subscription_end_date": (
+                        subscription.end_date.isoformat()
+                        if subscription.end_date
+                        else None
+                    ),
+                    "renewal_required": True,
                     "billing_only": True,
-                    "billing_url": "/settings/subscription",
+                    "billing_url": "/settings/billing",
                 },
-                status=402,
+                status=403,
             )
 
         response = self.get_response(request)
