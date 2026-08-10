@@ -268,6 +268,11 @@ def activate_plan_change(
         is_active=True,
     )
 
+    # If this plan is already active, treat the activation as a no-op.
+    # This keeps payment approval idempotent.
+    if subscription.plan_id == target_plan.id:
+        return subscription
+
     validate_target_plan(
         subscription,
         target_plan,
