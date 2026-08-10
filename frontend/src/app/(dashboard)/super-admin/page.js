@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Badge from "@/components/ui/Badge";
-import Modal from "@/components/ui/Modal";
 import Spinner from "@/components/ui/Spinner";
 import EmptyState from "@/components/ui/EmptyState";
 import {
@@ -43,7 +43,6 @@ import apiClient from "@/lib/api-client";
 
 export default function SuperAdminDashboard() {
   const [data, setData] = useState(null);
-  const [pendingPayments, setPendingPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPlan, setFilterPlan] = useState("all");
@@ -59,11 +58,6 @@ export default function SuperAdminDashboard() {
   const [loadingNotificationsOps, setLoadingNotificationsOps] = useState(false);
   const [retryingFailedReceiptJobs, setRetryingFailedReceiptJobs] =
     useState(false);
-  const [reviewModalOpen, setReviewModalOpen] = useState(false);
-  const [reviewingPayment, setReviewingPayment] = useState(null);
-  const [reviewStatus, setReviewStatus] = useState("paid");
-  const [reviewNote, setReviewNote] = useState("");
-  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [billingSearchTerm, setBillingSearchTerm] = useState("");
   const [billingPlanFilter, setBillingPlanFilter] = useState("all");
   const [billingPaymentStatusFilter, setBillingPaymentStatusFilter] =
@@ -119,11 +113,6 @@ export default function SuperAdminDashboard() {
     return "default";
   };
 
-  const fetchPendingPayments = async () => {
-    const res = await apiClient.get("/subscription-payments/?status=pending");
-    setPendingPayments(res.data.results || res.data || []);
-  };
-
   const fetchPlatformSuperAdmins = async () => {
     const res = await apiClient.get("/super-admin/platform-admins/");
     setSuperAdmins(res.data.results || []);
@@ -149,13 +138,11 @@ export default function SuperAdminDashboard() {
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [statsRes, paymentsRes, platformAdminsRes] = await Promise.all([
+        const [statsRes, platformAdminsRes] = await Promise.all([
           apiClient.get("/super-admin/stats/"),
-          apiClient.get("/subscription-payments/?status=pending"),
           apiClient.get("/super-admin/platform-admins/"),
         ]);
         setData(statsRes.data);
-        setPendingPayments(paymentsRes.data.results || paymentsRes.data || []);
         setSuperAdmins(platformAdminsRes.data.results || []);
         await fetchNotificationFailures();
       } catch {
@@ -225,7 +212,6 @@ export default function SuperAdminDashboard() {
       setLoading(true);
       const res = await apiClient.get("/super-admin/stats/");
       setData(res.data);
-      await fetchPendingPayments();
     } catch (err) {
       toast.error("Failed");
     } finally {
@@ -243,76 +229,12 @@ export default function SuperAdminDashboard() {
       setLoading(true);
       const res = await apiClient.get("/super-admin/stats/");
       setData(res.data);
-      await fetchPendingPayments();
     } catch (err) {
       toast.error("Failed");
     } finally {
       setLoading(false);
     }
   };
-  const openReviewModal = (payment, status) => {
-    setReviewingPayment(payment);
-    setReviewStatus(status);
-    setReviewNote("");
-    setReviewModalOpen(true);
-  };
-
-  const handleReviewPayment = async () => {
-    const trimmedNote = reviewNote.trim();
-    const isSuperAdmin =
-      typeof window !== "undefined" &&
-      localStorage.getItem("role") === "super_admin";
-
-    if (!reviewingPayment) {
-      return;
-    }
-
-    if (!isSuperAdmin) {
-      toast.error("Only super admins can review payments");
-      return;
-    }
-
-    if (!trimmedNote || trimmedNote.length < 5) {
-      toast.error("Review note is required (min 5 characters)");
-      return;
-    }
-
-    setReviewSubmitting(true);
-    try {
-      const { data: responseData } = await apiClient.post(
-        `/subscription-payments/${reviewingPayment.id}/review/`,
-        {
-          status: reviewStatus,
-          review_note: trimmedNote,
-        },
-      );
-
-      if (reviewStatus === "paid") {
-        if (responseData?.receipt_email_sent) {
-          toast.success("Payment approved and receipt sent");
-        } else {
-          toast.error(
-            responseData?.receipt_email_error ||
-              "Payment approval did not send receipt",
-          );
-        }
-      } else {
-        toast.success(`Payment marked as ${reviewStatus}`);
-      }
-
-      setReviewModalOpen(false);
-      setReviewingPayment(null);
-      setReviewNote("");
-      const res = await apiClient.get("/super-admin/stats/");
-      setData(res.data);
-      await fetchPendingPayments();
-    } catch {
-      toast.error("Failed to update payment status");
-    } finally {
-      setReviewSubmitting(false);
-    }
-  };
-
   const handleResendReceipt = async (paymentId) => {
     if (resendingReceiptPaymentId !== null) return;
     setResendingReceiptPaymentId(paymentId);
@@ -395,7 +317,6 @@ export default function SuperAdminDashboard() {
       const retriedCount = Number(response?.retried_count || 0);
       toast.success(`Queued ${retriedCount} failed receipt job(s) for retry`);
       await fetchNotificationFailures();
-      await fetchPendingPayments();
     } catch (err) {
       toast.error(
         err?.response?.data?.error || "Failed to retry failed receipt jobs",
@@ -1464,136 +1385,20 @@ export default function SuperAdminDashboard() {
           </div>
         </Card>
 
-        <Card padding={false}>
-          <div className="px-4 py-3 border-b border-gray-200">
-            <h2 className="font-semibold">Pending Subscription Payments</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Hospital
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Plan
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Cycle
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Amount
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Method
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Transaction ID
-                  </th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {pendingPayments.map((payment) => (
-                  <tr key={payment.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-3 font-medium">
-                      {payment.hospital_name}
-                    </td>
-                    <td className="px-3 py-3">{payment.plan}</td>
-                    <td className="px-3 py-3">
-                      {payment.billing_cycle_months || 1}m
-                    </td>
-                    <td className="px-3 py-3">${payment.amount}</td>
-                    <td className="px-3 py-3">
-                      {payment.payment_method || "-"}
-                    </td>
-                    <td className="px-3 py-3 text-sm font-mono">
-                      {payment.transaction_id || "-"}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => openReviewModal(payment, "paid")}
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          onClick={() => openReviewModal(payment, "failed")}
-                        >
-                          Reject
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {pendingPayments.length === 0 && (
-                  <tr>
-                    <td colSpan="7" className="text-center py-8 text-gray-500">
-                      <EmptyState
-                        imageSrc="/images/empty-states/billing-empty.svg"
-                        imageAlt="No pending payments"
-                        title="No pending payments"
-                        className="py-2 px-0"
-                        titleClassName="text-sm font-normal text-gray-500 mb-0"
-                      />
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        <Card>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-semibold">Subscription Payment Reviews</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Review, confirm, or reject hospital payments in the Payments and
+                Billing Center.
+              </p>
+            </div>
+            <Link href="/platform/billing/payments">
+              <Button>Open Payment Center</Button>
+            </Link>
           </div>
         </Card>
-
-        <Modal
-          isOpen={reviewModalOpen}
-          onClose={() => {
-            setReviewModalOpen(false);
-            setReviewingPayment(null);
-            setReviewNote("");
-          }}
-          title={reviewStatus === "paid" ? "Approve payment" : "Reject payment"}
-          size="sm"
-          footer={
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setReviewModalOpen(false);
-                  setReviewingPayment(null);
-                  setReviewNote("");
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleReviewPayment}
-                isLoading={reviewSubmitting}
-              >
-                {reviewStatus === "paid" ? "Approve" : "Reject"}
-              </Button>
-            </>
-          }
-        >
-          <div className="space-y-3">
-            <p className="text-sm text-gray-600">
-              {reviewStatus === "paid"
-                ? "Add approval note (required)"
-                : "Add rejection note (required)"}
-            </p>
-            <textarea
-              value={reviewNote}
-              onChange={(e) => setReviewNote(e.target.value)}
-              rows={4}
-              placeholder="Enter at least 5 characters"
-              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
-            />
-          </div>
-        </Modal>
 
         <Card padding={false}>
           <div className="px-4 py-3 border-b border-gray-200">

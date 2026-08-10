@@ -10,7 +10,7 @@ from django.core.mail import send_mail
 from django.http import FileResponse
 
 from config.audit_logger import AuditLogger
-from .invoice_services import create_initial_invoice, create_plan_change_invoice
+from .invoice_services import OpenInvoiceConflict, create_initial_invoice
 from .models import (
     HospitalSubscription,
     Invoice,
@@ -338,6 +338,11 @@ def generate_initial_invoice(request):
             {"error": str(error)},
             status=400,
         )
+    except OpenInvoiceConflict as error:
+        return Response(
+            {"error": str(error)},
+            status=409,
+        )
 
     return Response(
         {
@@ -357,8 +362,8 @@ def generate_initial_invoice(request):
                 "slug": hospital.slug,
             },
             "plan": {
-                "code": subscription.plan.code,
-                "name": subscription.plan.name,
+                "code": target_plan.code,
+                "name": target_plan.name,
             },
             "invoice": serialize_invoice(
                 invoice

@@ -12,6 +12,10 @@ INITIAL_INVOICE_DUE_DAYS = 7
 PLAN_CHANGE_DUE_DAYS = 7
 
 
+class OpenInvoiceConflict(Exception):
+    pass
+
+
 def generate_unique_invoice_number():
     while True:
         invoice_number = Invoice.generate_invoice_number()
@@ -48,11 +52,10 @@ def create_initial_invoice(
         .get(pk=subscription.pk)
     )
 
-    existing_invoice = (
+    open_invoice = (
         Invoice.objects
         .filter(
             subscription=subscription,
-            invoice_type=Invoice.TYPE_COMBINED,
             status__in=[
                 Invoice.STATUS_DRAFT,
                 Invoice.STATUS_PENDING,
@@ -63,8 +66,23 @@ def create_initial_invoice(
         .first()
     )
 
-    if existing_invoice:
-        return existing_invoice, False
+    if open_invoice:
+        metadata = open_invoice.metadata or {}
+        invoice_cycle = (
+            metadata.get("billing_cycle")
+            or HospitalSubscription.CYCLE_MONTHLY
+        )
+        if (
+            open_invoice.invoice_type
+            in {Invoice.TYPE_COMBINED, Invoice.TYPE_SUBSCRIPTION}
+            and metadata.get("plan_code") == subscription.plan.code
+            and invoice_cycle == billing_cycle
+        ):
+            return open_invoice, False
+        raise OpenInvoiceConflict(
+            "Another unpaid invoice already exists. Pay or void it before "
+            "selecting a different plan or billing cycle."
+        )
 
     if subscription.service_fee_paid:
         invoice_type = Invoice.TYPE_SUBSCRIPTION

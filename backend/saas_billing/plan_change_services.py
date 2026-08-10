@@ -13,6 +13,7 @@ from .models import (
     Invoice,
     SubscriptionPlan,
 )
+from .invoice_services import OpenInvoiceConflict
 from .subscription_services import get_plan_cycle_price
 
 
@@ -127,7 +128,16 @@ def create_plan_change_invoice(
     )
 
     if existing_invoice:
-        return existing_invoice, False
+        metadata = existing_invoice.metadata or {}
+        if (
+            metadata.get("target_plan_id") == target_plan.id
+            and metadata.get("billing_cycle") == billing_cycle
+        ):
+            return existing_invoice, False
+        raise OpenInvoiceConflict(
+            "Another unpaid invoice already exists. Pay or void it before "
+            "selecting a different plan or billing cycle."
+        )
 
     change_type = determine_plan_change_type(
         subscription.plan,

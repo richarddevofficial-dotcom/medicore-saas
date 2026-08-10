@@ -54,12 +54,27 @@ export default function BillingPage() {
       setError("");
       setSubscriptionRequired(false);
 
-      const [response, plansResponse] = await Promise.all([
+      const [billingResult, plansResult] = await Promise.allSettled([
         apiClient.get("/saas-billing/dashboard/"),
         apiClient.get("/saas-billing/plan-changes/"),
       ]);
 
-      setData(response.data);
+      if (billingResult.status === "rejected") {
+        throw billingResult.reason;
+      }
+
+      setData(billingResult.value.data);
+      if (plansResult.status === "rejected") {
+        setPlans([]);
+        setSelectedPlanCode("");
+        setError(
+          plansResult.reason.response?.data?.error ||
+            "Billing loaded, but subscription plans are temporarily unavailable.",
+        );
+        return;
+      }
+
+      const plansResponse = plansResult.value;
       const paidPlans = (plansResponse.data?.plans || []).filter((plan) =>
         ["basic", "pro", "enterprise"].includes(plan.code),
       );

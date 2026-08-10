@@ -543,6 +543,66 @@ class HospitalBillingAuthorizationTests(TestCase):
 		self.assertEqual(response.data["invoice"]["billing_cycle"], "six_months")
 		self.assertEqual(response.data["invoice"]["subscription_amount"], "269.40")
 
+	def test_current_plan_reuses_matching_open_subscription_invoice(self):
+		subscription = HospitalSubscription.objects.get(hospital=self.hospital)
+		subscription.service_fee_paid = True
+		subscription.save(update_fields=["service_fee_paid"])
+		self.client.force_authenticate(user=self.admin_user)
+
+		first_response = self.client.post(
+			"/api/v1/saas-billing/invoices/generate-initial/",
+			{"billing_cycle": "monthly"},
+			format="json",
+		)
+		second_response = self.client.post(
+			"/api/v1/saas-billing/invoices/generate-initial/",
+			{"billing_cycle": "monthly"},
+			format="json",
+		)
+
+		self.assertEqual(first_response.status_code, 201)
+		self.assertEqual(second_response.status_code, 200)
+		self.assertEqual(
+			first_response.data["invoice"]["id"],
+			second_response.data["invoice"]["id"],
+		)
+		self.assertEqual(
+			Invoice.objects.filter(subscription=subscription).count(),
+			1,
+		)
+
+	def test_conflicting_open_plan_change_invoice_is_rejected(self):
+		self.pro_plan.code = "pro"
+		self.pro_plan.save(update_fields=["code"])
+		enterprise_plan = SubscriptionPlan.objects.create(
+			code="enterprise",
+			name="Enterprise",
+			monthly_price="129.90",
+			six_month_price="779.40",
+			annual_price="1558.80",
+			service_fee="1000.00",
+		)
+		self.client.force_authenticate(user=self.admin_user)
+
+		first_response = self.client.post(
+			"/api/v1/saas-billing/invoices/generate-initial/",
+			{"plan_code": "pro", "billing_cycle": "monthly"},
+			format="json",
+		)
+		conflict_response = self.client.post(
+			"/api/v1/saas-billing/invoices/generate-initial/",
+			{"plan_code": enterprise_plan.code, "billing_cycle": "annual"},
+			format="json",
+		)
+
+		self.assertEqual(first_response.status_code, 201)
+		self.assertEqual(conflict_response.status_code, 409)
+		self.assertIn("unpaid invoice", conflict_response.data["error"].lower())
+		self.assertEqual(
+			Invoice.objects.filter(hospital=self.hospital).count(),
+			1,
+		)
+
 	def test_admin_selects_professional_annual_plan_and_submits_cash(self):
 		self.pro_plan.code = "pro"
 		self.pro_plan.annual_price = Decimal("1078.80")

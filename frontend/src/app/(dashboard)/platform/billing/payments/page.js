@@ -358,12 +358,12 @@ export default function PaymentCenterPage() {
 
         <SummaryCard label="Pending" value={summary.pending || 0} />
 
-        <SummaryCard label="Successful" value={summary.successful || 0} />
+        <SummaryCard label="Confirmed" value={summary.successful || 0} />
 
-        <SummaryCard label="Failed" value={summary.failed || 0} />
+        <SummaryCard label="Rejected" value={summary.failed || 0} />
 
         <SummaryCard
-          label="Successful amount"
+          label="Confirmed amount"
           value={money(summary.successful_amount)}
         />
 
@@ -396,8 +396,8 @@ export default function PaymentCenterPage() {
           >
             <option value="">All statuses</option>
             <option value="pending">Pending</option>
-            <option value="success">Successful</option>
-            <option value="failed">Failed</option>
+            <option value="success">Confirmed</option>
+            <option value="failed">Rejected</option>
           </select>
 
           <select
@@ -409,7 +409,6 @@ export default function PaymentCenterPage() {
             <option value="combined">Combined</option>
             <option value="subscription">Subscription</option>
             <option value="service_fee">Service fee</option>
-            <option value="adjustment">Adjustment</option>
           </select>
 
           <select
@@ -430,9 +429,8 @@ export default function PaymentCenterPage() {
           >
             <option value="">All gateways</option>
             <option value="manual">Manual</option>
-            <option value="manual_admin">Manual admin</option>
-            <option value="bank">Bank</option>
-            <option value="mobile_money">Mobile money</option>
+            <option value="bank_transfer">Bank transfer</option>
+            <option value="cash">Cash</option>
           </select>
         </div>
 
