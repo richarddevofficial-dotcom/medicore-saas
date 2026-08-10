@@ -61,6 +61,8 @@ export default function PaymentCenterPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [paymentToApprove, setPaymentToApprove] = useState(null);
+  const [paymentToReject, setPaymentToReject] = useState(null);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   async function loadPayments(requestedPage = page, isRefresh = false) {
     try {
@@ -145,11 +147,10 @@ export default function PaymentCenterPage() {
   }
 
   async function rejectPayment(payment) {
-    const reason = window.prompt(
-      `Reason for rejecting ${payment.payment_reference}:`,
-    );
+    const reason = rejectionReason.trim();
 
     if (!reason) {
+      toast.error("Enter a reason for rejecting this payment.");
       return;
     }
 
@@ -165,15 +166,31 @@ export default function PaymentCenterPage() {
         },
       );
 
-      setSuccess(response.data.message);
+      const message = response.data?.message || "Payment rejected.";
+
+      setSuccess(message);
+      toast.success(message);
+      setPaymentToReject(null);
+      setRejectionReason("");
       await loadPayments(page);
     } catch (requestError) {
-      setError(
-        requestError.response?.data?.error || "Unable to reject payment.",
-      );
+      const message =
+        requestError.response?.data?.error || "Unable to reject payment.";
+
+      setError(message);
+      toast.error(message);
     } finally {
       setActionLoading(null);
     }
+  }
+
+  function closeRejectionModal() {
+    if (actionLoading !== null) {
+      return;
+    }
+
+    setPaymentToReject(null);
+    setRejectionReason("");
   }
 
   async function downloadReceipt(payment) {
@@ -479,7 +496,10 @@ export default function PaymentCenterPage() {
 
                           <button
                             type="button"
-                            onClick={() => rejectPayment(payment)}
+                            onClick={() => {
+                              setPaymentToReject(payment);
+                              setRejectionReason("");
+                            }}
                             disabled={actionLoading !== null}
                             className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
                           >
@@ -641,6 +661,99 @@ export default function PaymentCenterPage() {
                 ).replaceAll("_", " ")}
               />
             </dl>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(paymentToReject)}
+        onClose={closeRejectionModal}
+        title="Reject Payment"
+        size="md"
+        showClose={actionLoading === null}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={closeRejectionModal}
+              disabled={actionLoading !== null}
+              className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => rejectPayment(paymentToReject)}
+              disabled={actionLoading !== null || !rejectionReason.trim()}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {actionLoading === `reject-${paymentToReject?.id}` ? (
+                <Loader2 size={17} className="animate-spin" />
+              ) : (
+                <XCircle size={17} />
+              )}
+              Reject Payment
+            </button>
+          </>
+        }
+      >
+        {paymentToReject && (
+          <div className="space-y-5">
+            <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
+              <XCircle size={22} className="mt-0.5 shrink-0 text-red-700" />
+              <div>
+                <p className="font-semibold text-red-900">
+                  Confirm this payment should be rejected
+                </p>
+                <p className="mt-1 text-sm text-red-800">
+                  The payment will be marked as failed and the reason will be
+                  recorded in the audit log.
+                </p>
+              </div>
+            </div>
+
+            <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+              <PaymentDetail
+                label="Hospital"
+                value={paymentToReject.hospital?.name}
+              />
+              <PaymentDetail
+                label="Amount"
+                value={money(paymentToReject.amount, paymentToReject.currency)}
+                emphasize
+              />
+              <PaymentDetail
+                label="Payment reference"
+                value={paymentToReject.payment_reference}
+              />
+              <PaymentDetail
+                label="Invoice"
+                value={paymentToReject.invoice_number}
+              />
+            </dl>
+
+            <div>
+              <label
+                htmlFor="payment-rejection-reason"
+                className="text-sm font-semibold text-slate-800"
+              >
+                Rejection reason
+              </label>
+              <textarea
+                id="payment-rejection-reason"
+                value={rejectionReason}
+                onChange={(event) => setRejectionReason(event.target.value)}
+                disabled={actionLoading !== null}
+                maxLength={500}
+                rows={4}
+                autoFocus
+                placeholder="Explain why this payment cannot be approved"
+                className="mt-2 w-full resize-none rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 disabled:bg-slate-100"
+              />
+              <p className="mt-1 text-right text-xs text-slate-500">
+                {rejectionReason.length}/500
+              </p>
+            </div>
           </div>
         )}
       </Modal>
