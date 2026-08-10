@@ -302,10 +302,42 @@ def generate_initial_invoice(request):
             status=400,
         )
 
-    invoice, created = create_initial_invoice(
-        subscription,
-        billing_cycle=billing_cycle,
-    )
+    plan_code = str(request.data.get("plan_code", "")).strip().lower()
+    target_plan = subscription.plan
+    if plan_code:
+        if plan_code not in {"basic", "pro", "enterprise"}:
+            return Response(
+                {"error": "Select Basic, Professional, or Enterprise."},
+                status=400,
+            )
+        try:
+            target_plan = SubscriptionPlan.objects.get(
+                code=plan_code,
+                is_active=True,
+            )
+        except SubscriptionPlan.DoesNotExist:
+            return Response(
+                {"error": "Subscription plan not found."},
+                status=404,
+            )
+
+    try:
+        if target_plan.id == subscription.plan_id:
+            invoice, created = create_initial_invoice(
+                subscription,
+                billing_cycle=billing_cycle,
+            )
+        else:
+            invoice, created = create_plan_change_invoice(
+                subscription=subscription,
+                target_plan=target_plan,
+                billing_cycle=billing_cycle,
+            )
+    except PlanChangeError as error:
+        return Response(
+            {"error": str(error)},
+            status=400,
+        )
 
     return Response(
         {
@@ -536,7 +568,7 @@ def submit_manual_payment(request):
             status=400,
         )
 
-    if not bank_reference:
+    if not bank_reference and payment_method == Payment.GATEWAY_BANK:
         return Response(
             {
                 "error": (
@@ -629,9 +661,12 @@ def submit_manual_payment(request):
             status=400,
         )
 
-    duplicate_transaction = Payment.objects.filter(
-        transaction_id=bank_reference,
-    ).exists()
+    duplicate_transaction = bool(
+        bank_reference
+        and Payment.objects.filter(
+            transaction_id=bank_reference,
+        ).exists()
+    )
 
     if duplicate_transaction:
         return Response(
@@ -644,18 +679,28 @@ def submit_manual_payment(request):
             status=409,
         )
 
-    billing_cycle = (invoice.metadata or {}).get(
-        "billing_cycle",
-        HospitalSubscription.CYCLE_MONTHLY,
+    billing_cycle = (
+        (invoice.metadata or {}).get("billing_cycle")
+        or HospitalSubscription.CYCLE_MONTHLY
     )
+    target_plan = invoice.subscription.plan
+    target_plan_id = (invoice.metadata or {}).get("target_plan_id")
+    if target_plan_id:
+        target_plan = SubscriptionPlan.objects.filter(
+            id=target_plan_id,
+            is_active=True,
+        ).first() or target_plan
+
+    payment_reference = Payment.generate_reference()
+    if not bank_reference:
+        bank_reference = f"CASH-{payment_reference}"
+
     payment = Payment(
-        payment_reference=(
-            Payment.generate_reference()
-        ),
+        payment_reference=payment_reference,
         invoice=invoice,
         hospital=hospital,
         subscription=invoice.subscription,
-        plan=invoice.subscription.plan,
+        plan=target_plan,
         billing_cycle=billing_cycle,
         payment_type=(
             Payment.TYPE_COMBINED
@@ -1459,6 +1504,16 @@ def available_plan_changes(request):
                 "currency": plan.currency,
                 "monthly_price": str(
                     plan.monthly_price
+                ),
+                "six_month_price": str(
+                    plan.six_month_price
+                    if plan.six_month_price is not None
+                    else plan.monthly_price * Decimal("6")
+                ),
+                "annual_price": str(
+                    plan.annual_price
+                    if plan.annual_price is not None
+                    else plan.monthly_price * Decimal("12")
                 ),
                 "service_fee": str(
                     plan.service_fee

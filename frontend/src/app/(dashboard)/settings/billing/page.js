@@ -46,15 +46,33 @@ export default function BillingPage() {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [renewalCycle, setRenewalCycle] = useState("monthly");
+  const [plans, setPlans] = useState([]);
+  const [selectedPlanCode, setSelectedPlanCode] = useState("");
 
   async function loadBilling() {
     try {
       setError("");
       setSubscriptionRequired(false);
 
-      const response = await apiClient.get("/saas-billing/dashboard/");
+      const [response, plansResponse] = await Promise.all([
+        apiClient.get("/saas-billing/dashboard/"),
+        apiClient.get("/saas-billing/plan-changes/"),
+      ]);
 
       setData(response.data);
+      const paidPlans = (plansResponse.data?.plans || []).filter((plan) =>
+        ["basic", "pro", "enterprise"].includes(plan.code),
+      );
+      setPlans(paidPlans);
+      setSelectedPlanCode((current) => {
+        if (paidPlans.some((plan) => plan.code === current)) {
+          return current;
+        }
+        const currentCode = plansResponse.data?.current_plan?.code;
+        return paidPlans.some((plan) => plan.code === currentCode)
+          ? currentCode
+          : paidPlans[0]?.code || "";
+      });
     } catch (requestError) {
       if (requestError.response?.data?.subscription_required) {
         setSubscriptionRequired(true);
@@ -81,10 +99,14 @@ export default function BillingPage() {
 
       const response = await apiClient.post(
         "/saas-billing/invoices/generate-initial/",
-        { billing_cycle: renewalCycle },
+        {
+          plan_code: selectedPlanCode,
+          billing_cycle: renewalCycle,
+        },
       );
 
       setSuccessMessage(response.data.message);
+      setSelectedInvoice(response.data.invoice || null);
       await loadBilling();
     } catch (requestError) {
       setError(
@@ -120,8 +142,12 @@ export default function BillingPage() {
       setSelectedInvoice(null);
       await loadBilling();
     } catch (requestError) {
+      const responseData = requestError.response?.data;
       setError(
-        requestError.response?.data?.error || "Unable to submit payment.",
+        responseData?.error ||
+          responseData?.detail ||
+          responseData?.message ||
+          "Unable to submit payment.",
       );
     } finally {
       setSubmittingPayment(false);
@@ -236,21 +262,23 @@ export default function BillingPage() {
   const pendingPayment = data?.payments?.find(
     (payment) => payment.status === "pending",
   );
+  const selectedPlan =
+    plans.find((plan) => plan.code === selectedPlanCode) || plans[0];
   const cycleOptions = [
     {
       value: "monthly",
       label: "1 Month",
-      price: subscription.monthly_price,
+      price: selectedPlan?.monthly_price,
     },
     {
       value: "six_months",
       label: "6 Months",
-      price: subscription.six_month_price,
+      price: selectedPlan?.six_month_price,
     },
     {
       value: "annual",
       label: "12 Months",
-      price: subscription.annual_price,
+      price: selectedPlan?.annual_price,
     },
   ];
 
@@ -450,7 +478,7 @@ export default function BillingPage() {
               <button
                 type="button"
                 onClick={createInitialInvoice}
-                disabled={creatingInvoice}
+                disabled={creatingInvoice || !selectedPlanCode}
                 className="flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3 font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
               >
                 {creatingInvoice && (
@@ -484,6 +512,38 @@ export default function BillingPage() {
         {!payableInvoice && !pendingPayment && (
           <div className="mt-6 border-t border-slate-200 pt-6">
             <p className="text-sm font-semibold text-slate-800">
+              Subscription plan
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              {plans.map((plan) => (
+                <button
+                  key={plan.code}
+                  type="button"
+                  onClick={() => setSelectedPlanCode(plan.code)}
+                  className={`border p-4 text-left transition ${
+                    selectedPlanCode === plan.code
+                      ? "border-orange-500 bg-orange-50"
+                      : "border-slate-200 bg-white hover:border-orange-300"
+                  }`}
+                >
+                  <span className="block font-semibold text-slate-900">
+                    {plan.name}
+                  </span>
+                  <span className="mt-1 block text-sm text-slate-600">
+                    {money(plan.monthly_price, plan.currency || currency)} /
+                    month
+                  </span>
+                  {!subscription.service_fee_paid && (
+                    <span className="mt-1 block text-xs text-slate-500">
+                      Setup fee:{" "}
+                      {money(plan.service_fee, plan.currency || currency)}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <p className="mt-6 text-sm font-semibold text-slate-800">
               Renewal period
             </p>
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
@@ -789,9 +849,13 @@ function PaymentModal({ invoice, bankDetails, submitting, onClose, onSubmit }) {
               name="transaction_id"
               value={form.transaction_id}
               onChange={handleChange}
-              required
+              required={form.payment_method === "bank_transfer"}
               className="w-full rounded-xl border border-slate-300 px-4 py-3"
-              placeholder="Example: BANK-2026-001"
+              placeholder={
+                form.payment_method === "bank_transfer"
+                  ? "Example: BANK-2026-001"
+                  : "Optional for cash payments"
+              }
             />
           </label>
 

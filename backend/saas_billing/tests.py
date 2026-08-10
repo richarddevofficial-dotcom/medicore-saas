@@ -543,6 +543,64 @@ class HospitalBillingAuthorizationTests(TestCase):
 		self.assertEqual(response.data["invoice"]["billing_cycle"], "six_months")
 		self.assertEqual(response.data["invoice"]["subscription_amount"], "269.40")
 
+	def test_admin_selects_professional_annual_plan_and_submits_cash(self):
+		self.pro_plan.code = "pro"
+		self.pro_plan.annual_price = Decimal("1078.80")
+		self.pro_plan.save(update_fields=["code", "annual_price"])
+		self.client.force_authenticate(user=self.admin_user)
+
+		invoice_response = self.client.post(
+			"/api/v1/saas-billing/invoices/generate-initial/",
+			{"plan_code": self.pro_plan.code, "billing_cycle": "annual"},
+			format="json",
+		)
+
+		self.assertEqual(invoice_response.status_code, 201)
+		self.assertEqual(
+			invoice_response.data["invoice"]["subscription_amount"],
+			"1078.80",
+		)
+		invoice = Invoice.objects.get(id=invoice_response.data["invoice"]["id"])
+		self.assertEqual(invoice.metadata["target_plan_id"], self.pro_plan.id)
+		self.assertEqual(invoice.metadata["billing_cycle"], "annual")
+
+		payment_response = self.client.post(
+			"/api/v1/saas-billing/payments/manual/",
+			{
+				"invoice_id": invoice.id,
+				"payment_method": "cash",
+				"payment_date": timezone.localdate().isoformat(),
+			},
+			format="json",
+		)
+
+		self.assertEqual(payment_response.status_code, 201)
+		payment = Payment.objects.get(id=payment_response.data["payment"]["id"])
+		self.assertEqual(payment.plan, self.pro_plan)
+		self.assertEqual(payment.billing_cycle, HospitalSubscription.CYCLE_ANNUAL)
+		self.assertTrue(payment.transaction_id.startswith("CASH-MC-PAY-"))
+
+		super_admin = User.objects.create_superuser(
+			username="selected-plan-super@example.com",
+			email="selected-plan-super@example.com",
+			password="Admin@1234",
+		)
+		self.client.force_authenticate(user=super_admin)
+		approve_response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/approve/",
+			{},
+			format="json",
+		)
+
+		self.assertEqual(approve_response.status_code, 200)
+		subscription = HospitalSubscription.objects.get(hospital=self.hospital)
+		self.assertEqual(subscription.plan, self.pro_plan)
+		self.assertEqual(
+			subscription.billing_cycle,
+			HospitalSubscription.CYCLE_ANNUAL,
+		)
+		self.assertEqual(subscription.status, HospitalSubscription.STATUS_ACTIVE)
+
 	def test_cash_payment_submission_is_pending_and_audited(self):
 		self.client.force_authenticate(user=self.admin_user)
 		invoice_response = self.client.post(

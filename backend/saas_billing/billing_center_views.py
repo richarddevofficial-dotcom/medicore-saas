@@ -3963,10 +3963,18 @@ def billing_center_mark_invoice_paid(
             status=400,
         )
 
+    target_plan = invoice.subscription.plan
+    target_plan_id = (invoice.metadata or {}).get("target_plan_id")
+    if target_plan_id:
+        target_plan = SubscriptionPlan.objects.filter(
+            id=target_plan_id,
+            is_active=True,
+        ).first() or target_plan
+
     payment = Payment.objects.create(
         hospital=invoice.hospital,
         subscription=invoice.subscription,
-        plan=invoice.subscription.plan,
+        plan=target_plan,
         invoice=invoice,
         payment_reference=Payment.generate_reference(),
         transaction_id=reference,
@@ -3975,9 +3983,9 @@ def billing_center_mark_invoice_paid(
         currency=invoice.currency,
         gateway=Payment.GATEWAY_MANUAL,
         payment_method="manual",
-        billing_cycle=(invoice.metadata or {}).get(
-            "billing_cycle",
-            HospitalSubscription.CYCLE_MONTHLY,
+        billing_cycle=(
+            (invoice.metadata or {}).get("billing_cycle")
+            or HospitalSubscription.CYCLE_MONTHLY
         ),
         payment_date=timezone.localdate(),
         status=Payment.STATUS_SUCCESS,
