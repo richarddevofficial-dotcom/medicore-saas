@@ -12,10 +12,12 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  ShieldCheck,
   XCircle,
 } from "lucide-react";
 
 import apiClient from "@/lib/api-client";
+import Modal from "@/components/ui/Modal";
 
 
 function money(value, currency = "USD") {
@@ -67,6 +69,8 @@ export default function PaymentCenterPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] =
     useState("");
+  const [paymentToApprove, setPaymentToApprove] =
+    useState(null);
 
   async function loadPayments(
     requestedPage = page,
@@ -132,14 +136,6 @@ export default function PaymentCenterPage() {
   ]);
 
   async function approvePayment(payment) {
-    if (
-      !window.confirm(
-        `Approve payment ${payment.payment_reference}?`,
-      )
-    ) {
-      return;
-    }
-
     try {
       setActionLoading(
         `approve-${payment.id}`,
@@ -153,6 +149,7 @@ export default function PaymentCenterPage() {
       );
 
       setSuccess(response.data.message);
+      setPaymentToApprove(null);
       await loadPayments(page);
     } catch (requestError) {
       setError(
@@ -162,6 +159,14 @@ export default function PaymentCenterPage() {
     } finally {
       setActionLoading(null);
     }
+  }
+
+  function closeApprovalModal() {
+    if (actionLoading !== null) {
+      return;
+    }
+
+    setPaymentToApprove(null);
   }
 
   async function rejectPayment(payment) {
@@ -648,7 +653,7 @@ export default function PaymentCenterPage() {
                             <button
                               type="button"
                               onClick={() =>
-                                approvePayment(
+                                setPaymentToApprove(
                                   payment,
                                 )
                               }
@@ -796,6 +801,93 @@ export default function PaymentCenterPage() {
           </div>
         </div>
       </section>
+
+      <Modal
+        isOpen={Boolean(paymentToApprove)}
+        onClose={closeApprovalModal}
+        title="Approve Payment"
+        size="md"
+        showClose={actionLoading === null}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={closeApprovalModal}
+              disabled={actionLoading !== null}
+              className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => approvePayment(paymentToApprove)}
+              disabled={actionLoading !== null}
+              className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              {actionLoading === `approve-${paymentToApprove?.id}` ? (
+                <Loader2 size={17} className="animate-spin" />
+              ) : (
+                <ShieldCheck size={17} />
+              )}
+              Approve Payment
+            </button>
+          </>
+        }
+      >
+        {paymentToApprove && (
+          <div className="space-y-5">
+            <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 p-4">
+              <ShieldCheck size={22} className="mt-0.5 shrink-0 text-green-700" />
+              <div>
+                <p className="font-semibold text-green-900">
+                  Confirm this payment is verified
+                </p>
+                <p className="mt-1 text-sm text-green-800">
+                  Approval marks the invoice paid, updates the subscription,
+                  sends a receipt, and records the decision in the audit log.
+                </p>
+              </div>
+            </div>
+
+            <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+              <PaymentDetail label="Hospital" value={paymentToApprove.hospital?.name} />
+              <PaymentDetail
+                label="Amount"
+                value={money(paymentToApprove.amount, paymentToApprove.currency)}
+                emphasize
+              />
+              <PaymentDetail label="Payment reference" value={paymentToApprove.payment_reference} />
+              <PaymentDetail label="Invoice" value={paymentToApprove.invoice_number} />
+              <PaymentDetail
+                label="Transaction ID"
+                value={paymentToApprove.transaction_id || "Not provided"}
+              />
+              <PaymentDetail
+                label="Payment method"
+                value={String(
+                  paymentToApprove.payment_method || paymentToApprove.gateway || "Not provided",
+                ).replaceAll("_", " ")}
+              />
+            </dl>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+
+function PaymentDetail({ label, value, emphasize = false }) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase text-slate-500">{label}</dt>
+      <dd
+        className={`mt-1 break-words capitalize ${
+          emphasize ? "text-lg font-bold text-slate-900" : "font-medium text-slate-800"
+        }`}
+      >
+        {value || "Not available"}
+      </dd>
     </div>
   );
 }
