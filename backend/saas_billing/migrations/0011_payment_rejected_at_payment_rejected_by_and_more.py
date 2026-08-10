@@ -5,6 +5,28 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+class AddFieldIfNotExists(migrations.AddField):
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        model = to_state.apps.get_model(app_label, self.model_name)
+        field = model._meta.get_field(self.name)
+        with schema_editor.connection.cursor() as cursor:
+            columns = {
+                column.name
+                for column in schema_editor.connection.introspection.get_table_description(
+                    cursor,
+                    model._meta.db_table,
+                )
+            }
+        if field.column in columns:
+            return
+        super().database_forwards(
+            app_label,
+            schema_editor,
+            from_state,
+            to_state,
+        )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -13,12 +35,12 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='payment',
             name='rejected_at',
             field=models.DateTimeField(blank=True, null=True),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='payment',
             name='rejected_by',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='rejected_saas_payments', to=settings.AUTH_USER_MODEL),

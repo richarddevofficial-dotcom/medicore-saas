@@ -9,6 +9,28 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+class AddFieldIfNotExists(migrations.AddField):
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        model = to_state.apps.get_model(app_label, self.model_name)
+        field = model._meta.get_field(self.name)
+        with schema_editor.connection.cursor() as cursor:
+            columns = {
+                column.name
+                for column in schema_editor.connection.introspection.get_table_description(
+                    cursor,
+                    model._meta.db_table,
+                )
+            }
+        if field.column in columns:
+            return
+        super().database_forwards(
+            app_label,
+            schema_editor,
+            from_state,
+            to_state,
+        )
+
+
 def backfill_subscription_cycles(apps, schema_editor):
     SubscriptionPlan = apps.get_model('saas_billing', 'SubscriptionPlan')
     HospitalSubscription = apps.get_model(
@@ -41,72 +63,72 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='hospitalsubscription',
             name='billing_cycle',
             field=models.CharField(choices=[('monthly', 'Monthly'), ('six_months', 'Six Months'), ('annual', 'Annual')], default='monthly', max_length=20),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='hospitalsubscription',
             name='end_date',
             field=models.DateField(blank=True, db_index=True, null=True),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='hospitalsubscription',
             name='last_payment_date',
             field=models.DateField(blank=True, null=True),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='hospitalsubscription',
             name='start_date',
             field=models.DateField(blank=True, null=True),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='payment',
             name='billing_cycle',
             field=models.CharField(choices=[('monthly', 'Monthly'), ('six_months', 'Six Months'), ('annual', 'Annual')], default='monthly', max_length=20),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='payment',
             name='confirmed_at',
             field=models.DateTimeField(blank=True, null=True),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='payment',
             name='confirmed_by',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='confirmed_saas_payments', to=settings.AUTH_USER_MODEL),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='payment',
             name='payment_date',
             field=models.DateField(default=django.utils.timezone.localdate),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='payment',
             name='plan',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='payments', to='saas_billing.subscriptionplan'),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='payment',
             name='proof_of_payment',
             field=models.FileField(blank=True, null=True, upload_to=saas_billing.models.payment_proof_upload_path, validators=[django.core.validators.FileExtensionValidator(allowed_extensions=['pdf', 'png', 'jpg', 'jpeg']), saas_billing.models.validate_payment_proof_size]),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='payment',
             name='rejection_reason',
             field=models.TextField(blank=True),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='payment',
             name='submitted_by',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='submitted_saas_payments', to=settings.AUTH_USER_MODEL),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='subscriptionplan',
             name='annual_price',
             field=models.DecimalField(blank=True, decimal_places=2, max_digits=12, null=True, validators=[django.core.validators.MinValueValidator(Decimal('0.00'))]),
         ),
-        migrations.AddField(
+        AddFieldIfNotExists(
             model_name='subscriptionplan',
             name='six_month_price',
             field=models.DecimalField(blank=True, decimal_places=2, max_digits=12, null=True, validators=[django.core.validators.MinValueValidator(Decimal('0.00'))]),
