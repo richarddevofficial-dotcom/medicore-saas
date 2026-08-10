@@ -251,11 +251,6 @@ def activate_plan_change(
     subscription = (
         HospitalSubscription.objects
         .select_for_update()
-        .select_related(
-            "hospital",
-            "plan",
-            "pending_plan",
-        )
         .get(pk=subscription.pk)
     )
 
