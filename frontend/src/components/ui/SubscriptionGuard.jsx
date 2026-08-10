@@ -8,7 +8,7 @@ import Button from "@/components/ui/Button";
 import { AlertTriangle } from "lucide-react";
 
 const planLimits = {
-  trial: { maxStaff: 5, maxPatients: 500 },
+  trial: { maxStaff: 20, maxPatients: 2000 },
   basic: { maxStaff: 20, maxPatients: 2000 },
   starter: { maxStaff: 20, maxPatients: 2000 },
   pro: { maxStaff: 100, maxPatients: 20000 },

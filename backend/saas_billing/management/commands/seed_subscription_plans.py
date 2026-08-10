@@ -25,9 +25,9 @@ PLANS = [
             ("appointments", "Appointments", True, None),
             ("pharmacy", "Pharmacy", True, None),
             ("laboratory", "Laboratory", True, None),
-            ("imaging", "Imaging", False, None),
-            ("advanced_reports", "Advanced Reports", False, None),
-            ("api_access", "API Access", False, None),
+            ("imaging", "Imaging", True, None),
+            ("advanced_reports", "Advanced Reports", True, None),
+            ("api_access", "API Access", True, None),
         ],
     },
     {

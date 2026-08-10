@@ -206,6 +206,10 @@ class SubscriptionCatalogTests(TestCase):
 		self.assertEqual(str(prices["basic"]), "49.90")
 		self.assertEqual(str(prices["pro"]), "89.90")
 		self.assertEqual(str(prices["enterprise"]), "129.90")
+		starter = SubscriptionPlan.objects.get(code="starter")
+		self.assertFalse(
+			starter.plan_features.filter(is_enabled=False).exists()
+		)
 
 	def test_seed_reconciles_legacy_professional_plan_by_name(self):
 		legacy_plan = SubscriptionPlan.objects.create(
