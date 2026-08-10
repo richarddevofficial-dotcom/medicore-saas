@@ -1025,6 +1025,48 @@ class SuperAdminBillingCenterTests(TestCase):
 		)
 		self.assertEqual(duplicate_response.status_code, 409)
 
+	def test_approval_uses_invoice_cycle_for_legacy_payment_without_cycle(self):
+		invoice = Invoice.objects.create(
+			invoice_number=Invoice.generate_invoice_number(),
+			hospital=self.hospital,
+			subscription=self.subscription,
+			invoice_type=Invoice.TYPE_SUBSCRIPTION,
+			status=Invoice.STATUS_PENDING,
+			subscription_amount=Decimal("539.40"),
+			subtotal=Decimal("539.40"),
+			total_amount=Decimal("539.40"),
+			currency="USD",
+			due_date=timezone.localdate() + timedelta(days=7),
+			metadata={"billing_cycle": "six_months"},
+		)
+		payment = Payment.objects.create(
+			payment_reference=Payment.generate_reference(),
+			invoice=invoice,
+			hospital=self.hospital,
+			subscription=self.subscription,
+			plan=self.pro_plan,
+			billing_cycle="",
+			payment_type=Payment.TYPE_SUBSCRIPTION,
+			amount=invoice.balance_due,
+			currency=invoice.currency,
+			gateway=Payment.GATEWAY_BANK,
+			status=Payment.STATUS_PENDING,
+		)
+		self.client.force_authenticate(user=self.super_admin)
+
+		response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/approve/",
+			{},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.subscription.refresh_from_db()
+		self.assertEqual(
+			self.subscription.billing_cycle,
+			HospitalSubscription.CYCLE_SIX_MONTHS,
+		)
+
 	def test_approval_of_expired_annual_subscription_starts_today(self):
 		self.subscription.status = HospitalSubscription.STATUS_EXPIRED
 		self.subscription.end_date = timezone.localdate() - timedelta(days=10)

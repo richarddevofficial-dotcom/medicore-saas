@@ -3519,14 +3519,25 @@ def billing_center_approve_payment(
         subscription.service_fee_paid = True
         subscription.service_fee_paid_at = now
 
+    invoice_metadata = invoice.metadata or {}
+    supported_billing_cycles = {
+        choice[0]
+        for choice in HospitalSubscription.BILLING_CYCLE_CHOICES
+    }
     billing_cycle = payment.billing_cycle
-    legacy_cycle_months = (invoice.metadata or {}).get(
+    if billing_cycle not in supported_billing_cycles:
+        billing_cycle = invoice_metadata.get("billing_cycle")
+
+    legacy_cycle_months = invoice_metadata.get(
         "billing_cycle_months"
     )
     if legacy_cycle_months == 6:
         billing_cycle = HospitalSubscription.CYCLE_SIX_MONTHS
     elif legacy_cycle_months == 12:
         billing_cycle = HospitalSubscription.CYCLE_ANNUAL
+
+    if billing_cycle not in supported_billing_cycles:
+        billing_cycle = HospitalSubscription.CYCLE_MONTHLY
 
     subscription.save(
         update_fields=[
