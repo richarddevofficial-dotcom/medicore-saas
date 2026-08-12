@@ -305,15 +305,11 @@ def generate_initial_invoice(request):
     plan_code = str(request.data.get("plan_code", "")).strip().lower()
     target_plan = subscription.plan
     if plan_code:
-        if plan_code not in {"basic", "pro", "enterprise"}:
-            return Response(
-                {"error": "Select Basic, Professional, or Enterprise."},
-                status=400,
-            )
         try:
             target_plan = SubscriptionPlan.objects.get(
                 code=plan_code,
                 is_active=True,
+                is_paid=True,
             )
         except SubscriptionPlan.DoesNotExist:
             return Response(
@@ -1527,6 +1523,7 @@ def available_plan_changes(request):
                 "max_patients": plan.max_patients,
                 "storage_gb": plan.storage_gb,
                 "features": plan.features,
+                "is_paid": plan.is_paid,
                 "change_type": change_type,
                 "allowed": allowed,
                 "reason": reason,

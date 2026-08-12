@@ -75,8 +75,8 @@ export default function BillingPage() {
       }
 
       const plansResponse = plansResult.value;
-      const paidPlans = (plansResponse.data?.plans || []).filter((plan) =>
-        ["basic", "pro", "enterprise"].includes(plan.code),
+      const paidPlans = (plansResponse.data?.plans || []).filter(
+        (plan) => plan.is_paid,
       );
       setPlans(paidPlans);
       setSelectedPlanCode((current) => {

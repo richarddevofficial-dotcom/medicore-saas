@@ -120,6 +120,14 @@ class SubscriptionPlan(models.Model):
         default=True,
     )
 
+    is_paid = models.BooleanField(
+        default=True,
+        help_text=(
+            "Paid plans can be selected for initial invoices and "
+            "plan changes. Free/trial plans (e.g. starter) are excluded."
+        ),
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
     )
