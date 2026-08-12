@@ -229,6 +229,7 @@ def create_plan_change_invoice(subscription, target_plan, billing_cycle_months=1
             "pending_plan_change": True,
             "current_plan_code": subscription.plan.code,
             "current_plan_name": subscription.plan.name,
+            "target_plan_id": target_plan.id,
             "target_plan_code": target_plan.code,
             "target_plan_name": target_plan.name,
             "billing_cycle_months": billing_cycle_months,

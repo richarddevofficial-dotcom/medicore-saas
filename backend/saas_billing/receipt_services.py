@@ -49,11 +49,20 @@ def send_payment_receipt_email(payment):
         )
 
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@medicore.local')
+
+        # Deliver to the hospital's billing email and the admin who
+        # submitted the payment (usually the hospital administrator).
+        recipients = [hospital.email]
+        submitted_by = getattr(payment, 'submitted_by', None)
+        submitted_email = getattr(submitted_by, 'email', '') or ''
+        if submitted_email and submitted_email not in recipients:
+            recipients.append(submitted_email)
+
         email = EmailMessage(
             subject=subject,
             body=message,
             from_email=from_email,
-            to=[hospital.email],
+            to=recipients,
         )
 
         # Attach receipt PDF

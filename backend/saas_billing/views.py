@@ -844,6 +844,14 @@ def approve_manual_payment(request, payment_id):
         if target_plan_code:
             target_plan = SubscriptionPlan.objects.filter(code=target_plan_code, is_active=True).first()
 
+    is_plan_change_invoice = bool(
+        invoice.invoice_type == Invoice.TYPE_ADJUSTMENT
+        and (
+            (invoice_metadata.get("target_plan_id"))
+            or (invoice_metadata.get("pending_plan_change") and target_plan)
+        )
+    )
+
     if payment.amount != invoice.balance_due:
         return Response(
             {
@@ -903,11 +911,15 @@ def approve_manual_payment(request, payment_id):
         ]
     )
 
-    if (
-        invoice.status == Invoice.STATUS_PAID
-        and invoice.invoice_type == Invoice.TYPE_ADJUSTMENT
-        and (invoice.metadata or {}).get("target_plan_id")
-    ):
+    if invoice.status == Invoice.STATUS_PAID and is_plan_change_invoice:
+        # Upgrades activate immediately; downgrades are scheduled to the
+        # end of the current subscription period inside activate_plan_change.
+        if not invoice_metadata.get("target_plan_id") and target_plan:
+            invoice.metadata = {
+                **invoice_metadata,
+                "target_plan_id": target_plan.id,
+            }
+            invoice.save(update_fields=["metadata", "updated_at"])
         subscription = activate_plan_change(
             subscription=subscription,
             invoice=invoice,
@@ -919,11 +931,6 @@ def approve_manual_payment(request, payment_id):
     ):
         subscription.service_fee_paid = True
         subscription.service_fee_paid_at = now
-
-    if target_plan:
-        subscription.plan = target_plan
-        subscription.current_monthly_price = target_plan.monthly_price
-        subscription.current_service_fee = target_plan.service_fee
 
     subscription.save(
         update_fields=[
@@ -984,27 +991,62 @@ def approve_manual_payment(request, payment_id):
     # Send payment receipt email
     send_payment_receipt_email(payment)
 
+    if subscription.pending_plan_id:
+        subscription_payload = {
+            "plan": subscription.plan.name,
+            "status": subscription.status,
+            "service_fee_paid": (
+                subscription.service_fee_paid
+            ),
+            "next_billing_date": (
+                subscription
+                .next_billing_date
+                .isoformat()
+                if subscription.next_billing_date
+                else None
+            ),
+            "pending_plan": {
+                "code": subscription.pending_plan.code,
+                "name": subscription.pending_plan.name,
+            },
+            "pending_plan_effective_date": (
+                subscription.pending_plan_effective_date.isoformat()
+                if subscription.pending_plan_effective_date
+                else None
+            ),
+        }
+        approval_message = (
+            "Payment approved. The downgrade to "
+            f"{subscription.pending_plan.name} takes effect on "
+            f"{subscription.pending_plan_effective_date}."
+        )
+    else:
+        subscription_payload = {
+            "plan": subscription.plan.name,
+            "status": subscription.status,
+            "service_fee_paid": (
+                subscription.service_fee_paid
+            ),
+            "next_billing_date": (
+                subscription
+                .next_billing_date
+                .isoformat()
+                if subscription.next_billing_date
+                else None
+            ),
+        }
+        approval_message = (
+            "Payment approved and subscription "
+            "activated successfully."
+        )
+
     return Response(
         {
             "success": True,
-            "message": (
-                "Payment approved and subscription "
-                "activated successfully."
-            ),
+            "message": approval_message,
             "payment": serialize_payment(payment),
             "invoice": serialize_invoice(invoice),
-            "subscription": {
-                "plan": subscription.plan.name,
-                "status": subscription.status,
-                "service_fee_paid": (
-                    subscription.service_fee_paid
-                ),
-                "next_billing_date": (
-                    subscription
-                    .next_billing_date
-                    .isoformat()
-                ),
-            },
+            "subscription": subscription_payload,
             "receipt_email_sent": payment.receipt_delivery_status == 'sent',
             "receipt_email_error": payment.receipt_last_error or None,
         }
