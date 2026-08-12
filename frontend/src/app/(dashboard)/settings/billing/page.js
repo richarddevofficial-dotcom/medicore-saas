@@ -298,474 +298,482 @@ export default function BillingPage() {
   ];
 
   return (
-    <div className="space-y-8 p-4 sm:p-6 lg:p-8">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900">
-          Billing and Subscription
-        </h1>
+    <DashboardLayout>
+      <div className="space-y-8 p-4 sm:p-6 lg:p-8">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">
+            Billing and Subscription
+          </h1>
 
-        <p className="mt-2 text-slate-600">
-          Manage your MediCore plan, invoices and payments.
-        </p>
-      </div>
-
-      {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
-          {error}
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-green-700">
-          {successMessage}
-        </div>
-      )}
-
-      {["expired", "suspended"].includes(subscription.status) && (
-        <section className="rounded-2xl border border-red-200 bg-red-50 p-6">
-          <h2 className="text-xl font-bold text-red-950">
-            Subscription{" "}
-            {subscription.status === "suspended" ? "Suspended" : "Expired"}
-          </h2>
-          <p className="mt-2 text-red-800">
-            Your MediCoreCloud subscription ended on{" "}
-            {dateValue(subscription.end_date)}. Your hospital data remains
-            securely stored. Renew to restore full access.
+          <p className="mt-2 text-slate-600">
+            Manage your MediCore plan, invoices and payments.
           </p>
-        </section>
-      )}
+        </div>
 
-      {pendingPayment && (
-        <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
-          <h2 className="font-bold text-blue-950">
-            Payment Awaiting Verification
-          </h2>
-          <p className="mt-1 text-sm text-blue-800">
-            Payment {pendingPayment.payment_reference} is awaiting confirmation
-            by MediCoreCloud Administration.
-          </p>
-        </section>
-      )}
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+            {error}
+          </div>
+        )}
 
-      {subscription.pending_plan && (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-          <div className="flex items-start gap-3">
-            <AlertCircle size={22} className="mt-0.5 shrink-0 text-amber-600" />
+        {successMessage && (
+          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-green-700">
+            {successMessage}
+          </div>
+        )}
 
-            <div className="flex-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
-                Scheduled Plan Change
-              </p>
+        {["expired", "suspended"].includes(subscription.status) && (
+          <section className="rounded-2xl border border-red-200 bg-red-50 p-6">
+            <h2 className="text-xl font-bold text-red-950">
+              Subscription{" "}
+              {subscription.status === "suspended" ? "Suspended" : "Expired"}
+            </h2>
+            <p className="mt-2 text-red-800">
+              Your MediCoreCloud subscription ended on{" "}
+              {dateValue(subscription.end_date)}. Your hospital data remains
+              securely stored. Renew to restore full access.
+            </p>
+          </section>
+        )}
 
-              <h2 className="mt-2 text-xl font-bold text-amber-950">
-                {subscription.plan?.name ||
-                  subscription.plan_name ||
-                  "Current plan"}
-                {" → "}
-                {subscription.pending_plan.name}
-              </h2>
+        {pendingPayment && (
+          <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+            <h2 className="font-bold text-blue-950">
+              Payment Awaiting Verification
+            </h2>
+            <p className="mt-1 text-sm text-blue-800">
+              Payment {pendingPayment.payment_reference} is awaiting
+              confirmation by MediCoreCloud Administration.
+            </p>
+          </section>
+        )}
 
-              <p className="mt-2 text-sm leading-6 text-amber-800">
-                Your current plan remains active until{" "}
-                <span className="font-semibold">
-                  {dateValue(subscription.pending_plan_effective_date)}
-                </span>
-                . The{" "}
-                <span className="font-semibold">
+        {subscription.pending_plan && (
+          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <div className="flex items-start gap-3">
+              <AlertCircle
+                size={22}
+                className="mt-0.5 shrink-0 text-amber-600"
+              />
+
+              <div className="flex-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
+                  Scheduled Plan Change
+                </p>
+
+                <h2 className="mt-2 text-xl font-bold text-amber-950">
+                  {subscription.plan?.name ||
+                    subscription.plan_name ||
+                    "Current plan"}
+                  {" → "}
                   {subscription.pending_plan.name}
-                </span>{" "}
-                plan will become active automatically on that date.
-              </p>
+                </h2>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl bg-white/70 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                    Scheduled plan
-                  </p>
-
-                  <p className="mt-1 font-bold text-slate-900">
-                    {subscription.pending_plan.name}
-                  </p>
-                </div>
-
-                <div className="rounded-xl bg-white/70 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                    Effective date
-                  </p>
-
-                  <p className="mt-1 font-bold text-slate-900">
+                <p className="mt-2 text-sm leading-6 text-amber-800">
+                  Your current plan remains active until{" "}
+                  <span className="font-semibold">
                     {dateValue(subscription.pending_plan_effective_date)}
-                  </p>
+                  </span>
+                  . The{" "}
+                  <span className="font-semibold">
+                    {subscription.pending_plan.name}
+                  </span>{" "}
+                  plan will become active automatically on that date.
+                </p>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl bg-white/70 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                      Scheduled plan
+                    </p>
+
+                    <p className="mt-1 font-bold text-slate-900">
+                      {subscription.pending_plan.name}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-white/70 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                      Effective date
+                    </p>
+
+                    <p className="mt-1 font-bold text-slate-900">
+                      {dateValue(subscription.pending_plan_effective_date)}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
-      )}
+          </section>
+        )}
 
-      {subscription.status === "trial" && (
-        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="mt-1 text-blue-600" />
+        {subscription.status === "trial" && (
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-1 text-blue-600" />
 
-            <div>
-              <h2 className="font-bold text-blue-900">Free trial active</h2>
+              <div>
+                <h2 className="font-bold text-blue-900">Free trial active</h2>
 
-              <p className="mt-1 text-blue-700">
-                {subscription.trial_days_remaining} day(s) remaining. Trial ends{" "}
-                {dateValue(subscription.trial_ends_at)}.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {subscription.status === "grace" && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-          <h2 className="font-bold text-amber-900">Grace period active</h2>
-
-          <p className="mt-1 text-amber-700">
-            Complete payment within {subscription.grace_days_remaining} day(s).
-          </p>
-        </div>
-      )}
-
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          icon={CreditCard}
-          label="Current plan"
-          value={subscription.plan || "Not configured"}
-        />
-
-        <SummaryCard
-          icon={Wallet}
-          label="Monthly subscription"
-          value={
-            subscription.status === "trial"
-              ? "Free during trial"
-              : money(subscription.monthly_price, currency)
-          }
-        />
-
-        <SummaryCard
-          icon={Receipt}
-          label="Platform service fee"
-          value={
-            subscription.service_fee_paid
-              ? "Paid"
-              : money(subscription.service_fee, currency)
-          }
-        />
-
-        <SummaryCard
-          icon={FileText}
-          label="Outstanding balance"
-          value={money(summary.outstanding_balance, currency)}
-        />
-      </div>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-          <div>
-            <h2 className="text-xl font-bold text-slate-900">
-              Subscription details
-            </h2>
-
-            <p className="mt-1 text-slate-600">
-              Status:{" "}
-              <span className="font-semibold capitalize">
-                {subscription.status}
-              </span>
-            </p>
-          </div>
-
-          {payableInvoice ? (
-            <button
-              type="button"
-              onClick={() => setSelectedInvoice(payableInvoice)}
-              className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-800"
-            >
-              <CreditCard size={18} />
-              Make payment
-            </button>
-          ) : (
-            Number(summary.pending_invoices || 0) === 0 && (
-              <button
-                type="button"
-                onClick={createInitialInvoice}
-                disabled={creatingInvoice || !selectedPlanCode}
-                className="flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3 font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
-              >
-                {creatingInvoice && (
-                  <Loader2 className="animate-spin" size={18} />
-                )}
-                Generate payment invoice
-              </button>
-            )
-          )}
-        </div>
-
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
-          <Detail
-            label="Trial expiry"
-            value={dateValue(subscription.trial_ends_at)}
-          />
-
-          <Detail
-            label="Subscription expiry"
-            value={dateValue(
-              subscription.end_date || subscription.next_billing_date,
-            )}
-          />
-
-          <Detail
-            label="Service fee status"
-            value={subscription.service_fee_paid ? "Paid" : "Not paid"}
-          />
-        </div>
-
-        {!payableInvoice && !pendingPayment && (
-          <div className="mt-6 border-t border-slate-200 pt-6">
-            <p className="text-sm font-semibold text-slate-800">
-              Subscription plan
-            </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              {plans.map((plan) => (
-                <button
-                  key={plan.code}
-                  type="button"
-                  onClick={() => setSelectedPlanCode(plan.code)}
-                  className={`border p-4 text-left transition ${
-                    selectedPlanCode === plan.code
-                      ? "border-orange-500 bg-orange-50"
-                      : "border-slate-200 bg-white hover:border-orange-300"
-                  }`}
-                >
-                  <span className="block font-semibold text-slate-900">
-                    {plan.name}
-                  </span>
-                  <span className="mt-1 block text-sm text-slate-600">
-                    {money(plan.monthly_price, plan.currency || currency)} /
-                    month
-                  </span>
-                  {!subscription.service_fee_paid && (
-                    <span className="mt-1 block text-xs text-slate-500">
-                      Setup fee:{" "}
-                      {money(plan.service_fee, plan.currency || currency)}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            <p className="mt-6 text-sm font-semibold text-slate-800">
-              Renewal period
-            </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              {cycleOptions.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setRenewalCycle(option.value)}
-                  className={`border p-4 text-left transition ${
-                    renewalCycle === option.value
-                      ? "border-orange-500 bg-orange-50"
-                      : "border-slate-200 bg-white hover:border-orange-300"
-                  }`}
-                >
-                  <span className="block font-semibold text-slate-900">
-                    {option.label}
-                  </span>
-                  <span className="mt-1 block text-sm text-slate-600">
-                    {money(option.price, currency)}
-                  </span>
-                </button>
-              ))}
+                <p className="mt-1 text-blue-700">
+                  {subscription.trial_days_remaining} day(s) remaining. Trial
+                  ends {dateValue(subscription.trial_ends_at)}.
+                </p>
+              </div>
             </div>
           </div>
         )}
-      </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 p-6">
-          <h2 className="text-xl font-bold text-slate-900">Invoices</h2>
+        {subscription.status === "grace" && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <h2 className="font-bold text-amber-900">Grace period active</h2>
+
+            <p className="mt-1 text-amber-700">
+              Complete payment within {subscription.grace_days_remaining}{" "}
+              day(s).
+            </p>
+          </div>
+        )}
+
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard
+            icon={CreditCard}
+            label="Current plan"
+            value={subscription.plan || "Not configured"}
+          />
+
+          <SummaryCard
+            icon={Wallet}
+            label="Monthly subscription"
+            value={
+              subscription.status === "trial"
+                ? "Free during trial"
+                : money(subscription.monthly_price, currency)
+            }
+          />
+
+          <SummaryCard
+            icon={Receipt}
+            label="Platform service fee"
+            value={
+              subscription.service_fee_paid
+                ? "Paid"
+                : money(subscription.service_fee, currency)
+            }
+          />
+
+          <SummaryCard
+            icon={FileText}
+            label="Outstanding balance"
+            value={money(summary.outstanding_balance, currency)}
+          />
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <TableHeading>Invoice</TableHeading>
-                <TableHeading>Type</TableHeading>
-                <TableHeading>Total</TableHeading>
-                <TableHeading>Balance</TableHeading>
-                <TableHeading>Status</TableHeading>
-                <TableHeading>Due date</TableHeading>
-                <TableHeading>Action</TableHeading>
-              </tr>
-            </thead>
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">
+                Subscription details
+              </h2>
 
-            <tbody className="divide-y divide-slate-100">
-              {data?.invoices?.length ? (
-                data.invoices.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <TableCell>{invoice.invoice_number}</TableCell>
+              <p className="mt-1 text-slate-600">
+                Status:{" "}
+                <span className="font-semibold capitalize">
+                  {subscription.status}
+                </span>
+              </p>
+            </div>
 
-                    <TableCell>{invoice.invoice_type}</TableCell>
+            {payableInvoice ? (
+              <button
+                type="button"
+                onClick={() => setSelectedInvoice(payableInvoice)}
+                className="flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-800"
+              >
+                <CreditCard size={18} />
+                Make payment
+              </button>
+            ) : (
+              Number(summary.pending_invoices || 0) === 0 && (
+                <button
+                  type="button"
+                  onClick={createInitialInvoice}
+                  disabled={creatingInvoice || !selectedPlanCode}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3 font-semibold text-white hover:bg-orange-600 disabled:opacity-60"
+                >
+                  {creatingInvoice && (
+                    <Loader2 className="animate-spin" size={18} />
+                  )}
+                  Generate payment invoice
+                </button>
+              )
+            )}
+          </div>
 
-                    <TableCell>
-                      {money(invoice.total_amount, invoice.currency)}
-                    </TableCell>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <Detail
+              label="Trial expiry"
+              value={dateValue(subscription.trial_ends_at)}
+            />
 
-                    <TableCell>
-                      {money(invoice.balance_due, invoice.currency)}
-                    </TableCell>
+            <Detail
+              label="Subscription expiry"
+              value={dateValue(
+                subscription.end_date || subscription.next_billing_date,
+              )}
+            />
 
-                    <TableCell>
-                      <Status value={invoice.status} />
-                    </TableCell>
+            <Detail
+              label="Service fee status"
+              value={subscription.service_fee_paid ? "Paid" : "Not paid"}
+            />
+          </div>
 
-                    <TableCell>{dateValue(invoice.due_date)}</TableCell>
+          {!payableInvoice && !pendingPayment && (
+            <div className="mt-6 border-t border-slate-200 pt-6">
+              <p className="text-sm font-semibold text-slate-800">
+                Subscription plan
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                {plans.map((plan) => (
+                  <button
+                    key={plan.code}
+                    type="button"
+                    onClick={() => setSelectedPlanCode(plan.code)}
+                    className={`border p-4 text-left transition ${
+                      selectedPlanCode === plan.code
+                        ? "border-orange-500 bg-orange-50"
+                        : "border-slate-200 bg-white hover:border-orange-300"
+                    }`}
+                  >
+                    <span className="block font-semibold text-slate-900">
+                      {plan.name}
+                    </span>
+                    <span className="mt-1 block text-sm text-slate-600">
+                      {money(plan.monthly_price, plan.currency || currency)} /
+                      month
+                    </span>
+                    {!subscription.service_fee_paid && (
+                      <span className="mt-1 block text-xs text-slate-500">
+                        Setup fee:{" "}
+                        {money(plan.service_fee, plan.currency || currency)}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
 
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            downloadFile(
-                              `/saas-billing/invoices/${invoice.id}/pdf/`,
-                              `${invoice.invoice_number}.pdf`,
-                            )
-                          }
-                          className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                        >
-                          <Download size={14} />
-                          PDF
-                        </button>
+              <p className="mt-6 text-sm font-semibold text-slate-800">
+                Renewal period
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                {cycleOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setRenewalCycle(option.value)}
+                    className={`border p-4 text-left transition ${
+                      renewalCycle === option.value
+                        ? "border-orange-500 bg-orange-50"
+                        : "border-slate-200 bg-white hover:border-orange-300"
+                    }`}
+                  >
+                    <span className="block font-semibold text-slate-900">
+                      {option.label}
+                    </span>
+                    <span className="mt-1 block text-sm text-slate-600">
+                      {money(option.price, currency)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
 
-                        {["pending", "overdue"].includes(invoice.status) && (
+        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 p-6">
+            <h2 className="text-xl font-bold text-slate-900">Invoices</h2>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <TableHeading>Invoice</TableHeading>
+                  <TableHeading>Type</TableHeading>
+                  <TableHeading>Total</TableHeading>
+                  <TableHeading>Balance</TableHeading>
+                  <TableHeading>Status</TableHeading>
+                  <TableHeading>Due date</TableHeading>
+                  <TableHeading>Action</TableHeading>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-100">
+                {data?.invoices?.length ? (
+                  data.invoices.map((invoice) => (
+                    <tr key={invoice.id}>
+                      <TableCell>{invoice.invoice_number}</TableCell>
+
+                      <TableCell>{invoice.invoice_type}</TableCell>
+
+                      <TableCell>
+                        {money(invoice.total_amount, invoice.currency)}
+                      </TableCell>
+
+                      <TableCell>
+                        {money(invoice.balance_due, invoice.currency)}
+                      </TableCell>
+
+                      <TableCell>
+                        <Status value={invoice.status} />
+                      </TableCell>
+
+                      <TableCell>{dateValue(invoice.due_date)}</TableCell>
+
+                      <TableCell>
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => setSelectedInvoice(invoice)}
-                            className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                            onClick={() =>
+                              downloadFile(
+                                `/saas-billing/invoices/${invoice.id}/pdf/`,
+                                `${invoice.invoice_number}.pdf`,
+                              )
+                            }
+                            className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                           >
-                            Submit payment
+                            <Download size={14} />
+                            PDF
                           </button>
+
+                          {["pending", "overdue"].includes(invoice.status) && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedInvoice(invoice)}
+                              className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                            >
+                              Submit payment
+                            </button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-6 py-10 text-center text-slate-500"
+                    >
+                      No invoices available.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 p-6">
+            <h2 className="text-xl font-bold text-slate-900">Payments</h2>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <TableHeading>Reference</TableHeading>
+                  <TableHeading>Invoice</TableHeading>
+                  <TableHeading>Amount</TableHeading>
+                  <TableHeading>Method</TableHeading>
+                  <TableHeading>Status</TableHeading>
+                  <TableHeading>Date</TableHeading>
+                  <TableHeading>Action</TableHeading>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-100">
+                {data?.payments?.length ? (
+                  data.payments.map((payment) => (
+                    <tr key={payment.id}>
+                      <TableCell>{payment.payment_reference}</TableCell>
+
+                      <TableCell>{payment.invoice_number}</TableCell>
+
+                      <TableCell>
+                        {money(payment.amount, payment.currency)}
+                      </TableCell>
+
+                      <TableCell>
+                        {payment.payment_method || payment.gateway}
+                      </TableCell>
+
+                      <TableCell>
+                        <Status
+                          value={payment.status_label || payment.status}
+                        />
+                        {payment.rejection_reason && (
+                          <p className="mt-1 max-w-xs text-xs text-red-600">
+                            {payment.rejection_reason}
+                          </p>
                         )}
-                      </div>
-                    </TableCell>
+                      </TableCell>
+
+                      <TableCell>
+                        {dateValue(payment.paid_at || payment.created_at)}
+                      </TableCell>
+                      <TableCell>
+                        {payment.status === "success" ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              downloadFile(
+                                `/saas-billing/payments/${payment.id}/receipt-pdf/`,
+                                `receipt-${payment.payment_reference}.pdf`,
+                              )
+                            }
+                            className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            <Download size={14} />
+                            Receipt
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400">
+                            Awaiting approval
+                          </span>
+                        )}
+                      </TableCell>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-6 py-10 text-center text-slate-500"
+                    >
+                      No payments available.
+                    </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-6 py-10 text-center text-slate-500"
-                  >
-                    No invoices available.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 p-6">
-          <h2 className="text-xl font-bold text-slate-900">Payments</h2>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <TableHeading>Reference</TableHeading>
-                <TableHeading>Invoice</TableHeading>
-                <TableHeading>Amount</TableHeading>
-                <TableHeading>Method</TableHeading>
-                <TableHeading>Status</TableHeading>
-                <TableHeading>Date</TableHeading>
-                <TableHeading>Action</TableHeading>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100">
-              {data?.payments?.length ? (
-                data.payments.map((payment) => (
-                  <tr key={payment.id}>
-                    <TableCell>{payment.payment_reference}</TableCell>
-
-                    <TableCell>{payment.invoice_number}</TableCell>
-
-                    <TableCell>
-                      {money(payment.amount, payment.currency)}
-                    </TableCell>
-
-                    <TableCell>
-                      {payment.payment_method || payment.gateway}
-                    </TableCell>
-
-                    <TableCell>
-                      <Status value={payment.status_label || payment.status} />
-                      {payment.rejection_reason && (
-                        <p className="mt-1 max-w-xs text-xs text-red-600">
-                          {payment.rejection_reason}
-                        </p>
-                      )}
-                    </TableCell>
-
-                    <TableCell>
-                      {dateValue(payment.paid_at || payment.created_at)}
-                    </TableCell>
-                    <TableCell>
-                      {payment.status === "success" ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            downloadFile(
-                              `/saas-billing/payments/${payment.id}/receipt-pdf/`,
-                              `receipt-${payment.payment_reference}.pdf`,
-                            )
-                          }
-                          className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                        >
-                          <Download size={14} />
-                          Receipt
-                        </button>
-                      ) : (
-                        <span className="text-xs text-slate-400">
-                          Awaiting approval
-                        </span>
-                      )}
-                    </TableCell>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-6 py-10 text-center text-slate-500"
-                  >
-                    No payments available.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {selectedInvoice && (
-        <PaymentModal
-          invoice={selectedInvoice}
-          bankDetails={data?.bank_details}
-          submitting={submittingPayment}
-          onClose={() => setSelectedInvoice(null)}
-          onSubmit={submitPayment}
-        />
-      )}
-    </div>
+        {selectedInvoice && (
+          <PaymentModal
+            invoice={selectedInvoice}
+            bankDetails={data?.bank_details}
+            submitting={submittingPayment}
+            onClose={() => setSelectedInvoice(null)}
+            onSubmit={submitPayment}
+          />
+        )}
+      </div>
+    </DashboardLayout>
   );
 }
 
