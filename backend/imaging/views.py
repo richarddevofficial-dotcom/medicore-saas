@@ -59,11 +59,17 @@ class ImagingTestViewSet(viewsets.ModelViewSet):
             'completed_at',
             'completed_by',
         ])
+        if test.patient and test.patient.status == 'imaging_requested':
+            test.patient.status = 'imaging_completed'
+            test.patient.imaging_results = test.result
+            test.patient.save(update_fields=['status', 'imaging_results', 'updated_at'])
         return Response(ImagingTestSerializer(test).data)
     
     @action(detail=False, methods=['get'])
     def stats(self, request):
-        total = ImagingTest.objects.count()
-        requested = ImagingTest.objects.filter(status='requested').count()
-        completed = ImagingTest.objects.filter(status='completed').count()
-        return Response({'total': total, 'requested': requested, 'completed': completed})
+        qs = self.get_queryset()
+        return Response({
+            'total': qs.count(),
+            'requested': qs.filter(status='requested').count(),
+            'completed': qs.filter(status='completed').count(),
+        })

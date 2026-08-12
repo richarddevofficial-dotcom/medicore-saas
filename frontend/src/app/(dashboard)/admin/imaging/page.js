@@ -56,6 +56,11 @@ export default function ImagingPage() {
       setTests(Array.isArray(data) ? data : data.results || []);
     } catch (err) {
       console.error(err);
+      toast.error(
+        err.response?.status === 403
+          ? "You don't have permission to view imaging tests (Pro plan / radiographer role required)"
+          : "Failed to load imaging tests",
+      );
     } finally {
       setLoading(false);
     }
@@ -96,21 +101,12 @@ export default function ImagingPage() {
 
   const handleComplete = async () => {
     if (!resultText.trim()) return toast.error("Enter result");
+    setIsSaving(true);
     try {
-      // Save to imaging test
+      // Backend completes the test and updates the linked patient's status
       await apiClient.post(`/imaging-tests/${showResult.id}/complete/`, {
         result: resultText,
       });
-
-      // Also update patient status
-      if (showResult.patient) {
-        await apiClient.post(
-          `/patients/${showResult.patient}/complete_imaging/`,
-          {
-            imaging_results: resultText,
-          },
-        );
-      }
 
       toast.success("Results saved! Patient status updated.");
       setShowResult(null);
@@ -118,10 +114,13 @@ export default function ImagingPage() {
       fetchData();
     } catch (err) {
       toast.error("Failed");
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleDelete = async (id) => {
+    if (!window.confirm("Delete this imaging test?")) return;
     try {
       await apiClient.delete(`/imaging-tests/${id}/`);
       toast.success("Deleted!");
@@ -254,7 +253,7 @@ export default function ImagingPage() {
                               : "warning"
                         }
                       >
-                        {t.status}
+                        {t.status_display || t.status}
                       </Badge>
                     </td>
                     <td className="px-3 py-3 text-sm">SSP {t.price}</td>
@@ -337,6 +336,7 @@ export default function ImagingPage() {
                 { value: "ct", label: "CT Scan" },
                 { value: "ultrasound", label: "Ultrasound" },
                 { value: "mammogram", label: "Mammogram" },
+                { value: "other", label: "Other" },
               ]}
             />
             <Input
