@@ -16,6 +16,9 @@ from hospitals.models import Hospital
 from staff.models import StaffProfile
 
 from .models import HospitalSubscription, Invoice, Payment, SubscriptionPlan
+from .invoice_services import (
+	create_plan_change_invoice as create_legacy_plan_change_invoice,
+)
 from .middleware import SubscriptionAccessMiddleware
 from .plan_change_services import create_plan_change_invoice
 from .services import refresh_subscription_status
@@ -1302,3 +1305,190 @@ class SuperAdminBillingCenterTests(TestCase):
 				hospital=self.hospital,
 			).exists()
 		)
+
+
+class ApproveManualPaymentPlanChangeTests(TestCase):
+	"""Regression tests for the saas-billing approve_manual_payment endpoint."""
+
+	def setUp(self):
+		self.client = APIClient()
+		self.hospital = Hospital.objects.create(
+			name="Approval Plan Change Hospital",
+			slug="approval-plan-change-hospital",
+			hospital_type="general",
+			registration_number="APPROVAL-PLAN-001",
+			email="approval-hospital@example.com",
+			phone="1234567890",
+			address="123 Main Street",
+			city="Juba",
+			state="Central",
+			country="South Sudan",
+		)
+		self.starter_plan = SubscriptionPlan.objects.create(
+			code="approval-starter",
+			name="Approval Starter",
+			monthly_price="49.90",
+			service_fee="300.00",
+			max_staff=20,
+			max_patients=2000,
+		)
+		self.pro_plan = SubscriptionPlan.objects.create(
+			code="approval-pro",
+			name="Approval Professional",
+			monthly_price="89.90",
+			service_fee="500.00",
+			max_staff=100,
+			max_patients=20000,
+		)
+		self.basic_plan = SubscriptionPlan.objects.create(
+			code="approval-basic",
+			name="Approval Basic",
+			monthly_price="29.90",
+			service_fee="100.00",
+			max_staff=10,
+			max_patients=1000,
+		)
+		self.subscription = HospitalSubscription.objects.create(
+			hospital=self.hospital,
+			plan=self.starter_plan,
+			status=HospitalSubscription.STATUS_ACTIVE,
+			current_monthly_price="49.90",
+			current_service_fee="300.00",
+			service_fee_paid=True,
+			next_billing_date=timezone.localdate() + timedelta(days=20),
+		)
+		self.admin_user = User.objects.create_user(
+			username="approval-admin@example.com",
+			email="approval-admin@example.com",
+			password="Admin@1234",
+		)
+		StaffProfile.objects.create(
+			user=self.admin_user,
+			hospital=self.hospital,
+			role="admin",
+			phone="700010",
+		)
+		self.super_admin = User.objects.create_superuser(
+			username="approval-super@example.com",
+			email="approval-super@example.com",
+			password="Admin@1234",
+		)
+
+	def _submit_and_approve(self, invoice):
+		self.client.force_authenticate(user=self.admin_user)
+		submit_response = self.client.post(
+			"/api/v1/saas-billing/payments/manual/",
+			{
+				"invoice_id": invoice.id,
+				"transaction_id": f"BANK-REG-{invoice.id}",
+				"payment_method": "bank_transfer",
+				"payment_date": timezone.localdate().isoformat(),
+			},
+			format="json",
+		)
+		self.assertEqual(submit_response.status_code, 201)
+		payment = Payment.objects.get(
+			id=submit_response.data["payment"]["id"],
+		)
+
+		self.client.force_authenticate(user=self.super_admin)
+		approve_response = self.client.post(
+			f"/api/v1/saas-billing/payments/{payment.id}/approve/",
+			{},
+			format="json",
+		)
+		return payment, approve_response
+
+	def test_legacy_pending_plan_change_invoice_backfills_target_plan_id(self):
+		"""Invoices created before target_plan_id existed must still activate."""
+		invoice, _created = create_legacy_plan_change_invoice(
+			subscription=self.subscription,
+			target_plan=self.pro_plan,
+		)
+		# Simulate a legacy invoice written before the fix.
+		invoice.metadata.pop("target_plan_id", None)
+		invoice.save(update_fields=["metadata"])
+
+		_payment, response = self._submit_and_approve(invoice)
+
+		self.assertEqual(response.status_code, 200)
+		self.subscription.refresh_from_db()
+		invoice.refresh_from_db()
+		self.assertEqual(invoice.metadata.get("target_plan_id"), self.pro_plan.id)
+		self.assertEqual(self.subscription.plan, self.pro_plan)
+		self.assertEqual(
+			self.subscription.current_monthly_price,
+			Decimal(self.pro_plan.monthly_price),
+		)
+
+	def test_upgrade_activates_immediately_on_approval(self):
+		invoice, _created = create_legacy_plan_change_invoice(
+			subscription=self.subscription,
+			target_plan=self.pro_plan,
+		)
+
+		_payment, response = self._submit_and_approve(invoice)
+
+		self.assertEqual(response.status_code, 200)
+		self.subscription.refresh_from_db()
+		self.assertEqual(self.subscription.plan, self.pro_plan)
+		self.assertIsNone(self.subscription.pending_plan)
+		self.assertIsNone(self.subscription.pending_plan_effective_date)
+		self.assertEqual(
+			response.data["subscription"]["plan"],
+			self.pro_plan.name,
+		)
+
+	def test_downgrade_is_scheduled_until_end_of_subscription(self):
+		self.subscription.plan = self.pro_plan
+		self.subscription.current_monthly_price = self.pro_plan.monthly_price
+		self.subscription.save(
+			update_fields=["plan", "current_monthly_price"],
+		)
+		current_period_end = self.subscription.next_billing_date
+
+		invoice, _created = create_legacy_plan_change_invoice(
+			subscription=self.subscription,
+			target_plan=self.basic_plan,
+		)
+
+		_payment, response = self._submit_and_approve(invoice)
+
+		self.assertEqual(response.status_code, 200)
+		self.subscription.refresh_from_db()
+		# Current plan stays active until the period ends.
+		self.assertEqual(self.subscription.plan, self.pro_plan)
+		self.assertEqual(self.subscription.pending_plan, self.basic_plan)
+		self.assertEqual(
+			self.subscription.pending_plan_effective_date,
+			current_period_end,
+		)
+		self.assertEqual(
+			response.data["subscription"]["pending_plan"]["code"],
+			self.basic_plan.code,
+		)
+		self.assertIn(
+			"takes effect",
+			response.data["message"],
+		)
+
+	@patch(
+		"saas_billing.receipt_services.EmailMessage.send",
+		return_value=1,
+	)
+	def test_receipt_email_goes_to_hospital_and_submitting_admin(
+		self,
+		mock_send,
+	):
+		invoice, _created = create_legacy_plan_change_invoice(
+			subscription=self.subscription,
+			target_plan=self.pro_plan,
+		)
+
+		payment, response = self._submit_and_approve(invoice)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertTrue(mock_send.called)
+		email_message = mock_send.call_args.args[0] if mock_send.call_args.args else None
+		payment.refresh_from_db()
+		self.assertEqual(payment.receipt_delivery_status, "sent")
