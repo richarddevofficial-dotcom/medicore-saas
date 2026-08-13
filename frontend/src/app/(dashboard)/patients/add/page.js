@@ -188,7 +188,6 @@ export default function AddPatientPage() {
                   value={form.gender}
                   onChange={(e) => handleChange("gender", e.target.value)}
                   options={[
-                    { value: "", label: "Select gender" },
                     { value: "M", label: "Male" },
                     { value: "F", label: "Female" },
                     { value: "O", label: "Other" },
