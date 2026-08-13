@@ -581,6 +581,12 @@ def submit_manual_payment(request):
             status=400,
         )
 
+    if payment_date > timezone.localdate():
+        return Response(
+            {"error": "payment_date cannot be in the future."},
+            status=400,
+        )
+
     if not invoice_id:
         return Response(
             {"error": "invoice_id is required."},
@@ -638,6 +644,20 @@ def submit_manual_payment(request):
                 )
             },
             status=409,
+        )
+
+    if (
+        payment_method == Payment.GATEWAY_BANK
+        and not request.FILES.get("proof_of_payment")
+    ):
+        return Response(
+            {
+                "error": (
+                    "A bank receipt or proof of payment "
+                    "is required for bank transfers."
+                )
+            },
+            status=400,
         )
 
     requested_amount = request.data.get("amount")
@@ -723,8 +743,10 @@ def submit_manual_payment(request):
         billing_cycle=billing_cycle,
         payment_type=(
             Payment.TYPE_COMBINED
-            if invoice.invoice_type
-            == Invoice.TYPE_COMBINED
+            if invoice.invoice_type in {
+                Invoice.TYPE_COMBINED,
+                Invoice.TYPE_ADJUSTMENT,
+            } and invoice.service_fee_amount > Decimal("0.00")
             else Payment.TYPE_SUBSCRIPTION
         ),
         amount=amount,
@@ -1013,8 +1035,20 @@ def approve_manual_payment(request, payment_id):
         except Exception:
             pass
 
-    # Send payment receipt email
-    send_payment_receipt_email(payment)
+    payment_id_for_receipt = payment.id
+
+    def _send_receipt():
+        try:
+            committed = (
+                Payment.objects
+                .select_related("hospital", "invoice", "subscription__plan")
+                .get(id=payment_id_for_receipt)
+            )
+            send_payment_receipt_email(committed)
+        except Exception:
+            pass
+
+    transaction.on_commit(_send_receipt)
 
     if subscription.pending_plan_id:
         subscription_payload = {
@@ -1278,11 +1312,11 @@ def billing_dashboard(request):
             },
             "invoices": [
                 serialize_invoice(invoice)
-                for invoice in invoices[:20]
+                for invoice in invoices[:100]
             ],
             "payments": [
                 serialize_payment(payment)
-                for payment in payments[:20]
+                for payment in payments[:100]
             ],
             "bank_details": {
                 "bank_name": settings.MEDICORE_BANK_NAME,

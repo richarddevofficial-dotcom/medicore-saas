@@ -125,6 +125,21 @@ export default function PaymentCenterPage() {
     ordering,
   ]);
 
+  useEffect(() => {
+    setSuccess("");
+    setError("");
+  }, [
+    search,
+    status,
+    paymentType,
+    gateway,
+    billingCycle,
+    hospital,
+    dateFrom,
+    dateTo,
+    ordering,
+  ]);
+
   async function approvePayment(payment) {
     try {
       setActionLoading(`approve-${payment.id}`);
@@ -575,7 +590,10 @@ export default function PaymentCenterPage() {
                           <button
                             type="button"
                             onClick={() => setPaymentToApprove(payment)}
-                            disabled={actionLoading !== null}
+                            disabled={
+                              actionLoading === `approve-${payment.id}` ||
+                              actionLoading === `reject-${payment.id}`
+                            }
                             className="inline-flex items-center gap-1 rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50"
                           >
                             {actionLoading === `approve-${payment.id}` ? (
@@ -592,7 +610,10 @@ export default function PaymentCenterPage() {
                               setPaymentToReject(payment);
                               setRejectionReason("");
                             }}
-                            disabled={actionLoading !== null}
+                            disabled={
+                              actionLoading === `approve-${payment.id}` ||
+                              actionLoading === `reject-${payment.id}`
+                            }
                             className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
                           >
                             {actionLoading === `reject-${payment.id}` ? (
@@ -773,6 +794,10 @@ export default function PaymentCenterPage() {
                 value={String(
                   paymentToApprove.billing_cycle || "monthly",
                 ).replaceAll("_", " ")}
+              />
+              <PaymentDetail
+                label="Plan"
+                value={paymentToApprove.plan_name || "Not available"}
               />
               <PaymentDetail
                 label="Current expiry"

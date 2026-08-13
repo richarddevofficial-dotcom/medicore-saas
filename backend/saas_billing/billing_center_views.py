@@ -1021,6 +1021,23 @@ def serialize_billing_payment(payment):
             else None
         ),
         "rejection_reason": payment.rejection_reason,
+        "confirmed_by_name": (
+            payment.confirmed_by.get_full_name() or payment.confirmed_by.email
+            if payment.confirmed_by else None
+        ),
+        "rejected_by_name": (
+            payment.rejected_by.get_full_name() or payment.rejected_by.email
+            if payment.rejected_by else None
+        ),
+        "plan_name": (
+            payment.plan.name
+            if payment.plan
+            else (
+                payment.subscription.plan.name
+                if payment.subscription_id
+                else None
+            )
+        ),
         "created_at": payment.created_at.isoformat(),
         "gateway_response": payment.gateway_response or {},
     }
@@ -3129,6 +3146,9 @@ def billing_center_payments(request):
             "invoice",
             "subscription",
             "subscription__plan",
+            "plan",
+            "confirmed_by",
+            "rejected_by",
         )
         .all()
     )

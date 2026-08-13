@@ -1257,8 +1257,13 @@ class SuperAdminBillingCenterTests(TestCase):
 				"transaction_id": "BANK-E2E-001",
 				"payment_method": "bank_transfer",
 				"notes": "Verified test transfer",
+				"proof_of_payment": SimpleUploadedFile(
+					"receipt.png",
+					b"\x89PNG\r\n\x1a\n" + b"\x00" * 64,
+					content_type="image/png",
+				),
 			},
-			format="json",
+			format="multipart",
 		)
 
 		self.assertEqual(submit_response.status_code, 201)
@@ -1373,6 +1378,8 @@ class ApproveManualPaymentPlanChangeTests(TestCase):
 			password="Admin@1234",
 		)
 
+	_MINIMAL_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+
 	def _submit_and_approve(self, invoice):
 		self.client.force_authenticate(user=self.admin_user)
 		submit_response = self.client.post(
@@ -1382,8 +1389,13 @@ class ApproveManualPaymentPlanChangeTests(TestCase):
 				"transaction_id": f"BANK-REG-{invoice.id}",
 				"payment_method": "bank_transfer",
 				"payment_date": timezone.localdate().isoformat(),
+				"proof_of_payment": SimpleUploadedFile(
+					"receipt.png",
+					self._MINIMAL_PNG,
+					content_type="image/png",
+				),
 			},
-			format="json",
+			format="multipart",
 		)
 		self.assertEqual(submit_response.status_code, 201)
 		payment = Payment.objects.get(
@@ -1486,7 +1498,8 @@ class ApproveManualPaymentPlanChangeTests(TestCase):
 			target_plan=self.pro_plan,
 		)
 
-		payment, response = self._submit_and_approve(invoice)
+		with self.captureOnCommitCallbacks(execute=True):
+			payment, response = self._submit_and_approve(invoice)
 
 		self.assertEqual(response.status_code, 200)
 		self.assertTrue(mock_send.called)

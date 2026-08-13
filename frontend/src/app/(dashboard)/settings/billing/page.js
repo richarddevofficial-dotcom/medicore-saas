@@ -112,13 +112,18 @@ export default function BillingPage() {
       setError("");
       setSuccessMessage("");
 
-      const response = await apiClient.post(
-        "/saas-billing/invoices/generate-initial/",
-        {
-          plan_code: selectedPlanCode,
-          billing_cycle: renewalCycle,
-        },
-      );
+      const currentPlanCode = data?.subscription?.plan_code;
+      const isSamePlan =
+        !selectedPlanCode || selectedPlanCode === currentPlanCode;
+
+      const endpoint = isSamePlan
+        ? "/saas-billing/renew/"
+        : "/saas-billing/invoices/generate-initial/";
+
+      const response = await apiClient.post(endpoint, {
+        ...(isSamePlan ? {} : { plan_code: selectedPlanCode }),
+        billing_cycle: renewalCycle,
+      });
 
       setSuccessMessage(response.data.message);
       setSelectedInvoice(response.data.invoice || null);
@@ -442,8 +447,12 @@ export default function BillingPage() {
             <h2 className="font-bold text-amber-900">Grace period active</h2>
 
             <p className="mt-1 text-amber-700">
-              Complete payment within {subscription.grace_days_remaining}{" "}
-              day(s).
+              Complete payment within {subscription.grace_days_remaining} day(s)
+              — deadline{" "}
+              <span className="font-semibold">
+                {dateValue(subscription.grace_period_ends_at)}
+              </span>
+              .
             </p>
           </div>
         )}
@@ -507,7 +516,8 @@ export default function BillingPage() {
                 Make payment
               </button>
             ) : (
-              Number(summary.pending_invoices || 0) === 0 && (
+              Number(summary.pending_invoices || 0) === 0 &&
+              !pendingPayment && (
                 <button
                   type="button"
                   onClick={createInitialInvoice}
@@ -802,11 +812,11 @@ export default function BillingPage() {
                             <Download size={14} />
                             Receipt
                           </button>
-                        ) : (
+                        ) : payment.status === "pending" ? (
                           <span className="text-xs text-slate-400">
                             Awaiting approval
                           </span>
-                        )}
+                        ) : null}
                       </TableCell>
                     </tr>
                   ))
@@ -841,12 +851,14 @@ export default function BillingPage() {
 
 function PaymentModal({ invoice, bankDetails, submitting, onClose, onSubmit }) {
   const [form, setForm] = useState({
-    transaction_id: "",
+    transaction_id: invoice.invoice_number || "",
     payment_method: "bank_transfer",
     payment_date: new Date().toISOString().slice(0, 10),
     proof_of_payment: null,
     notes: "",
   });
+
+  const today = new Date().toISOString().slice(0, 10);
 
   function handleChange(event) {
     const { files, name, value } = event.target;
@@ -954,23 +966,30 @@ function PaymentModal({ invoice, bankDetails, submitting, onClose, onSubmit }) {
               value={form.payment_date}
               onChange={handleChange}
               required
+              max={today}
               className="w-full rounded-xl border border-slate-300 px-4 py-3"
             />
           </label>
 
           <label className="block">
             <span className="mb-2 block text-sm font-semibold text-slate-700">
-              Proof of payment (optional)
+              Proof of payment
+              {form.payment_method === "bank_transfer" && (
+                <span className="ml-1 text-red-600">*</span>
+              )}
             </span>
             <input
               type="file"
               name="proof_of_payment"
               onChange={handleChange}
+              required={form.payment_method === "bank_transfer"}
               accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
               className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
             />
             <span className="mt-1 block text-xs text-slate-500">
-              PDF, PNG or JPEG, up to 5 MB.
+              {form.payment_method === "bank_transfer"
+                ? "Bank receipt required — PDF, PNG or JPEG, up to 5 MB."
+                : "PDF, PNG or JPEG, up to 5 MB (optional for cash)."}
             </span>
           </label>
 
