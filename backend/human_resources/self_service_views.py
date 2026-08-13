@@ -471,11 +471,28 @@ class MyLeaveRequestListCreateView(
 
         with transaction.atomic():
             leave_request = serializer.save(employee=employee)
-            LeaveBalance.objects.filter(
-                employee=employee,
-                leave_type=leave_type,
-                year=leave_request.start_date.year,
-                is_active=True,
-            ).update(
-                pending_days=F("pending_days") + leave_request.total_days
+            balance = (
+                LeaveBalance.objects
+                .select_for_update()
+                .filter(
+                    employee=employee,
+                    leave_type=leave_type,
+                    year=leave_request.start_date.year,
+                    is_active=True,
+                )
+                .first()
             )
+            if balance is not None:
+                if balance.available_days < leave_request.total_days:
+                    raise serializers.ValidationError(
+                        {
+                            "total_days": (
+                                "Insufficient leave balance. "
+                                f"Available: {balance.available_days} day(s)."
+                            )
+                        }
+                    )
+                balance.pending_days = (
+                    F("pending_days") + leave_request.total_days
+                )
+                balance.save(update_fields=["pending_days", "updated_at"])

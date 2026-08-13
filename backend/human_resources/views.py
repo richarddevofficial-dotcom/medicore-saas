@@ -5,6 +5,7 @@ from django.db.models import Count, F, Q
 from django.utils import timezone
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -555,6 +556,23 @@ class LeaveBalanceViewSet(HRManagerWriteViewSet):
                 ),
             }
         )
+
+
+def _get_locked_leave_balance(employee, leave_type, year):
+    """Lock and return the active leave balance row for validation/updates."""
+    return (
+        LeaveBalance.objects
+        .select_for_update()
+        .filter(
+            employee=employee,
+            leave_type=leave_type,
+            year=year,
+            is_active=True,
+        )
+        .first()
+    )
+
+
 class LeaveRequestViewSet(HospitalScopedViewSet):
     queryset = LeaveRequest.objects.select_related(
         "employee",
@@ -604,14 +622,25 @@ class LeaveRequestViewSet(HospitalScopedViewSet):
         with transaction.atomic():
             leave_request = serializer.save()
             year = leave_request.start_date.year
-            LeaveBalance.objects.filter(
-                employee=leave_request.employee,
-                leave_type=leave_request.leave_type,
-                year=year,
-                is_active=True,
-            ).update(
-                pending_days=F("pending_days") + leave_request.total_days
+            balance = _get_locked_leave_balance(
+                leave_request.employee,
+                leave_request.leave_type,
+                year,
             )
+            if balance is not None:
+                if balance.available_days < leave_request.total_days:
+                    raise ValidationError(
+                        {
+                            "total_days": (
+                                "Insufficient leave balance. "
+                                f"Available: {balance.available_days} day(s)."
+                            )
+                        }
+                    )
+                balance.pending_days = (
+                    F("pending_days") + leave_request.total_days
+                )
+                balance.save(update_fields=["pending_days", "updated_at"])
 
     @action(
         detail=True,
@@ -642,15 +671,34 @@ class LeaveRequestViewSet(HospitalScopedViewSet):
                 ]
             )
             year = leave_request.start_date.year
-            LeaveBalance.objects.filter(
-                employee=leave_request.employee,
-                leave_type=leave_request.leave_type,
-                year=year,
-                is_active=True,
-            ).update(
-                pending_days=F("pending_days") - leave_request.total_days,
-                used_days=F("used_days") + leave_request.total_days,
+            balance = _get_locked_leave_balance(
+                leave_request.employee,
+                leave_request.leave_type,
+                year,
             )
+            if balance is not None:
+                if balance.available_days < leave_request.total_days:
+                    raise ValidationError(
+                        {
+                            "error": (
+                                "Insufficient leave balance at approval time. "
+                                f"Available: {balance.available_days} day(s)."
+                            )
+                        }
+                    )
+                balance.pending_days = (
+                    F("pending_days") - leave_request.total_days
+                )
+                balance.used_days = (
+                    F("used_days") + leave_request.total_days
+                )
+                balance.save(
+                    update_fields=[
+                        "pending_days",
+                        "used_days",
+                        "updated_at",
+                    ]
+                )
 
         return Response(
             {
@@ -688,14 +736,18 @@ class LeaveRequestViewSet(HospitalScopedViewSet):
                 ]
             )
             year = leave_request.start_date.year
-            LeaveBalance.objects.filter(
-                employee=leave_request.employee,
-                leave_type=leave_request.leave_type,
-                year=year,
-                is_active=True,
-            ).update(
-                pending_days=F("pending_days") - leave_request.total_days,
+            balance = _get_locked_leave_balance(
+                leave_request.employee,
+                leave_request.leave_type,
+                year,
             )
+            if balance is not None:
+                balance.pending_days = (
+                    F("pending_days") - leave_request.total_days
+                )
+                balance.save(
+                    update_fields=["pending_days", "updated_at"]
+                )
 
         return Response(
             {
@@ -717,18 +769,33 @@ class LeaveRequestViewSet(HospitalScopedViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Only the requesting employee or an HR manager may cancel.
+        employee_profile = getattr(request.user, "employee_profile", None)
+        is_owner = bool(
+            employee_profile
+            and leave_request.employee_id == employee_profile.id
+        )
+        if not is_owner and not IsHRManager().has_permission(request, self):
+            raise PermissionDenied(
+                "You can only cancel your own leave requests."
+            )
+
         with transaction.atomic():
             leave_request.status = "CANCELLED"
             leave_request.save(update_fields=["status", "updated_at"])
             year = leave_request.start_date.year
-            LeaveBalance.objects.filter(
-                employee=leave_request.employee,
-                leave_type=leave_request.leave_type,
-                year=year,
-                is_active=True,
-            ).update(
-                pending_days=F("pending_days") - leave_request.total_days,
+            balance = _get_locked_leave_balance(
+                leave_request.employee,
+                leave_request.leave_type,
+                year,
             )
+            if balance is not None:
+                balance.pending_days = (
+                    F("pending_days") - leave_request.total_days
+                )
+                balance.save(
+                    update_fields=["pending_days", "updated_at"]
+                )
 
         return Response(
             {
