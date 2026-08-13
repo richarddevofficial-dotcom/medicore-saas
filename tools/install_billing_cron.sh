@@ -35,8 +35,25 @@ run_backend() {
 CRON_MARKER="# medicore-saas-billing"
 CRON_FILE="$(mktemp)"
 
-# Preserve existing non-MediCore cron entries.
-crontab -l 2>/dev/null | grep -v "$CRON_MARKER" > "$CRON_FILE" || true
+# Legacy commands that no longer exist as standalone management commands
+# (their behaviour is now handled by process_daily_billing). Any cron
+# entries referencing them are stale and are removed below.
+LEGACY_COMMANDS_PATTERN='send_trial_reminders|send_billing_reminders|process_subscription_status'
+
+# Commands this script manages. Any existing entry (marked or not) that
+# references one of these is removed first so re-running the installer
+# never creates duplicates.
+MANAGED_COMMANDS_PATTERN='process_daily_billing|update_subscription_statuses|apply_scheduled_plan_changes|run_monthly_billing'
+
+# Preserve existing cron entries, but drop:
+#   - previous MediCore billing jobs installed by this script,
+#   - any other entry already running one of the managed commands, and
+#   - stale entries pointing at removed management commands.
+crontab -l 2>/dev/null \
+  | grep -v "$CRON_MARKER" \
+  | grep -vE "$LEGACY_COMMANDS_PATTERN" \
+  | grep -vE "$MANAGED_COMMANDS_PATTERN" \
+  > "$CRON_FILE" || true
 
 cat >> "$CRON_FILE" <<EOF
 # ---- MediCore SaaS billing jobs ---- $CRON_MARKER
