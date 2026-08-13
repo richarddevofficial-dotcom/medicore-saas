@@ -210,12 +210,23 @@ export default function InsurancePage() {
 
   // Delete Company
   const handleDelete = async (id) => {
+    if (
+      !window.confirm(
+        "Delete this insurance company? Companies with linked claims cannot be deleted.",
+      )
+    )
+      return;
     try {
       await apiClient.delete(`/insurance-companies/${id}/`);
       toast.success("Deleted!");
       refetchCompanies();
     } catch (err) {
-      toast.error("Failed to delete");
+      toast.error(
+        getErrorMessage(
+          err,
+          "Cannot delete — this company may have linked claims",
+        ),
+      );
     }
   };
 

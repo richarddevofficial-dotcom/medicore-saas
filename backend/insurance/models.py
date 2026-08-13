@@ -35,7 +35,7 @@ class InsuranceClaim(models.Model):
         ('paid', 'Paid'),
     ]
     hospital = models.ForeignKey(Hospital, on_delete=models.CASCADE)
-    company = models.ForeignKey(InsuranceCompany, on_delete=models.CASCADE)
+    company = models.ForeignKey(InsuranceCompany, on_delete=models.PROTECT)
     patient = models.ForeignKey(
         'patients.Patient',
         on_delete=models.SET_NULL,

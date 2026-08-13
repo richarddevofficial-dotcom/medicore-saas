@@ -1,12 +1,23 @@
-from rest_framework import viewsets, filters
+from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
+from django.db import transaction
 from django.utils import timezone
 from config.plan_permissions import RequiresProPlan
+from config.audit_logger import AuditLogger
+from finance.accounting_permissions import IsFinanceManager
 from .models import InsuranceCompany, InsuranceClaim
 from .serializers import InsuranceCompanySerializer, InsuranceClaimSerializer
+
+
+ALLOWED_CLAIM_TRANSITIONS = {
+    'pending': {'approved', 'rejected'},
+    'approved': {'paid', 'rejected'},
+    'rejected': set(),
+    'paid': set(),
+}
 
 
 def _resolve_request_hospital(request):
@@ -111,17 +122,86 @@ class InsuranceClaimViewSet(viewsets.ModelViewSet):
             raise ValidationError({'company': 'Selected insurance company does not belong to your hospital'})
 
         serializer.save()
-    
-    @action(detail=True, methods=['post'])
+
+    def perform_destroy(self, instance):
+        if instance.status != 'pending':
+            raise ValidationError(
+                'Only pending claims can be deleted. Approved, rejected, or '
+                'paid claims are financial records and must be retained.'
+            )
+        instance.delete()
+
+    @action(
+        detail=True,
+        methods=['post'],
+        permission_classes=[IsAuthenticated, RequiresProPlan, IsFinanceManager],
+    )
     def update_status(self, request, pk=None):
-        claim = self.get_object()
         new_status = request.data.get('status')
-        if new_status in dict(InsuranceClaim.STATUS):
-            claim.status = new_status
+        if new_status not in dict(InsuranceClaim.STATUS):
+            return Response({'error': 'Invalid status'}, status=400)
+
+        with transaction.atomic():
+            claim = (
+                InsuranceClaim.objects
+                .select_for_update()
+                .get(pk=self.get_object().pk)
+            )
+
+            allowed = ALLOWED_CLAIM_TRANSITIONS.get(claim.status, set())
+            if new_status not in allowed:
+                return Response(
+                    {
+                        'error': (
+                            f"Cannot change claim from '{claim.status}' "
+                            f"to '{new_status}'."
+                        )
+                    },
+                    status=400,
+                )
+
             if new_status == 'approved':
-                claim.approved_amount = request.data.get('approved_amount', claim.claim_amount)
+                try:
+                    approved_amount = request.data.get(
+                        'approved_amount',
+                        claim.claim_amount,
+                    )
+                    approved_amount = round(float(approved_amount), 2)
+                except (TypeError, ValueError):
+                    return Response(
+                        {'error': 'approved_amount must be a valid number.'},
+                        status=400,
+                    )
+                if approved_amount <= 0 or approved_amount > float(claim.claim_amount):
+                    return Response(
+                        {
+                            'error': (
+                                'approved_amount must be greater than 0 and '
+                                f'no more than the claim amount ({claim.claim_amount}).'
+                            )
+                        },
+                        status=400,
+                    )
+                claim.approved_amount = approved_amount
+
+            old_status = claim.status
+            claim.status = new_status
             if new_status in {'approved', 'rejected', 'paid'}:
                 claim.processed_date = timezone.now().date()
             claim.save()
-            return Response(InsuranceClaimSerializer(claim).data)
-        return Response({'error': 'Invalid status'}, status=400)
+
+        AuditLogger.log_audit(
+            user=request.user,
+            action=f"INSURANCE_CLAIM_{new_status.upper()}",
+            target=f"insurance_claim:{claim.id}",
+            hospital=claim.hospital,
+            old_values={'status': old_status},
+            new_values={
+                'status': new_status,
+                'claim_amount': str(claim.claim_amount),
+                'approved_amount': str(claim.approved_amount),
+            },
+            request=request,
+        )
+
+        return Response(InsuranceClaimSerializer(claim).data)
