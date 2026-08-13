@@ -16,6 +16,7 @@ from expenses.serializers import (
     ExpenseApprovalLogSerializer, ExpenseBudgetSerializer,
     ExpenseBudgetDetailSerializer, ExpensePaymentSerializer
 )
+from config.audit_logger import AuditLogger
 
 
 class ExpenseCategoryViewSet(HospitalScopedViewSet):
@@ -117,7 +118,14 @@ class ExpenseViewSet(HospitalScopedViewSet):
                 {'error': 'Only HR managers can approve expenses'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
+        # Prevent self-approval: approver must differ from submitter
+        if expense.submitted_by_id == request.user.id:
+            return Response(
+                {'error': 'You cannot approve your own expense'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         approval_notes = request.data.get('approval_notes', '')
         
         with transaction.atomic():
@@ -140,6 +148,19 @@ class ExpenseViewSet(HospitalScopedViewSet):
                 approved_by=request.user,
                 comments=approval_notes
             )
+
+        AuditLogger.log_audit(
+            user=request.user,
+            action="EXPENSE_APPROVED",
+            target=f"expense:{expense.id}",
+            hospital=expense.hospital,
+            new_values={
+                "amount": str(expense.amount),
+                "submitted_by": str(expense.submitted_by_id),
+                "approval_notes": approval_notes,
+            },
+            request=request,
+        )
         
         return Response(ExpenseDetailSerializer(expense).data)
     
@@ -174,6 +195,19 @@ class ExpenseViewSet(HospitalScopedViewSet):
                 approved_by=request.user,
                 comments=rejection_notes
             )
+
+        AuditLogger.log_audit(
+            user=request.user,
+            action="EXPENSE_REJECTED",
+            target=f"expense:{expense.id}",
+            hospital=expense.hospital,
+            new_values={
+                "amount": str(expense.amount),
+                "submitted_by": str(expense.submitted_by_id),
+                "rejection_notes": rejection_notes,
+            },
+            request=request,
+        )
         
         return Response(ExpenseDetailSerializer(expense).data)
     
@@ -306,16 +340,20 @@ class ExpensePaymentViewSet(HospitalScopedViewSet):
     @action(detail=True, methods=['post'])
     def mark_paid(self, request, pk=None):
         """Mark expense payment as paid"""
-        payment = self.get_object()
-        
-        if payment.status == 'processed':
-            return Response({'error': 'Already marked as paid'}, status=status.HTTP_400_BAD_REQUEST)
-        
         payment_date = request.data.get('payment_date', timezone.localdate())
         payment_method = request.data.get('payment_method', 'bank_transfer')
         reference_number = request.data.get('reference_number', '')
         
         with transaction.atomic():
+            payment = ExpensePayment.objects.select_for_update().get(
+                pk=self.get_object().pk
+            )
+            if payment.status == 'processed':
+                return Response(
+                    {'error': 'Already marked as paid'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             payment.payment_date = payment_date
             payment.payment_method = payment_method
             payment.reference_number = reference_number
@@ -325,5 +363,18 @@ class ExpensePaymentViewSet(HospitalScopedViewSet):
             # Update expense status
             payment.expense.status = 'paid'
             payment.expense.save()
+
+        AuditLogger.log_audit(
+            user=request.user,
+            action="EXPENSE_PAYMENT_MARKED_PAID",
+            target=f"expense_payment:{payment.id}",
+            hospital=payment.expense.hospital,
+            new_values={
+                "expense": str(payment.expense_id),
+                "payment_method": payment.payment_method,
+                "reference_number": payment.reference_number,
+            },
+            request=request,
+        )
         
         return Response(ExpensePaymentSerializer(payment).data)

@@ -8,6 +8,7 @@ from django.db.models import Sum
 from human_resources.permissions import IsHRUser, IsHRManager
 from human_resources.views import HospitalScopedViewSet
 from finance.accounting_permissions import IsFinanceUser, IsFinanceManager
+from config.audit_logger import AuditLogger
 from budgets.models import (
     BudgetYear, BudgetTemplate, BudgetAllocation,
     BudgetVariance, BudgetRevision, BudgetForecast,
@@ -106,6 +107,14 @@ class BudgetAllocationViewSet(HospitalScopedViewSet):
                 {'error': 'Cannot approve an allocation in a locked budget year'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Prevent self-approval: approver must differ from submitter
+        if allocation.submitted_by_id == request.user.id:
+            return Response(
+                {'error': 'You cannot approve your own budget allocation'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         with transaction.atomic():
             allocation.status = 'approved'
             allocation.approved_by = request.user
@@ -120,6 +129,19 @@ class BudgetAllocationViewSet(HospitalScopedViewSet):
                 variance_percentage=100,
                 created_by=request.user
             )
+
+        AuditLogger.log_audit(
+            user=request.user,
+            action="BUDGET_APPROVED",
+            target=f"budget_allocation:{allocation.id}",
+            hospital=allocation.budget_year.hospital,
+            new_values={
+                "department": str(allocation.department_id),
+                "allocated_amount": str(allocation.allocated_amount),
+                "period": f"{allocation.period_start} to {allocation.period_end}",
+            },
+            request=request,
+        )
         
         return Response(BudgetAllocationDetailSerializer(allocation).data)
     
@@ -141,6 +163,18 @@ class BudgetAllocationViewSet(HospitalScopedViewSet):
             )
         allocation.status = 'rejected'
         allocation.save()
+
+        AuditLogger.log_audit(
+            user=request.user,
+            action="BUDGET_REJECTED",
+            target=f"budget_allocation:{allocation.id}",
+            hospital=allocation.budget_year.hospital,
+            new_values={
+                "department": str(allocation.department_id),
+                "allocated_amount": str(allocation.allocated_amount),
+            },
+            request=request,
+        )
         
         return Response(BudgetAllocationDetailSerializer(allocation).data)
     
