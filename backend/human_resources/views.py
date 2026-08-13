@@ -22,6 +22,7 @@ from .models import (
     ShiftAssignment,
 )
 from .permissions import IsHRManager, IsHRUser, get_user_hospital_id
+from config.audit_logger import AuditLogger
 from .serializers import (
     AttendanceSerializer,
     EmployeeDocumentSerializer,
@@ -174,6 +175,19 @@ class EmployeeViewSet(HRManagerWriteViewSet):
                 "termination_date",
                 "updated_at",
             ]
+        )
+
+        AuditLogger.log_audit(
+            user=request.user,
+            action="EMPLOYEE_DEACTIVATED",
+            target=f"hr_employee:{employee.id}",
+            hospital=employee.hospital,
+            new_values={
+                "employee_number": employee.employee_number,
+                "employment_status": employee.employment_status,
+                "termination_date": str(employee.termination_date),
+            },
+            request=request,
         )
 
         return Response(
@@ -700,6 +714,20 @@ class LeaveRequestViewSet(HospitalScopedViewSet):
                     ]
                 )
 
+        AuditLogger.log_audit(
+            user=request.user,
+            action="LEAVE_APPROVED",
+            target=f"hr_leave_request:{leave_request.id}",
+            hospital=leave_request.employee.hospital,
+            new_values={
+                "employee": str(leave_request.employee_id),
+                "leave_type": str(leave_request.leave_type_id),
+                "total_days": str(leave_request.total_days),
+                "review_notes": leave_request.review_notes,
+            },
+            request=request,
+        )
+
         return Response(
             {
                 "success": True,
@@ -749,6 +777,20 @@ class LeaveRequestViewSet(HospitalScopedViewSet):
                     update_fields=["pending_days", "updated_at"]
                 )
 
+        AuditLogger.log_audit(
+            user=request.user,
+            action="LEAVE_REJECTED",
+            target=f"hr_leave_request:{leave_request.id}",
+            hospital=leave_request.employee.hospital,
+            new_values={
+                "employee": str(leave_request.employee_id),
+                "leave_type": str(leave_request.leave_type_id),
+                "total_days": str(leave_request.total_days),
+                "review_notes": leave_request.review_notes,
+            },
+            request=request,
+        )
+
         return Response(
             {
                 "success": True,
@@ -796,6 +838,19 @@ class LeaveRequestViewSet(HospitalScopedViewSet):
                 balance.save(
                     update_fields=["pending_days", "updated_at"]
                 )
+
+        AuditLogger.log_audit(
+            user=request.user,
+            action="LEAVE_CANCELLED",
+            target=f"hr_leave_request:{leave_request.id}",
+            hospital=leave_request.employee.hospital,
+            new_values={
+                "employee": str(leave_request.employee_id),
+                "leave_type": str(leave_request.leave_type_id),
+                "total_days": str(leave_request.total_days),
+            },
+            request=request,
+        )
 
         return Response(
             {
