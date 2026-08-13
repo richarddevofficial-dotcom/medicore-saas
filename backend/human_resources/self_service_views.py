@@ -358,9 +358,19 @@ class MyAttendanceClockOutView(EmployeeSelfServiceMixin, APIView):
                 status=400,
             )
 
-        attendance.clock_out = now
-        attendance.save(update_fields=["clock_out", "updated_at"])
-        return Response(AttendanceSerializer(attendance).data)
+        with transaction.atomic():
+            locked = Attendance.objects.select_for_update().get(
+                pk=attendance.pk,
+            )
+            if locked.clock_out:
+                return Response(
+                    {"detail": "You are already clocked out."},
+                    status=400,
+                )
+            locked.clock_out = now
+            locked.save(update_fields=["clock_out", "updated_at"])
+
+        return Response(AttendanceSerializer(locked).data)
 
 
 class MyShiftListView(EmployeeSelfServiceMixin, generics.ListAPIView):
