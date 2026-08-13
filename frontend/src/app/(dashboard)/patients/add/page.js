@@ -222,7 +222,7 @@ export default function AddPatientPage() {
                   value={form.blood_group}
                   onChange={(e) => handleChange("blood_group", e.target.value)}
                   options={[
-                    { value: "", label: "Select blood group" },
+                    { value: "" },
                     ...["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(
                       (bg) => ({ value: bg, label: bg }),
                     ),
@@ -297,7 +297,7 @@ export default function AddPatientPage() {
                     handleChange("emergency_contact_relation", e.target.value)
                   }
                   options={[
-                    { value: "", label: "Select relationship..." },
+                    { value: "" },
                     { value: "Spouse", label: "Spouse" },
                     { value: "Parent", label: "Parent" },
                     { value: "Sibling", label: "Sibling" },

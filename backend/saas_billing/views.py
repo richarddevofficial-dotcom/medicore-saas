@@ -18,7 +18,13 @@ from .models import (
 )
 from .serializers import SubscriptionPlanSerializer
 from .services import get_subscription_access
-from .plan_change_services import activate_plan_change
+from .plan_change_services import (
+    PlanChangeError,
+    activate_plan_change,
+    create_plan_change_invoice,
+    determine_plan_change_type,
+    validate_target_plan,
+)
 from .receipt_services import send_payment_receipt_email
 from .subscription_services import renew_subscription
 
@@ -1447,14 +1453,6 @@ def hospital_entitlements(request):
 # ============================================================
 # Plan upgrade and downgrade workflow
 # ============================================================
-
-from .plan_change_services import (
-    PlanChangeError,
-    activate_plan_change,
-    create_plan_change_invoice,
-    determine_plan_change_type,
-    validate_target_plan,
-)
 
 
 @api_view(["GET"])

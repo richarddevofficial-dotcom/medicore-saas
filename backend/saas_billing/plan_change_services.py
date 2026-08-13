@@ -144,23 +144,15 @@ def create_plan_change_invoice(
         target_plan,
     )
 
-    if billing_cycle:
-        subscription_amount = get_plan_cycle_price(
-            target_plan,
-            billing_cycle,
-        )
-    else:
-        monthly_difference = (
-            target_plan.monthly_price
-            - subscription.current_monthly_price
-        )
-        if change_type == "upgrade":
-            subscription_amount = max(
-                Decimal("0.00"),
-                monthly_difference,
-            )
-        else:
-            subscription_amount = Decimal("0.00")
+    # Both upgrades and downgrades charge the target plan's price for the
+    # chosen billing cycle. The invoice stays pending until payment, and on
+    # approval upgrades activate immediately while downgrades schedule to
+    # the end of the current paid period.
+    effective_cycle = billing_cycle or HospitalSubscription.CYCLE_MONTHLY
+    subscription_amount = get_plan_cycle_price(
+        target_plan,
+        effective_cycle,
+    )
 
     service_fee_amount = (
         Decimal("0.00")
@@ -225,7 +217,9 @@ def create_plan_change_invoice(
             "target_service_fee": str(
                 target_plan.service_fee
             ),
-            "billing_cycle": billing_cycle,
+            "billing_cycle": effective_cycle,
+            "pending_plan_change": True,
+            "auto_apply_on_payment": True,
             "staff_used": usage["staff_used"],
             "staff_limit": usage["staff_limit"],
             "patients_used": usage["patients_used"],

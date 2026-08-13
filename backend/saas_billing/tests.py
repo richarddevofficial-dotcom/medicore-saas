@@ -16,9 +16,6 @@ from hospitals.models import Hospital
 from staff.models import StaffProfile
 
 from .models import HospitalSubscription, Invoice, Payment, SubscriptionPlan
-from .invoice_services import (
-	create_plan_change_invoice as create_legacy_plan_change_invoice,
-)
 from .middleware import SubscriptionAccessMiddleware
 from .plan_change_services import create_plan_change_invoice
 from .services import refresh_subscription_status
@@ -785,8 +782,10 @@ class HospitalBillingAuthorizationTests(TestCase):
 
 		self.assertTrue(created)
 		self.assertEqual(invoice.service_fee_amount, Decimal("0.00"))
-		self.assertEqual(invoice.subscription_amount, Decimal("40.00"))
-		self.assertEqual(invoice.total_amount, Decimal("40.00"))
+		# Plan changes charge the target plan's full monthly price; the
+		# upgrade activates immediately on payment approval.
+		self.assertEqual(invoice.subscription_amount, Decimal("89.90"))
+		self.assertEqual(invoice.total_amount, Decimal("89.90"))
 
 
 class SuperAdminBillingCenterTests(TestCase):
@@ -1401,12 +1400,13 @@ class ApproveManualPaymentPlanChangeTests(TestCase):
 
 	def test_legacy_pending_plan_change_invoice_backfills_target_plan_id(self):
 		"""Invoices created before target_plan_id existed must still activate."""
-		invoice, _created = create_legacy_plan_change_invoice(
+		invoice, _created = create_plan_change_invoice(
 			subscription=self.subscription,
 			target_plan=self.pro_plan,
 		)
 		# Simulate a legacy invoice written before the fix.
 		invoice.metadata.pop("target_plan_id", None)
+		invoice.metadata["pending_plan_change"] = True
 		invoice.save(update_fields=["metadata"])
 
 		_payment, response = self._submit_and_approve(invoice)
@@ -1422,7 +1422,7 @@ class ApproveManualPaymentPlanChangeTests(TestCase):
 		)
 
 	def test_upgrade_activates_immediately_on_approval(self):
-		invoice, _created = create_legacy_plan_change_invoice(
+		invoice, _created = create_plan_change_invoice(
 			subscription=self.subscription,
 			target_plan=self.pro_plan,
 		)
@@ -1447,9 +1447,10 @@ class ApproveManualPaymentPlanChangeTests(TestCase):
 		)
 		current_period_end = self.subscription.next_billing_date
 
-		invoice, _created = create_legacy_plan_change_invoice(
+		invoice, _created = create_plan_change_invoice(
 			subscription=self.subscription,
 			target_plan=self.basic_plan,
+			billing_cycle="monthly",
 		)
 
 		_payment, response = self._submit_and_approve(invoice)
@@ -1480,7 +1481,7 @@ class ApproveManualPaymentPlanChangeTests(TestCase):
 		self,
 		mock_send,
 	):
-		invoice, _created = create_legacy_plan_change_invoice(
+		invoice, _created = create_plan_change_invoice(
 			subscription=self.subscription,
 			target_plan=self.pro_plan,
 		)
