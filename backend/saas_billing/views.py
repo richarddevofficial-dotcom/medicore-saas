@@ -16,6 +16,10 @@ from .models import (
     Invoice,
     SubscriptionPlan,
 )
+from .notification_services import (
+    notify_invoice_created,
+    notify_payment_submitted,
+)
 from .serializers import SubscriptionPlanSerializer
 from .services import get_subscription_access
 from .plan_change_services import (
@@ -26,7 +30,10 @@ from .plan_change_services import (
     validate_target_plan,
 )
 from .receipt_services import send_payment_receipt_email
-from .subscription_services import renew_subscription
+from .subscription_services import (
+    get_cycle_pricing,
+    renew_subscription,
+)
 
 
 def get_user_hospital(user):
@@ -344,6 +351,11 @@ def generate_initial_invoice(request):
         return Response(
             {"error": str(error)},
             status=409,
+        )
+
+    if created:
+        transaction.on_commit(
+            lambda: notify_invoice_created(invoice)
         )
 
     return Response(
@@ -762,6 +774,10 @@ def submit_manual_payment(request):
         request=request,
     )
 
+    transaction.on_commit(
+        lambda: notify_payment_submitted(payment)
+    )
+
     return Response(
         {
             "success": True,
@@ -934,6 +950,7 @@ def approve_manual_payment(request, payment_id):
     if (
         invoice.service_fee_amount
         > Decimal("0.00")
+        and not subscription.service_fee_paid
     ):
         subscription.service_fee_paid = True
         subscription.service_fee_paid_at = now
@@ -949,7 +966,9 @@ def approve_manual_payment(request, payment_id):
     subscription = renew_subscription(
         subscription=subscription,
         billing_cycle=payment.billing_cycle,
-        payment_date=payment.payment_date,
+        # Renew from the approval date so expired subscriptions restart
+        # from today and active ones extend from their current end date.
+        payment_date=timezone.localdate(),
     )
 
     hospital = subscription.hospital
@@ -1703,4 +1722,271 @@ def request_plan_change(request):
             },
         },
         status=201 if created else 200,
+    )
+
+
+# ============================================================
+# Renewal, pricing preview and payment instructions
+# ============================================================
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def renew_subscription_invoice(request):
+    """
+    Renew the hospital's current plan for a chosen billing period.
+
+    Renewal is a separate operation from a plan change: it never raises
+    "The selected plan is already active." and simply creates (or reuses)
+    a subscription invoice for the plan the hospital is already on.
+    """
+    hospital = get_user_hospital(request.user)
+    staff_profile = getattr(
+        request.user,
+        "staff_profile",
+        None,
+    )
+
+    if not hospital:
+        return Response(
+            {"error": "Hospital account not found."},
+            status=404,
+        )
+
+    if (
+        not request.user.is_superuser
+        and (
+            not staff_profile
+            or staff_profile.role != "admin"
+        )
+    ):
+        return Response(
+            {
+                "error": (
+                    "Only the hospital administrator "
+                    "can renew the subscription."
+                )
+            },
+            status=403,
+        )
+
+    try:
+        subscription = (
+            HospitalSubscription.objects
+            .select_related("hospital", "plan")
+            .get(hospital=hospital)
+        )
+    except HospitalSubscription.DoesNotExist:
+        return Response(
+            {
+                "error": (
+                    "Hospital subscription not configured."
+                )
+            },
+            status=404,
+        )
+
+    billing_cycle = str(
+        request.data.get(
+            "billing_cycle",
+            HospitalSubscription.CYCLE_MONTHLY,
+        )
+    ).strip()
+
+    valid_cycles = {
+        choice[0]
+        for choice in HospitalSubscription.BILLING_CYCLE_CHOICES
+    }
+    if billing_cycle not in valid_cycles:
+        return Response(
+            {"error": "Unsupported billing cycle."},
+            status=400,
+        )
+
+    try:
+        invoice, created = create_initial_invoice(
+            subscription,
+            billing_cycle=billing_cycle,
+        )
+    except OpenInvoiceConflict as error:
+        return Response(
+            {"error": str(error)},
+            status=409,
+        )
+
+    if created:
+        transaction.on_commit(
+            lambda: notify_invoice_created(invoice)
+        )
+
+    pricing = get_cycle_pricing(
+        subscription.plan,
+        billing_cycle,
+    )
+
+    return Response(
+        {
+            "success": True,
+            "created": created,
+            "operation": "renewal",
+            "message": (
+                "Renewal invoice created successfully."
+                if created
+                else (
+                    "An unpaid renewal invoice "
+                    "already exists."
+                )
+            ),
+            "plan": {
+                "code": subscription.plan.code,
+                "name": subscription.plan.name,
+            },
+            "pricing": {
+                "original_amount": str(
+                    pricing["original_amount"]
+                ),
+                "discount_percent": str(
+                    pricing["discount_percent"]
+                ),
+                "discount_amount": str(
+                    pricing["discount_amount"]
+                ),
+                "final_amount": str(
+                    pricing["final_amount"]
+                ),
+                "billing_cycle": billing_cycle,
+            },
+            "invoice": serialize_invoice(invoice),
+        },
+        status=201 if created else 200,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def billing_price_preview(request):
+    """
+    Preview the price breakdown for a plan and billing period.
+
+    Returns the original amount, the period discount and the final
+    amount so the frontend can show "Original Price / Discount /
+    Final Amount" before the invoice is created.
+    """
+    hospital = get_user_hospital(request.user)
+
+    if not hospital and not request.user.is_superuser:
+        return Response(
+            {"error": "Hospital account not found."},
+            status=404,
+        )
+
+    plan_code = str(
+        request.data.get("plan_code", "")
+    ).strip().lower()
+    billing_cycle = str(
+        request.data.get(
+            "billing_cycle",
+            HospitalSubscription.CYCLE_MONTHLY,
+        )
+    ).strip()
+
+    valid_cycles = {
+        choice[0]
+        for choice in HospitalSubscription.BILLING_CYCLE_CHOICES
+    }
+    if billing_cycle not in valid_cycles:
+        return Response(
+            {"error": "Unsupported billing cycle."},
+            status=400,
+        )
+
+    plan = None
+    if plan_code:
+        plan = SubscriptionPlan.objects.filter(
+            code=plan_code,
+            is_active=True,
+        ).first()
+    elif hospital:
+        subscription = (
+            HospitalSubscription.objects
+            .select_related("plan")
+            .filter(hospital=hospital)
+            .first()
+        )
+        plan = subscription.plan if subscription else None
+
+    if not plan:
+        return Response(
+            {"error": "Subscription plan not found."},
+            status=404,
+        )
+
+    try:
+        pricing = get_cycle_pricing(plan, billing_cycle)
+    except ValueError:
+        return Response(
+            {"error": "Unsupported billing cycle."},
+            status=400,
+        )
+
+    return Response(
+        {
+            "plan": {
+                "code": plan.code,
+                "name": plan.name,
+                "currency": plan.currency,
+            },
+            "billing_cycle": billing_cycle,
+            "months": pricing["months"],
+            "original_amount": str(pricing["original_amount"]),
+            "discount_percent": str(pricing["discount_percent"]),
+            "discount_amount": str(pricing["discount_amount"]),
+            "final_amount": str(pricing["final_amount"]),
+        }
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def payment_instructions(request):
+    """
+    Return the bank-transfer instructions shown to hospitals when they
+    choose to pay by bank transfer.
+    """
+    bank_name = getattr(settings, "MEDICORE_BANK_NAME", "")
+    account_name = getattr(
+        settings, "MEDICORE_BANK_ACCOUNT_NAME", ""
+    )
+    account_number = getattr(
+        settings, "MEDICORE_BANK_ACCOUNT_NUMBER", ""
+    )
+    swift_code = getattr(
+        settings, "MEDICORE_BANK_SWIFT_CODE", ""
+    )
+
+    configured = bool(
+        bank_name or account_name or account_number
+    )
+
+    return Response(
+        {
+            "configured": configured,
+            "bank_name": bank_name,
+            "account_name": account_name,
+            "account_number": account_number,
+            "swift_code": swift_code,
+            "methods": [
+                {"code": "bank_transfer", "label": "Bank Transfer"},
+                {"code": "cash", "label": "Cash"},
+            ],
+            "instructions": (
+                "Transfer the exact invoice total to the account above "
+                "and submit the transfer reference on the billing page."
+                if configured
+                else (
+                    "Contact the MediCore billing team for payment "
+                    "instructions."
+                )
+            ),
+        }
     )

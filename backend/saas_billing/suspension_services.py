@@ -2,6 +2,9 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import HospitalSubscription, Invoice
+from .notification_services import (
+    notify_subscription_suspended,
+)
 
 
 @transaction.atomic
@@ -61,6 +64,10 @@ def suspend_expired_grace_subscription(subscription):
     overdue_invoices.update(
         status=Invoice.STATUS_OVERDUE,
         updated_at=now,
+    )
+
+    transaction.on_commit(
+        lambda: notify_subscription_suspended(subscription)
     )
 
     return subscription, True, "Subscription suspended."

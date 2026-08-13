@@ -279,23 +279,36 @@ export default function BillingPage() {
   );
   const selectedPlan =
     plans.find((plan) => plan.code === selectedPlanCode) || plans[0];
+  const billingPeriods = selectedPlan?.billing_periods || [];
+  const periodFor = (cycle) =>
+    billingPeriods.find((period) => period.billing_cycle === cycle);
   const cycleOptions = [
     {
       value: "monthly",
       label: "1 Month",
-      price: selectedPlan?.monthly_price,
+      price: periodFor("monthly")?.final_amount ?? selectedPlan?.monthly_price,
+      original: periodFor("monthly")?.original_amount,
+      discountPercent: periodFor("monthly")?.discount_percent ?? "0",
     },
     {
       value: "six_months",
       label: "6 Months",
-      price: selectedPlan?.six_month_price,
+      price:
+        periodFor("six_months")?.final_amount ?? selectedPlan?.six_month_price,
+      original: periodFor("six_months")?.original_amount,
+      discountPercent: periodFor("six_months")?.discount_percent ?? "5",
     },
     {
       value: "annual",
       label: "12 Months",
-      price: selectedPlan?.annual_price,
+      price: periodFor("annual")?.final_amount ?? selectedPlan?.annual_price,
+      original: periodFor("annual")?.original_amount,
+      discountPercent: periodFor("annual")?.discount_percent ?? "10",
     },
   ];
+  const selectedCycleOption =
+    cycleOptions.find((option) => option.value === renewalCycle) ||
+    cycleOptions[0];
 
   return (
     <DashboardLayout>
@@ -581,11 +594,60 @@ export default function BillingPage() {
                     <span className="block font-semibold text-slate-900">
                       {option.label}
                     </span>
-                    <span className="mt-1 block text-sm text-slate-600">
-                      {money(option.price, currency)}
-                    </span>
+                    {Number(option.discountPercent) > 0 && option.original ? (
+                      <>
+                        <span className="mt-1 block text-xs text-slate-500 line-through">
+                          {money(option.original, currency)}
+                        </span>
+                        <span className="mt-0.5 block text-sm font-semibold text-slate-900">
+                          {money(option.price, currency)}
+                        </span>
+                        <span className="mt-1 inline-block rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                          Save {option.discountPercent}%
+                        </span>
+                      </>
+                    ) : (
+                      <span className="mt-1 block text-sm text-slate-600">
+                        {money(option.price, currency)}
+                      </span>
+                    )}
                   </button>
                 ))}
+              </div>
+
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                  <div>
+                    <p className="text-slate-500">Original price</p>
+                    <p className="font-semibold text-slate-900">
+                      {money(
+                        selectedCycleOption.original ??
+                          selectedCycleOption.price,
+                        currency,
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Discount</p>
+                    <p className="font-semibold text-green-700">
+                      {selectedCycleOption.discountPercent}% (
+                      {money(
+                        Number(
+                          selectedCycleOption.original ??
+                            selectedCycleOption.price,
+                        ) - Number(selectedCycleOption.price || 0),
+                        currency,
+                      )}
+                      )
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">Final amount</p>
+                    <p className="text-lg font-bold text-slate-900">
+                      {money(selectedCycleOption.price, currency)}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           )}

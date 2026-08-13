@@ -1493,3 +1493,481 @@ class ApproveManualPaymentPlanChangeTests(TestCase):
 		email_message = mock_send.call_args.args[0] if mock_send.call_args.args else None
 		payment.refresh_from_db()
 		self.assertEqual(payment.receipt_delivery_status, "sent")
+
+class SubscriptionBillingWorkflowTests(TestCase):
+	"""End-to-end tests for the subscription billing workflow."""
+
+	def setUp(self):
+		self.client = APIClient()
+		self.super_admin = User.objects.create_superuser(
+			username="workflow-admin@example.com",
+			email="workflow-admin@example.com",
+			password="Admin@1234",
+		)
+		self.hospital_user = User.objects.create_user(
+			username="workflow-hospital@example.com",
+			email="workflow-hospital@example.com",
+			password="Admin@1234",
+		)
+		self.other_user = User.objects.create_user(
+			username="workflow-other@example.com",
+			email="workflow-other@example.com",
+			password="Admin@1234",
+		)
+		self.hospital = Hospital.objects.create(
+			name="Workflow Hospital",
+			slug="workflow-hospital",
+			hospital_type="general",
+			registration_number="WF-001",
+			email="workflow-hospital@example.com",
+			phone="1234567890",
+			address="123 Main Street",
+			city="Juba",
+			state="Central",
+			country="South Sudan",
+		)
+		self.other_hospital = Hospital.objects.create(
+			name="Other Hospital",
+			slug="other-hospital",
+			hospital_type="general",
+			registration_number="WF-002",
+			email="other-hospital@example.com",
+			phone="1234567890",
+			address="456 Other Street",
+			city="Juba",
+			state="Central",
+			country="South Sudan",
+		)
+		self.plan = SubscriptionPlan.objects.create(
+			code="wf-plan",
+			name="Workflow Plan",
+			monthly_price=Decimal("100.00"),
+			six_month_price=Decimal("570.00"),
+			annual_price=Decimal("1080.00"),
+			service_fee=Decimal("200.00"),
+		)
+		self.higher_plan = SubscriptionPlan.objects.create(
+			code="wf-plan-pro",
+			name="Workflow Plan Pro",
+			monthly_price=Decimal("200.00"),
+			service_fee=Decimal("400.00"),
+		)
+		self.lower_plan = SubscriptionPlan.objects.create(
+			code="wf-plan-basic",
+			name="Workflow Plan Basic",
+			monthly_price=Decimal("50.00"),
+			service_fee=Decimal("100.00"),
+		)
+		self.subscription = HospitalSubscription.objects.create(
+			hospital=self.hospital,
+			plan=self.plan,
+			status=HospitalSubscription.STATUS_ACTIVE,
+			current_monthly_price=Decimal("100.00"),
+			current_service_fee=Decimal("200.00"),
+			service_fee_paid=True,
+		)
+		StaffProfile.objects.create(
+			user=self.hospital_user,
+			hospital=self.hospital,
+			role="admin",
+			phone="700100",
+		)
+		StaffProfile.objects.create(
+			user=self.other_user,
+			hospital=self.other_hospital,
+			role="admin",
+			phone="700101",
+		)
+
+	def _make_invoice(self, cycle="monthly", amount=None):
+		from .subscription_services import get_plan_cycle_price
+
+		cycle_amount = amount or get_plan_cycle_price(self.plan, cycle)
+		return Invoice.objects.create(
+			invoice_number=Invoice.generate_invoice_number(),
+			hospital=self.hospital,
+			subscription=self.subscription,
+			invoice_type=Invoice.TYPE_SUBSCRIPTION,
+			status=Invoice.STATUS_PENDING,
+			subscription_amount=cycle_amount,
+			subtotal=cycle_amount,
+			total_amount=cycle_amount,
+			amount_paid=Decimal("0.00"),
+			currency="USD",
+			due_date=timezone.localdate() + timedelta(days=7),
+			metadata={"billing_cycle": cycle},
+		)
+
+	def _make_payment(self, invoice, cycle="monthly"):
+		return Payment.objects.create(
+			payment_reference=Payment.generate_reference(),
+			invoice=invoice,
+			hospital=self.hospital,
+			subscription=self.subscription,
+			payment_type=Payment.TYPE_SUBSCRIPTION,
+			amount=invoice.balance_due,
+			currency=invoice.currency,
+			gateway=Payment.GATEWAY_BANK,
+			billing_cycle=cycle,
+			status=Payment.STATUS_PENDING,
+		)
+
+	def _approve(self, payment):
+		self.client.force_authenticate(user=self.super_admin)
+		return self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/approve/",
+			{},
+			format="json",
+		)
+
+	@patch(
+		"saas_billing.billing_center_views.send_payment_receipt_email",
+	)
+	def test_monthly_activation_adds_one_calendar_month(
+		self,
+		_mock_receipt,
+	):
+		invoice = self._make_invoice("monthly")
+		payment = self._make_payment(invoice, "monthly")
+
+		response = self._approve(payment)
+
+		self.assertEqual(response.status_code, 200)
+		self.subscription.refresh_from_db()
+		expected = calculate_subscription_end_date(
+			timezone.localdate(),
+			"monthly",
+		)
+		self.assertEqual(self.subscription.end_date, expected)
+		self.assertEqual(
+			self.subscription.status,
+			HospitalSubscription.STATUS_ACTIVE,
+		)
+
+	@patch(
+		"saas_billing.billing_center_views.send_payment_receipt_email",
+	)
+	def test_six_month_activation_adds_six_calendar_months(
+		self,
+		_mock_receipt,
+	):
+		invoice = self._make_invoice("six_months")
+		payment = self._make_payment(invoice, "six_months")
+
+		response = self._approve(payment)
+
+		self.assertEqual(response.status_code, 200)
+		self.subscription.refresh_from_db()
+		expected = calculate_subscription_end_date(
+			timezone.localdate(),
+			"six_months",
+		)
+		self.assertEqual(self.subscription.end_date, expected)
+
+	@patch(
+		"saas_billing.billing_center_views.send_payment_receipt_email",
+	)
+	def test_annual_activation_adds_twelve_calendar_months(
+		self,
+		_mock_receipt,
+	):
+		invoice = self._make_invoice("annual")
+		payment = self._make_payment(invoice, "annual")
+
+		response = self._approve(payment)
+
+		self.assertEqual(response.status_code, 200)
+		self.subscription.refresh_from_db()
+		expected = calculate_subscription_end_date(
+			timezone.localdate(),
+			"annual",
+		)
+		self.assertEqual(self.subscription.end_date, expected)
+
+	@patch(
+		"saas_billing.billing_center_views.send_payment_receipt_email",
+	)
+	def test_duplicate_approval_does_not_extend_twice(
+		self,
+		_mock_receipt,
+	):
+		invoice = self._make_invoice("monthly")
+		payment = self._make_payment(invoice, "monthly")
+
+		first = self._approve(payment)
+		self.subscription.refresh_from_db()
+		first_end = self.subscription.end_date
+
+		second = self._approve(payment)
+		self.subscription.refresh_from_db()
+
+		self.assertEqual(first.status_code, 200)
+		self.assertEqual(second.status_code, 409)
+		self.assertEqual(self.subscription.end_date, first_end)
+
+	@patch(
+		"saas_billing.billing_center_views.send_payment_receipt_email",
+	)
+	def test_rejected_payment_does_not_activate_subscription(
+		self,
+		_mock_receipt,
+	):
+		self.subscription.status = HospitalSubscription.STATUS_TRIAL
+		self.subscription.end_date = None
+		self.subscription.save(
+			update_fields=["status", "end_date"]
+		)
+		invoice = self._make_invoice("monthly")
+		payment = self._make_payment(invoice, "monthly")
+
+		self.client.force_authenticate(user=self.super_admin)
+		response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/reject/",
+			{"reason": "Reference not found."},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 200)
+		payment.refresh_from_db()
+		self.subscription.refresh_from_db()
+		self.assertEqual(payment.status, Payment.STATUS_FAILED)
+		self.assertEqual(
+			self.subscription.status,
+			HospitalSubscription.STATUS_TRIAL,
+		)
+
+	def test_unauthorized_user_cannot_approve_payment(self):
+		invoice = self._make_invoice("monthly")
+		payment = self._make_payment(invoice, "monthly")
+
+		self.client.force_authenticate(user=self.hospital_user)
+		response = self.client.post(
+			f"/api/v1/billing-center/payments/{payment.id}/approve/",
+			{},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 403)
+		payment.refresh_from_db()
+		self.assertEqual(payment.status, Payment.STATUS_PENDING)
+
+	def test_tenant_isolation_on_payment_submission(self):
+		invoice = self._make_invoice("monthly")
+
+		self.client.force_authenticate(user=self.other_user)
+		response = self.client.post(
+			"/api/v1/saas-billing/payments/manual/",
+			{
+				"invoice_id": invoice.id,
+				"transaction_id": "TENANT-X-1",
+				"payment_method": "bank_transfer",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 404)
+
+	def test_renewal_endpoint_creates_invoice_for_same_plan(self):
+		self.client.force_authenticate(user=self.hospital_user)
+
+		response = self.client.post(
+			"/api/v1/saas-billing/renew/",
+			{"billing_cycle": "six_months"},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 201)
+		self.assertEqual(
+			response.data["operation"],
+			"renewal",
+		)
+		invoice = Invoice.objects.get(
+			id=response.data["invoice"]["id"]
+		)
+		self.assertEqual(
+			invoice.subscription_amount,
+			Decimal("570.00"),
+		)
+
+	def test_price_preview_returns_discount_breakdown(self):
+		self.client.force_authenticate(user=self.hospital_user)
+
+		response = self.client.post(
+			"/api/v1/saas-billing/price-preview/",
+			{
+				"plan_code": "wf-plan",
+				"billing_cycle": "annual",
+			},
+			format="json",
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(
+			response.data["original_amount"],
+			"1200.00",
+		)
+		self.assertEqual(
+			response.data["discount_percent"],
+			"10",
+		)
+		self.assertEqual(
+			response.data["final_amount"],
+			"1080.00",
+		)
+
+	def test_payment_instructions_endpoint(self):
+		self.client.force_authenticate(user=self.hospital_user)
+
+		response = self.client.get(
+			"/api/v1/saas-billing/payment-instructions/"
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertIn("methods", response.data)
+		method_codes = {
+			method["code"] for method in response.data["methods"]
+		}
+		self.assertIn("bank_transfer", method_codes)
+		self.assertIn("cash", method_codes)
+
+	def test_plans_endpoint_includes_billing_periods(self):
+		self.client.force_authenticate(user=self.hospital_user)
+
+		response = self.client.get("/api/v1/saas-billing/plans/")
+
+		self.assertEqual(response.status_code, 200)
+		plan = next(
+			p for p in response.data if p["code"] == "wf-plan"
+		)
+		periods = {
+			p["billing_cycle"]: p
+			for p in plan["billing_periods"]
+		}
+		self.assertEqual(
+			periods["six_months"]["discount_percent"],
+			"5",
+		)
+		self.assertEqual(
+			periods["annual"]["discount_percent"],
+			"10",
+		)
+		self.assertEqual(
+			periods["six_months"]["final_amount"],
+			"570.00",
+		)
+
+	@patch(
+		"saas_billing.billing_center_views.send_payment_receipt_email",
+	)
+	def test_approval_rolls_back_when_plan_change_fails(
+		self,
+		_mock_receipt,
+	):
+		invoice = Invoice.objects.create(
+			invoice_number=Invoice.generate_invoice_number(),
+			hospital=self.hospital,
+			subscription=self.subscription,
+			invoice_type=Invoice.TYPE_ADJUSTMENT,
+			status=Invoice.STATUS_PENDING,
+			subscription_amount=Decimal("200.00"),
+			subtotal=Decimal("200.00"),
+			total_amount=Decimal("200.00"),
+			amount_paid=Decimal("0.00"),
+			currency="USD",
+			due_date=timezone.localdate() + timedelta(days=7),
+			metadata={
+				"target_plan_id": self.higher_plan.id,
+				"change_type": "upgrade",
+				"pending_plan_change": True,
+			},
+		)
+		payment = self._make_payment(invoice, "monthly")
+		original_status = payment.status
+		original_amount_paid = invoice.amount_paid
+		original_plan = self.subscription.plan
+
+		self.client.force_authenticate(user=self.super_admin)
+		with patch(
+			"saas_billing.billing_center_views.activate_plan_change",
+			side_effect=RuntimeError("boom"),
+		):
+			with self.assertRaises(RuntimeError):
+				self.client.post(
+					f"/api/v1/billing-center/payments/{payment.id}/approve/",
+					{},
+					format="json",
+				)
+
+		payment.refresh_from_db()
+		invoice.refresh_from_db()
+		self.subscription.refresh_from_db()
+		self.assertEqual(payment.status, original_status)
+		self.assertEqual(
+			invoice.amount_paid,
+			original_amount_paid,
+		)
+		self.assertEqual(self.subscription.plan, original_plan)
+
+	@patch(
+		"saas_billing.billing_center_views.send_payment_receipt_email",
+	)
+	def test_upgrade_and_downgrade_paths(
+		self,
+		_mock_receipt,
+	):
+		upgrade_invoice, _ = create_plan_change_invoice(
+			subscription=self.subscription,
+			target_plan=self.higher_plan,
+		)
+		upgrade_payment = Payment.objects.create(
+			payment_reference=Payment.generate_reference(),
+			invoice=upgrade_invoice,
+			hospital=self.hospital,
+			subscription=self.subscription,
+			payment_type=Payment.TYPE_COMBINED,
+			amount=upgrade_invoice.balance_due,
+			currency=upgrade_invoice.currency,
+			gateway=Payment.GATEWAY_BANK,
+			billing_cycle="monthly",
+			status=Payment.STATUS_PENDING,
+		)
+
+		upgrade_response = self._approve(upgrade_payment)
+
+		self.assertEqual(upgrade_response.status_code, 200)
+		self.subscription.refresh_from_db()
+		self.assertEqual(
+			self.subscription.plan,
+			self.higher_plan,
+		)
+
+		downgrade_invoice, _ = create_plan_change_invoice(
+			subscription=self.subscription,
+			target_plan=self.lower_plan,
+		)
+		downgrade_payment = Payment.objects.create(
+			payment_reference=Payment.generate_reference(),
+			invoice=downgrade_invoice,
+			hospital=self.hospital,
+			subscription=self.subscription,
+			payment_type=Payment.TYPE_COMBINED,
+			amount=downgrade_invoice.balance_due,
+			currency=downgrade_invoice.currency,
+			gateway=Payment.GATEWAY_BANK,
+			billing_cycle="monthly",
+			status=Payment.STATUS_PENDING,
+		)
+
+		downgrade_response = self._approve(downgrade_payment)
+
+		self.assertEqual(downgrade_response.status_code, 200)
+		self.subscription.refresh_from_db()
+		# Downgrades are scheduled, not applied immediately.
+		self.assertEqual(
+			self.subscription.plan,
+			self.higher_plan,
+		)
+		self.assertEqual(
+			self.subscription.pending_plan,
+			self.lower_plan,
+		)

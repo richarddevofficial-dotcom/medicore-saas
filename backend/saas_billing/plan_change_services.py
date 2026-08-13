@@ -267,6 +267,17 @@ def activate_plan_change(
     if subscription.plan_id == target_plan.id:
         return subscription
 
+    # Prevent scheduling a second, different pending downgrade while one
+    # is already waiting to take effect.
+    if (
+        subscription.pending_plan_id
+        and subscription.pending_plan_id != target_plan.id
+    ):
+        raise PlanChangeError(
+            "A different plan change is already scheduled for this "
+            "subscription."
+        )
+
     validate_target_plan(
         subscription,
         target_plan,

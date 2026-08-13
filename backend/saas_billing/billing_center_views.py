@@ -24,6 +24,9 @@ from .models import (
     Payment,
 )
 from .receipt_services import send_payment_receipt_email
+from .notification_services import (
+    notify_payment_rejected,
+)
 from .subscription_services import (
     calculate_subscription_end_date,
     extend_subscription,
@@ -3536,6 +3539,22 @@ def billing_center_approve_payment(
                 invoice.save(
                     update_fields=["metadata", "updated_at"]
                 )
+            else:
+                logger.error(
+                    "Legacy plan-change backfill failed for invoice %s: "
+                    "plan code %r not found.",
+                    invoice.id,
+                    target_plan_code,
+                )
+                return Response(
+                    {
+                        "error": (
+                            "The target plan for this plan-change "
+                            "invoice could not be resolved."
+                        )
+                    },
+                    status=400,
+                )
 
         subscription = activate_plan_change(
             subscription=subscription,
@@ -3545,6 +3564,7 @@ def billing_center_approve_payment(
     if (
         invoice.service_fee_amount
         > Decimal("0.00")
+        and not subscription.service_fee_paid
     ):
         subscription.service_fee_paid = True
         subscription.service_fee_paid_at = now
@@ -3582,7 +3602,9 @@ def billing_center_approve_payment(
     subscription = renew_subscription(
         subscription=subscription,
         billing_cycle=billing_cycle,
-        payment_date=payment.payment_date,
+        # Renew from the approval date so expired subscriptions restart
+        # from today and active ones extend from their current end date.
+        payment_date=timezone.localdate(),
     )
 
     record_billing_center_audit(
@@ -3753,6 +3775,10 @@ def billing_center_reject_payment(
             "status": payment.status,
             "reason": reason,
         },
+    )
+
+    transaction.on_commit(
+        lambda: notify_payment_rejected(payment)
     )
 
     return Response(

@@ -1,6 +1,7 @@
 from datetime import datetime, time, timedelta
 
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 from .models import HospitalSubscription
@@ -8,6 +9,16 @@ from .models import HospitalSubscription
 
 GRACE_PERIOD_DAYS = settings.SUBSCRIPTION_GRACE_PERIOD_DAYS
 EXPIRING_SOON_DAYS = settings.SUBSCRIPTION_EXPIRING_SOON_DAYS
+
+
+def _notify_grace_started(subscription):
+    from .notification_services import (
+        notify_grace_period_started,
+    )
+
+    transaction.on_commit(
+        lambda: notify_grace_period_started(subscription)
+    )
 
 
 def _save_status_transition(subscription, old_status, update_fields):
@@ -51,6 +62,7 @@ def refresh_subscription_status(subscription):
                     "grace_period_ends_at",
                 ],
             )
+            _notify_grace_started(subscription)
             old_status = subscription.status
 
     if subscription.status == HospitalSubscription.STATUS_GRACE:
@@ -104,6 +116,7 @@ def refresh_subscription_status(subscription):
                         "grace_period_ends_at",
                     ],
                 )
+                _notify_grace_started(subscription)
                 old_status = subscription.status
             else:
                 subscription.status = HospitalSubscription.STATUS_EXPIRED

@@ -17,6 +17,15 @@ BILLING_CYCLE_MONTHS = {
     BILLING_CYCLE_ANNUAL: 12,
 }
 
+# Billing-period discounts applied on top of the base monthly rate.
+# Monthly has no discount; six-month and annual commitments are
+# discounted to reward longer commitments.
+BILLING_CYCLE_DISCOUNT_PERCENT = {
+    BILLING_CYCLE_MONTHLY: Decimal("0"),
+    BILLING_CYCLE_SIX_MONTHS: Decimal("5"),
+    BILLING_CYCLE_ANNUAL: Decimal("10"),
+}
+
 
 def calculate_subscription_end_date(start_date, billing_cycle):
     if not isinstance(start_date, date):
@@ -64,6 +73,45 @@ def get_plan_cycle_price(plan, billing_cycle):
         )
 
     raise ValueError("Unsupported billing cycle.")
+
+
+def get_cycle_pricing(plan, billing_cycle):
+    """
+    Return the full price breakdown for a billing period.
+
+    ``original_amount`` is the undiscounted price (monthly rate times the
+    number of months), ``discount_percent`` is the period discount and
+    ``final_amount`` is what the hospital actually pays for the cycle
+    (the plan's explicit cycle price when set, otherwise the discounted
+    amount).
+    """
+    try:
+        months = BILLING_CYCLE_MONTHS[billing_cycle]
+    except KeyError as exc:
+        raise ValueError("Unsupported billing cycle.") from exc
+
+    original_amount = (
+        plan.monthly_price * Decimal(months)
+    ).quantize(Decimal("0.01"))
+    discount_percent = BILLING_CYCLE_DISCOUNT_PERCENT[billing_cycle]
+    final_amount = get_plan_cycle_price(
+        plan,
+        billing_cycle,
+    ).quantize(Decimal("0.01"))
+
+    discount_amount = max(
+        Decimal("0.00"),
+        original_amount - final_amount,
+    )
+
+    return {
+        "billing_cycle": billing_cycle,
+        "months": months,
+        "original_amount": original_amount,
+        "discount_percent": discount_percent,
+        "discount_amount": discount_amount,
+        "final_amount": final_amount,
+    }
 
 
 def renew_subscription(subscription, billing_cycle, payment_date=None):
