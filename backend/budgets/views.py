@@ -230,10 +230,10 @@ class BudgetAllocationViewSet(HospitalScopedViewSet):
                 'id': allocation.id,
                 'department': allocation.department.name,
                 'period': f"{allocation.period_start} to {allocation.period_end}",
-                'allocated': float(allocation.allocated_amount),
-                'actual_spent': float(allocation.get_actual_spent()),
-                'variance': float(allocation.get_variance()),
-                'variance_percentage': allocation.get_variance_percentage(),
+                'allocated': str(allocation.allocated_amount),
+                'actual_spent': str(allocation.get_actual_spent()),
+                'variance': str(allocation.get_variance()),
+                'variance_percentage': round(allocation.get_variance_percentage(), 2),
                 'is_exceeded': allocation.is_exceeded(),
             })
         

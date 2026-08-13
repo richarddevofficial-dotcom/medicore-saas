@@ -200,6 +200,7 @@ class SalarySlipViewSet(HospitalScopedViewSet):
         hospital_id = self.get_hospital_id()
         created_count = 0
         failed_count = 0
+        failures = []
         
         with transaction.atomic():
             # Get all employees with salary structure
@@ -214,6 +215,10 @@ class SalarySlipViewSet(HospitalScopedViewSet):
                     # Check if salary slip already exists
                     if SalarySlip.objects.filter(employee=employee, month=month_date).exists():
                         failed_count += 1
+                        failures.append({
+                            'employee_id': employee.id,
+                            'reason': 'Salary slip already exists for this month.',
+                        })
                         continue
                     
                     # Create salary slip
@@ -281,10 +286,15 @@ class SalarySlipViewSet(HospitalScopedViewSet):
                 
                 except Exception as e:
                     failed_count += 1
+                    failures.append({
+                        'employee_id': employee.id,
+                        'reason': str(e)[:300],
+                    })
         
         return Response({
             'created': created_count,
             'failed': failed_count,
+            'failures': failures,
             'month': month
         })
     
@@ -350,9 +360,22 @@ class SalarySlipViewSet(HospitalScopedViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        salary_slip.status = 'draft'
+        salary_slip.status = 'rejected'
         salary_slip.notes = reason
-        salary_slip.save()
+        salary_slip.save(update_fields=['status', 'notes', 'updated_at'])
+
+        AuditLogger.log_audit(
+            user=request.user,
+            action="SALARY_SLIP_REJECTED",
+            target=f"salary_slip:{salary_slip.id}",
+            hospital=salary_slip.employee.hospital,
+            new_values={
+                "employee": str(salary_slip.employee_id),
+                "month": str(salary_slip.month),
+                "reason": reason,
+            },
+            request=request,
+        )
         
         return Response(SalarySlipDetailSerializer(salary_slip).data)
 
@@ -360,7 +383,7 @@ class SalarySlipViewSet(HospitalScopedViewSet):
         if instance.status not in {'draft', 'generated'}:
             from rest_framework.exceptions import ValidationError
             raise ValidationError(
-                'Approved or paid salary slips cannot be deleted.'
+                'Approved, rejected, or paid salary slips cannot be deleted.'
             )
         instance.delete()
 

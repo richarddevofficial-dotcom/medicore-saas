@@ -152,6 +152,7 @@ class SalarySlip(TimestampedModel):
         ('approved', 'Approved'),
         ('processed', 'Processed'),
         ('paid', 'Paid'),
+        ('rejected', 'Rejected'),
     ]
     
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='salary_slips')
