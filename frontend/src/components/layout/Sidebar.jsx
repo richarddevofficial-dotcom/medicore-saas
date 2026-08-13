@@ -652,6 +652,32 @@ export default function Sidebar({
     setExpandedSections(sections);
   }, [pathname]);
 
+  // Refresh subscription plan from the live SaaS status endpoint on first mount
+  // so plan changes on the backend are reflected without requiring re-login.
+  useEffect(() => {
+    const storedRole = localStorage.getItem("role");
+    const isSuperAdminRole =
+      storedRole === "super_admin" || storedRole === "superadmin";
+    if (isSuperAdminRole) return;
+
+    import("@/lib/api-client").then(({ default: apiClient }) => {
+      apiClient
+        .get("/saas-billing/status/")
+        .then((res) => {
+          const planCode = res.data?.subscription?.plan_code;
+          if (!planCode) return;
+          const rawHospital = localStorage.getItem("hospital");
+          const hospital = rawHospital ? JSON.parse(rawHospital) : {};
+          if (hospital.subscription_plan !== planCode) {
+            hospital.subscription_plan = planCode;
+            localStorage.setItem("hospital", JSON.stringify(hospital));
+            setSubscriptionPlan(planCode);
+          }
+        })
+        .catch(() => {});
+    });
+  }, []);
+
   const roleNavigation = navigationByRole[role] || navigationByRole.admin;
   const baseNavigation = selfServiceRoles.has(role)
     ? [...roleNavigation, myWorkNavigation]

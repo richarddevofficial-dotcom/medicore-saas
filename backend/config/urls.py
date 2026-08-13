@@ -323,6 +323,7 @@ def _build_login_response_data(user):
             'id': staff.hospital.id,
             'name': staff.hospital.name,
             'slug': staff.hospital.slug if hasattr(staff.hospital, 'slug') else '',
+            'subscription_plan': getattr(staff.hospital, 'subscription_plan', 'trial') or 'trial',
         }
 
     return response_data
