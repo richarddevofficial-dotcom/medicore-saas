@@ -481,7 +481,15 @@ class LeaveBalance(TimestampedModel):
                     "year",
                 ],
                 name="unique_employee_leave_balance_per_year",
-            )
+            ),
+            models.CheckConstraint(
+                condition=models.Q(pending_days__gte=0),
+                name="leavebalance_pending_days_non_negative",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(used_days__gte=0),
+                name="leavebalance_used_days_non_negative",
+            ),
         ]
         indexes = [
             models.Index(fields=["year", "is_active"]),

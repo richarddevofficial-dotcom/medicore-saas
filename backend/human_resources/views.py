@@ -838,6 +838,12 @@ def hr_dashboard(request):
 
     today = timezone.localdate()
 
+    on_leave_queryset = leave_requests.filter(
+        status="APPROVED",
+        start_date__lte=today,
+        end_date__gte=today,
+    )
+
     department_summary = list(
         employees.filter(is_active=True)
         .values(
@@ -852,9 +858,9 @@ def hr_dashboard(request):
         {
             "total_employees": employees.count(),
             "active_employees": employees.filter(is_active=True).count(),
-            "employees_on_leave": employees.filter(
-                employment_status="ON_LEAVE"
-            ).count(),
+            "employees_on_leave": on_leave_queryset.values(
+                "employee_id"
+            ).distinct().count(),
             "pending_leave_requests": leave_requests.filter(
                 status="PENDING"
             ).count(),

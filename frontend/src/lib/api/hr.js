@@ -373,19 +373,6 @@ export function createLeaveRequest(payload) {
   });
 }
 
-export function updateLeaveRequest(id, payload) {
-  return request(`/hr/leave-requests/${id}/`, {
-    method: "PATCH",
-    body: serializeBody(payload),
-  });
-}
-
-export function deleteLeaveRequest(id) {
-  return request(`/hr/leave-requests/${id}/`, {
-    method: "DELETE",
-  });
-}
-
 export function approveLeaveRequest(id, payload = {}) {
   return request(`/hr/leave-requests/${id}/approve/`, {
     method: "POST",

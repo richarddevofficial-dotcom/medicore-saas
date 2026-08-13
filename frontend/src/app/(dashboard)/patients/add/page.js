@@ -222,7 +222,6 @@ export default function AddPatientPage() {
                   value={form.blood_group}
                   onChange={(e) => handleChange("blood_group", e.target.value)}
                   options={[
-                    { value: "" },
                     ...["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(
                       (bg) => ({ value: bg, label: bg }),
                     ),
@@ -242,7 +241,7 @@ export default function AddPatientPage() {
                   type="tel"
                   value={form.phone}
                   onChange={(e) => handleChange("phone", e.target.value)}
-                  placeholder="+2119x xxx xxxx"
+                  placeholder="+211920 123456"
                   required
                 />
                 <Input
@@ -288,7 +287,7 @@ export default function AddPatientPage() {
                   onChange={(e) =>
                     handleChange("emergency_contact_phone", e.target.value)
                   }
-                  placeholder="+2119X XXX XXXX"
+                  placeholder="+211920 123456"
                 />
                 <Select
                   label="Relationship"
@@ -297,7 +296,6 @@ export default function AddPatientPage() {
                     handleChange("emergency_contact_relation", e.target.value)
                   }
                   options={[
-                    { value: "" },
                     { value: "Spouse", label: "Spouse" },
                     { value: "Parent", label: "Parent" },
                     { value: "Sibling", label: "Sibling" },

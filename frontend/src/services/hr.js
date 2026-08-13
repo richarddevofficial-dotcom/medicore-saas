@@ -1,9 +1,11 @@
 import * as api from "@/lib/api/hr";
 
-const list = (fn) => async (...args) => {
-  const response = await fn(...args);
-  return api.normalizeResults(response);
-};
+const list =
+  (fn) =>
+  async (...args) => {
+    const response = await fn(...args);
+    return api.normalizeResults(response);
+  };
 
 export const hrApi = {
   getDashboard: api.getHRDashboard,
@@ -70,8 +72,6 @@ export const hrApi = {
   getLeaveRequests: list(api.getLeaveRequests),
   getLeaveRequest: api.getLeaveRequest,
   createLeaveRequest: api.createLeaveRequest,
-  updateLeaveRequest: api.updateLeaveRequest,
-  deleteLeaveRequest: api.deleteLeaveRequest,
   approveLeaveRequest: api.approveLeaveRequest,
   rejectLeaveRequest: api.rejectLeaveRequest,
 };
@@ -87,7 +87,4 @@ export function getApiError(
   return fallback;
 }
 
-export const {
-  normalizeResults,
-  getHRDashboard,
-} = api;
+export const { normalizeResults, getHRDashboard } = api;
