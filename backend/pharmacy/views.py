@@ -27,11 +27,15 @@ def _refresh_bill_status(bill):
 class MedicineViewSet(viewsets.ModelViewSet):
     queryset = Medicine.objects.all()
     serializer_class = MedicineSerializer
-    permission_classes = [IsAuthenticated, CanViewMedicines]
     pagination_class = None
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'generic_name', 'category__name']
     ordering_fields = ['name', 'quantity', 'expiry_date']
+
+    def get_permissions(self):
+        if self.action in {'list', 'retrieve'}:
+            return [IsAuthenticated(), CanViewMedicines()]
+        return [IsAuthenticated(), IsPharmacyStaff()]
     
     def get_queryset(self):
         """Return medicines filtered by hospital or all for superuser"""
@@ -175,6 +179,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
 
             medicine = Medicine.objects.filter(hospital=hospital, name__iexact=name).first()
             if medicine:
+                old_quantity = medicine.quantity
                 medicine.form = form
                 medicine.strength = strength
                 medicine.generic_name = generic_name
@@ -192,6 +197,16 @@ class MedicineViewSet(viewsets.ModelViewSet):
                 try:
                     medicine.full_clean()
                     medicine.save()
+                    if quantity != old_quantity:
+                        StockMovement.objects.create(
+                            hospital=hospital,
+                            medicine=medicine,
+                            movement_type='adjustment',
+                            quantity=quantity - old_quantity,
+                            reference='Bulk import',
+                            notes=f'Stock adjusted from {old_quantity} to {quantity} via bulk import',
+                            created_by=getattr(user, 'email', None) or getattr(user, 'username', 'System'),
+                        )
                     updated += 1
                 except Exception as exc:
                     errors.append({'row': idx, 'error': str(exc)})
@@ -360,7 +375,18 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("You don't have permission to access this prescription")
         
         return obj
-    
+
+    def perform_destroy(self, instance):
+        if (instance.quantity_dispensed or 0) > 0:
+            raise ValidationError(
+                'Cannot delete a prescription that has been dispensed.'
+            )
+        if instance.status in {'ready', 'dispensed', 'partial'}:
+            raise ValidationError(
+                'Only pending or cancelled prescriptions can be deleted.'
+            )
+        instance.delete()
+
     @action(detail=True, methods=['post'])
     def dispense(self, request, pk=None):
         prescription = self.get_object()
@@ -554,6 +580,34 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             patient = Patient.objects.get(mrn=mrn, hospital=hospital)
         except Patient.DoesNotExist:
             return Response({'error': 'Patient not found in this hospital'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Verify the patient's latest bill actually covers medicine charges
+        # before marking prescriptions as ready to dispense.
+        bill = Bill.objects.filter(
+            hospital=hospital,
+            patient_mrn=patient.mrn,
+        ).order_by('-created_at').first()
+
+        if not bill:
+            return Response(
+                {'error': 'No bill found for this patient.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        paid = Decimal(str(bill.amount_paid or 0))
+        required = (
+            Decimal(str(bill.consultation_fee or 0))
+            + Decimal(str(bill.lab_fee or 0))
+            + Decimal(str(bill.medicine_fee or 0))
+        )
+        if paid < required:
+            return Response(
+                {
+                    'error': 'Outstanding balance must be paid before dispensing.',
+                    'balance_due': str(required - paid),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         
         # Update prescriptions
         updated_count = Prescription.objects.filter(
