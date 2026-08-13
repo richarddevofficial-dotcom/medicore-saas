@@ -52,15 +52,23 @@ class Command(BaseCommand):
         for subscription in subscriptions:
             try:
                 with transaction.atomic():
+                    # Lock the row without select_related: PostgreSQL
+                    # rejects FOR UPDATE on the nullable side of an outer
+                    # join (pending_plan). Lock first, then resolve the
+                    # related objects from the locked row.
                     locked = (
                         HospitalSubscription.objects
                         .select_for_update()
+                        .get(pk=subscription.pk)
+                    )
+                    locked = (
+                        HospitalSubscription.objects
                         .select_related(
                             "hospital",
                             "plan",
                             "pending_plan",
                         )
-                        .get(pk=subscription.pk)
+                        .get(pk=locked.pk)
                     )
 
                     target_plan = locked.pending_plan

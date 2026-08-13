@@ -70,8 +70,17 @@ if not SECRET_KEY:
 
 DEBUG = _env_bool('DEBUG', False)  # Default to False for security
 
+# Detect Django's test runner so security redirects do not interfere with
+# test client requests. `manage.py test` always puts 'test' in sys.argv.
+import sys
+
+TESTING = 'test' in sys.argv or os.getenv('DJANGO_TESTING') == '1'
+
 ALLOWED_HOSTS = _env_list('ALLOWED_HOSTS', '127.0.0.1,localhost')
 TRUSTED_PROXY_IPS = set(_env_list('TRUSTED_PROXY_IPS'))
+
+if TESTING and 'testserver' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS = [*ALLOWED_HOSTS, 'testserver']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -262,7 +271,7 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 ]
 CORS_ALLOWED_ORIGIN_REGEXES = [r for r in CORS_ALLOWED_ORIGIN_REGEXES if r]  # Remove None values
 
-if not DEBUG:
+if not DEBUG and not TESTING:
     SECURE_SSL_REDIRECT = _env_bool('SECURE_SSL_REDIRECT', True)
     SESSION_COOKIE_SECURE = _env_bool('SESSION_COOKIE_SECURE', True)
     CSRF_COOKIE_SECURE = _env_bool('CSRF_COOKIE_SECURE', True)
