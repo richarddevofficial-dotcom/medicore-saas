@@ -89,51 +89,28 @@ export default function AddPatientPage() {
     setIsLoading(true);
 
     try {
-      const selectedConsultation = consultationServices.find(
-        (service) =>
-          String(service.id) === String(form.consultation_service_id),
+      // Single atomic call: patient + consultation bill (+ optional doctor)
+      const { data: patient } = await apiClient.post(
+        "/patients/register_visit/",
+        {
+          first_name: form.first_name,
+          last_name: form.last_name,
+          date_of_birth: form.date_of_birth,
+          gender: form.gender,
+          blood_group: form.blood_group,
+          phone: form.phone,
+          email: form.email,
+          address: form.address,
+          emergency_contact_name: form.emergency_contact_name,
+          emergency_contact_phone: form.emergency_contact_phone,
+          emergency_contact_relation: form.emergency_contact_relation,
+          allergies: form.allergies,
+          chronic_conditions: form.chronic_conditions,
+          symptoms: form.symptoms,
+          consultation_service_id: form.consultation_service_id,
+          assigned_doctor: form.assigned_doctor || undefined,
+        },
       );
-
-      const { data: patient } = await apiClient.post("/patients/", {
-        first_name: form.first_name,
-        last_name: form.last_name,
-        date_of_birth: form.date_of_birth,
-        gender: form.gender,
-        blood_group: form.blood_group,
-        phone: form.phone,
-        email: form.email,
-        address: form.address,
-        emergency_contact_name: form.emergency_contact_name,
-        emergency_contact_phone: form.emergency_contact_phone,
-        emergency_contact_relation: form.emergency_contact_relation,
-        allergies: form.allergies,
-        chronic_conditions: form.chronic_conditions,
-        symptoms: form.symptoms,
-      });
-
-      await apiClient.post("/bills/", {
-        patient_name:
-          `${patient.first_name || ""} ${patient.last_name || ""}`.trim(),
-        patient_mrn: patient.mrn,
-        payment_method: "cash",
-        consultation_fee: parseFloat(selectedConsultation?.price || 0),
-        lab_fee: 0,
-        medicine_fee: 0,
-        room_fee: 0,
-        other_fee: 0,
-        insurance_company: "",
-        insurance_policy: "",
-        status: "pending",
-        notes: selectedConsultation
-          ? `Consultation type: ${selectedConsultation.name}${selectedConsultation.code ? ` (${selectedConsultation.code})` : ""}`
-          : "",
-      });
-
-      if (form.assigned_doctor && patient.mrn) {
-        await apiClient.post(`/patients/${patient.mrn}/assign_doctor/`, {
-          assigned_doctor: form.assigned_doctor,
-        });
-      }
 
       toast.success(`Patient ${patient.mrn} registered!`);
       router.push("/patients");
@@ -211,6 +188,7 @@ export default function AddPatientPage() {
                   value={form.gender}
                   onChange={(e) => handleChange("gender", e.target.value)}
                   options={[
+                    { value: "", label: "Select gender" },
                     { value: "M", label: "Male" },
                     { value: "F", label: "Female" },
                     { value: "O", label: "Other" },

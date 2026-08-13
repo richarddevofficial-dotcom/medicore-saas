@@ -119,7 +119,7 @@ class PatientViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'stats':
             return [IsAuthenticated(), CanViewPatientStats()]
-        if self.action in {'list', 'create', 'assign_doctor'}:
+        if self.action in {'list', 'create', 'register_visit', 'assign_doctor'}:
             return [IsAuthenticated(), CanManagePatients()]
         if self.action in {
             'doctor_queue',
@@ -180,7 +180,111 @@ class PatientViewSet(viewsets.ModelViewSet):
                 None,
             ),
         )
-    
+
+    @action(detail=False, methods=['post'])
+    def register_visit(self, request):
+        """
+        Atomically register a patient, create the consultation bill, and
+        optionally assign a doctor — all-or-nothing so a partial failure
+        never leaves an orphan patient without a bill.
+        """
+        from rest_framework.exceptions import ValidationError
+
+        hospital = _resolve_request_hospital(request)
+        if not hospital:
+            raise ValidationError('Hospital context is required')
+
+        limit_check = check_hospital_limit(hospital, 'patients')
+        if not limit_check['allowed']:
+            raise ValidationError(
+                {
+                    'plan_limit': (
+                        f"{limit_check['plan_code'].upper()} plan allows up to "
+                        f"{limit_check['limit']} patients. "
+                        'Upgrade your plan to register more patients.'
+                    )
+                }
+            )
+
+        consultation_service_id = request.data.get('consultation_service_id')
+        if not consultation_service_id:
+            raise ValidationError(
+                {'consultation_service_id': 'Consultation type is required.'}
+            )
+        try:
+            service = ServiceCatalog.objects.get(
+                id=consultation_service_id,
+                hospital=hospital,
+                service_type='consultation',
+                is_active=True,
+            )
+        except ServiceCatalog.DoesNotExist:
+            raise ValidationError(
+                {'consultation_service_id': 'Consultation service not found.'}
+            )
+
+        doctor = None
+        doctor_id = request.data.get('assigned_doctor')
+        if doctor_id:
+            doctor = StaffProfile.objects.filter(
+                id=doctor_id,
+                hospital=hospital,
+                role='doctor',
+                is_active=True,
+            ).first()
+            if not doctor:
+                raise ValidationError({'assigned_doctor': 'Doctor not found.'})
+
+        patient_fields = {
+            key: request.data.get(key, '')
+            for key in (
+                'first_name',
+                'last_name',
+                'date_of_birth',
+                'gender',
+                'blood_group',
+                'phone',
+                'email',
+                'address',
+                'emergency_contact_name',
+                'emergency_contact_phone',
+                'emergency_contact_relation',
+                'allergies',
+                'chronic_conditions',
+                'symptoms',
+            )
+            if key in PatientDetailSerializer().fields
+        }
+
+        serializer = PatientDetailSerializer(data=patient_fields)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            patient = serializer.save(
+                hospital=hospital,
+                status='waiting' if doctor else 'registered',
+                assigned_doctor=doctor,
+                registered_by=getattr(request.user, 'staff_profile', None),
+            )
+
+            Bill.objects.create(
+                hospital=hospital,
+                patient_name=f'{patient.first_name} {patient.last_name}'.strip(),
+                patient_mrn=patient.mrn,
+                consultation_fee=service.price,
+                payment_method='cash',
+                status='pending',
+                notes=(
+                    f'Consultation type: {service.name}'
+                    + (f' ({service.code})' if service.code else '')
+                ),
+            )
+
+        return Response(
+            PatientDetailSerializer(patient).data,
+            status=status.HTTP_201_CREATED,
+        )
+
     @action(detail=True, methods=['post'])
     def assign_doctor(self, request, mrn=None):
         patient = self.get_object()
