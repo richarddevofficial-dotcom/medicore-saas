@@ -3502,11 +3502,41 @@ def billing_center_approve_payment(
         ]
     )
 
+    invoice_metadata = invoice.metadata or {}
+    is_plan_change_invoice = bool(
+        invoice.invoice_type == Invoice.TYPE_ADJUSTMENT
+        and (
+            invoice_metadata.get("target_plan_id")
+            or invoice_metadata.get("pending_plan_change")
+        )
+    )
+
     if (
         invoice.status == Invoice.STATUS_PAID
-        and invoice.invoice_type == Invoice.TYPE_ADJUSTMENT
-        and (invoice.metadata or {}).get("target_plan_id")
+        and is_plan_change_invoice
     ):
+        # Backfill target_plan_id for legacy pending_plan_change invoices.
+        if not invoice_metadata.get("target_plan_id"):
+            target_plan_code = str(
+                invoice_metadata.get("target_plan_code", "")
+            ).strip().lower()
+            legacy_target_plan = (
+                SubscriptionPlan.objects.filter(
+                    code=target_plan_code,
+                    is_active=True,
+                ).first()
+                if target_plan_code
+                else None
+            )
+            if legacy_target_plan:
+                invoice.metadata = {
+                    **invoice_metadata,
+                    "target_plan_id": legacy_target_plan.id,
+                }
+                invoice.save(
+                    update_fields=["metadata", "updated_at"]
+                )
+
         subscription = activate_plan_change(
             subscription=subscription,
             invoice=invoice,
