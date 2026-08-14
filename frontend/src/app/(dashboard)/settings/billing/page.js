@@ -461,7 +461,11 @@ export default function BillingPage() {
           <SummaryCard
             icon={CreditCard}
             label="Current plan"
-            value={subscription.plan || "Not configured"}
+            value={
+              subscription.plan?.name ||
+              subscription.plan_name ||
+              "Not configured"
+            }
           />
 
           <SummaryCard
@@ -860,8 +864,16 @@ function PaymentModal({ invoice, bankDetails, submitting, onClose, onSubmit }) {
 
   const today = new Date().toISOString().slice(0, 10);
 
+  const MAX_FILE_BYTES = 5 * 1024 * 1024;
+
   function handleChange(event) {
     const { files, name, value } = event.target;
+
+    if (files && files[0] && files[0].size > MAX_FILE_BYTES) {
+      event.target.value = "";
+      alert("File must be 5 MB or smaller.");
+      return;
+    }
 
     setForm((current) => ({
       ...current,

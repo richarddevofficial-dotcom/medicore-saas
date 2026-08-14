@@ -33,7 +33,7 @@ def _from_email():
     return getattr(
         settings,
         "DEFAULT_FROM_EMAIL",
-        "noreply@medicore.local",
+        "noreply@medicorecloud.com",
     )
 
 
@@ -165,7 +165,7 @@ def notify_subscription_expiring_soon(subscription, days_remaining):
         ),
         message=(
             f"Hello {hospital.name},\n\n"
-            f"Your {subscription.plan.name} subscription expires in "
+            f"Your {getattr(subscription.plan, 'name', 'MediCore')} subscription expires in "
             f"{days_remaining} day(s) on {subscription.end_date}.\n\n"
             "Please renew your subscription from the billing page to "
             "avoid interruption of service.\n\n"

@@ -113,7 +113,8 @@ INSTALLED_APPS = [
     'imaging',
     'ipd',
     'publicapi',
- ]
+    'saas_billing',
+]
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -197,7 +198,7 @@ AUTH_PASSWORD_VALIDATORS = (
 )
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'Asia/Kolkata'
+TIME_ZONE = os.getenv('TIME_ZONE', 'UTC')
 USE_I18N = True
 USE_TZ = True
 
@@ -241,21 +242,18 @@ ATTENDANCE_CLOCK_IN_CLOSE_MINUTES = int(
 # ✅ SECURITY: Never allow all CORS origins
 CORS_ALLOW_ALL_ORIGINS = False
 
-# Whitelist specific frontend origins
-CORS_ALLOWED_ORIGINS = _env_list(
-    'CORS_ALLOWED_ORIGINS',
-    # Dev: localhost, Prod: medicorecloud.com domains
-    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://127.0.0.1:3002' if DEBUG else 'https://medicorecloud.com,https://www.medicorecloud.com'
+# Always include localhost; add production origins only when not in debug mode.
+_LOCALHOST_ORIGINS = (
+    'http://localhost:3000,http://127.0.0.1:3000,'
+    'http://localhost:3001,http://127.0.0.1:3001,'
+    'http://localhost:3002,http://127.0.0.1:3002'
 )
+_PROD_ORIGINS = 'https://medicorecloud.com,https://www.medicorecloud.com'
+_DEFAULT_ORIGINS = _LOCALHOST_ORIGINS if DEBUG else f'{_LOCALHOST_ORIGINS},{_PROD_ORIGINS}'
 
+CORS_ALLOWED_ORIGINS = _env_list('CORS_ALLOWED_ORIGINS', _DEFAULT_ORIGINS)
 CORS_ALLOW_CREDENTIALS = True
-
-# Whitelist CSRF trusted origins
-CSRF_TRUSTED_ORIGINS = _env_list(
-    'CSRF_TRUSTED_ORIGINS',
-    # Dev: localhost, Prod: medicorecloud.com domains
-    'http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://127.0.0.1:3002' if DEBUG else 'https://medicorecloud.com,https://www.medicorecloud.com'
-)
+CSRF_TRUSTED_ORIGINS = _env_list('CSRF_TRUSTED_ORIGINS', _DEFAULT_ORIGINS)
 
 # ✅ CSRF Configuration (Enhanced Security)
 CSRF_USE_SESSIONS = False  # Use cookies instead (more secure)
@@ -264,12 +262,6 @@ CSRF_COOKIE_HTTP_ONLY = False  # JavaScript needs to read for fetch requests (wi
 CSRF_COOKIE_SAMESITE = 'Lax'  # CSRF attack prevention
 CSRF_COOKIE_AGE = 31449600  # 1 year
 CSRF_COOKIE_NAME = 'csrftoken'  # Standard name (Next.js expects this)
-
-# Allow tenant subdomains (for multi-tenant SaaS)
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r'^https://([a-zA-Z0-9-]+\.)?medicorecloud\.com$' if not DEBUG else None
-]
-CORS_ALLOWED_ORIGIN_REGEXES = [r for r in CORS_ALLOWED_ORIGIN_REGEXES if r]  # Remove None values
 
 if not DEBUG and not TESTING:
     SECURE_SSL_REDIRECT = _env_bool('SECURE_SSL_REDIRECT', True)
@@ -283,19 +275,6 @@ if not DEBUG and not TESTING:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     
-    # CSP: Prevent XSS by restricting script sources
-    SECURE_CONTENT_SECURITY_POLICY = {
-        'default-src': ("'self'",),
-        'script-src': ("'self'", "'unsafe-inline'"),  # NextJS requires unsafe-inline
-        'style-src': ("'self'", "'unsafe-inline'"),   # CSS inline needed
-        'img-src': ("'self'", "data:", "https:"),     # Allow data URIs and HTTPS images
-        'font-src': ("'self'", "https:"),             # Google Fonts, etc
-        'connect-src': ("'self'", "https:"),          # API calls HTTPS only
-        'frame-ancestors': ("'none'",),               # Prevent clickjacking (X-Frame-Options: DENY)
-    }
-    
-    # XSS Protection
-    SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True  # Prevent MIME sniffing
     X_FRAME_OPTIONS = "DENY"             # Prevent clickjacking
     
@@ -341,6 +320,11 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'saas_billing': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
         'django.request': {
             'handlers': ['console'],
             'level': 'ERROR',
@@ -349,7 +333,6 @@ LOGGING = {
     },
 }
 
-from datetime import timedelta
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),  # Short-lived access tokens
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),     # Long-lived refresh tokens
@@ -378,17 +361,10 @@ EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'true').lower() == 'true'
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@medicore.local')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@medicorecloud.com')
 FRONTEND_APP_URL = os.getenv('FRONTEND_APP_URL', 'http://localhost:3000')
 PLATFORM_BASE_DOMAIN = os.getenv('PLATFORM_BASE_DOMAIN', 'medicorecloud.com').strip().lower()
 PLATFORM_SUBDOMAIN_MODE = _env_bool('PLATFORM_SUBDOMAIN_MODE', True)
-
-# Public self-service registration API
-if 'publicapi' not in INSTALLED_APPS:
-    INSTALLED_APPS.append('publicapi')
-
-# Allow secure MediCore tenant subdomains.
-CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://([a-zA-Z0-9-]+\.)?medicorecloud\.com$",
@@ -401,10 +377,6 @@ CSRF_TRUSTED_ORIGINS = list(dict.fromkeys([
     "https://api.medicorecloud.com",
     "https://*.medicorecloud.com",
 ]))
-
-# MediCore SaaS subscription and commercial billing
-if 'saas_billing' not in INSTALLED_APPS:
-    INSTALLED_APPS.append('saas_billing')
 
 # Enforce MediCore trial and subscription access after authentication.
 _subscription_middleware = (
@@ -420,6 +392,3 @@ if _subscription_middleware not in MIDDLEWARE:
         auth_index + 1,
         _subscription_middleware,
     )
-
-
-CORS_ALLOW_CREDENTIALS = True

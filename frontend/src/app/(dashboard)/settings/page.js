@@ -8,6 +8,7 @@ import AdminBackButton from "@/components/ui/AdminBackButton";
 import Input from "@/components/ui/Input";
 import Spinner from "@/components/ui/Spinner";
 import { Save, Building2, Shield, Bell } from "lucide-react";
+import Link from "next/link";
 import toast from "react-hot-toast";
 import apiClient from "@/lib/api-client";
 
@@ -66,13 +67,17 @@ export default function SettingsPage() {
   };
 
   const handleChangePassword = async () => {
-    if (!passwordForm.currentPassword || !passwordForm.newPassword) {
+    if (
+      !passwordForm.currentPassword ||
+      !passwordForm.newPassword ||
+      !passwordForm.confirmPassword
+    ) {
       toast.error("Current and new password are required");
       return;
     }
 
-    if (passwordForm.newPassword.length < 8) {
-      toast.error("New password must be at least 8 characters");
+    if (passwordForm.newPassword.length < 12) {
+      toast.error("New password must be at least 12 characters");
       return;
     }
 
@@ -94,7 +99,13 @@ export default function SettingsPage() {
         confirmPassword: "",
       });
     } catch (err) {
-      toast.error(err?.response?.data?.error || "Failed to change password");
+      const errData = err?.response?.data;
+      toast.error(
+        errData?.error ||
+          errData?.detail ||
+          Object.values(errData || {})?.[0] ||
+          "Failed to change password",
+      );
     } finally {
       setChangingPassword(false);
     }
@@ -119,17 +130,75 @@ export default function SettingsPage() {
               <h1 className="text-2xl font-bold">Settings</h1>
               <p className="text-sm text-gray-500 mt-1">
                 For hospital branding & domain settings, visit{" "}
-                <a
+                <Link
                   href="/admin/settings"
                   className="text-orange-500 hover:underline"
                 >
                   Admin Settings
-                </a>
+                </Link>
                 .
               </p>
             </div>
           </div>
         </div>
+
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <Building2 className="h-5 w-5 text-orange-500" />
+            <h2 className="font-semibold">Hospital Information</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label="Hospital Name"
+              value={settings.name}
+              onChange={(e) =>
+                setSettings({ ...settings, name: e.target.value })
+              }
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={settings.email}
+              onChange={(e) =>
+                setSettings({ ...settings, email: e.target.value })
+              }
+            />
+            <Input
+              label="Phone"
+              value={settings.phone}
+              onChange={(e) =>
+                setSettings({ ...settings, phone: e.target.value })
+              }
+            />
+            <Input
+              label="City"
+              value={settings.city}
+              onChange={(e) =>
+                setSettings({ ...settings, city: e.target.value })
+              }
+            />
+            <Input
+              label="State"
+              value={settings.state}
+              onChange={(e) =>
+                setSettings({ ...settings, state: e.target.value })
+              }
+            />
+            <Input
+              label="Address"
+              value={settings.address}
+              onChange={(e) =>
+                setSettings({ ...settings, address: e.target.value })
+              }
+            />
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button onClick={handleSave} isLoading={saving}>
+              <Save className="h-4 w-4 mr-2" />
+              Save Changes
+            </Button>
+          </div>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
@@ -157,10 +226,10 @@ export default function SettingsPage() {
                 <span className="text-sm">Max Login Attempts</span>
                 <span className="font-medium">5</span>
               </div>
-              <label className="flex items-center justify-between py-2 cursor-pointer">
+              <div className="flex items-center justify-between py-2">
                 <span className="text-sm">Two-Factor Authentication</span>
-                <input type="checkbox" className="rounded" />
-              </label>
+                <span className="text-xs text-gray-400">Coming soon</span>
+              </div>
 
               <div className="pt-2 border-t">
                 <h3 className="text-sm font-semibold mb-3">Change Password</h3>
