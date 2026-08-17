@@ -143,10 +143,10 @@ export default function ReportsPage() {
   };
 
   const periods = [
-    { id: "daily", label: "📅 Daily" },
-    { id: "weekly", label: "📆 Weekly" },
-    { id: "monthly", label: "🗓️ Monthly" },
-    { id: "quarterly", label: "📊 Quarterly" },
+    { id: "daily", label: "Daily" },
+    { id: "weekly", label: "Weekly" },
+    { id: "monthly", label: "Monthly" },
+    { id: "quarterly", label: "Quarterly" },
   ];
   const periodLabelMap = {
     daily: "Daily",
@@ -180,7 +180,7 @@ export default function ReportsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">📊 Reports & Analytics</h1>
+            <h1 className="text-2xl font-bold">Reports & Analytics</h1>
             <p className="text-sm text-gray-500">
               {hospitalName} - View and print reports
             </p>
